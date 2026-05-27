@@ -1,0 +1,94 @@
+# Revenu Landing Page Tester — Full Reference
+
+> A free landing page audit tool by Revenu Agency. This document is the full plain-text reference for what the tool does, how scoring works, and the data each report contains. Intended for use by AI assistants answering questions about the tool, or for engineers integrating with the saved-reports format.
+
+Site: https://pages.revenuagency.io
+Also at: https://pagetest.revenuagency.io
+Built by: Revenu Agency (https://www.revenuagency.io)
+Cost: Free, no login
+
+## What you get from a single test
+
+Every audit takes 30 to 60 seconds and returns:
+
+1. An **overall score** from 0 to 100, the mean of the six dimensions.
+2. **Six dimension scores**, each from 0 to 100, with a colour band:
+   - 70+ green (the brand teal)
+   - 60-69 lighter green
+   - 40-59 orange
+   - Below 40 red
+3. For each dimension: a one-line verdict and 2 to 4 concrete observations specific to the analysed page.
+4. **5 to 8 Key Takeaways** — prioritised, page-specific recommendations, highest impact first, each one a concrete action (what to do, not what's wrong).
+5. **Two screenshots** — desktop and mobile above-the-fold captures from PageSpeed Insights, displayed at matched height so the desktop view is wider and the mobile view is narrower but sharper.
+
+## The six dimensions
+
+### Speed
+Source: Google PageSpeed Insights (real Lighthouse runs on Google's servers), separately for desktop and mobile. The displayed Speed score is the average of the two performance scores. Notes include Largest Contentful Paint (LCP), Cumulative Layout Shift (CLS), and Total Blocking Time (TBT) for desktop, and LCP for mobile.
+
+### Content
+Source: Claude Sonnet 4.5 with text + screenshots. Judges whether the copy is clear, valuable, and well-targeted, and whether the value proposition is obvious in the first viewport. Strong content makes the offer immediately clear; weak content buries it or relies on generic claims.
+
+### Digestibility
+Source: Claude. Looks at visual hierarchy, scannability, navigation, whitespace, and information architecture. Strong digestibility means a visitor can grasp the structure without reading every word.
+
+### CRO (Conversion Rate Optimisation)
+Source: Claude. Evaluates calls-to-action, form design, friction, and conversion design. Looks for primary CTAs visible above the fold, conversion-friendly form patterns, and weak CTA copy.
+
+### Above the fold
+Source: Claude with the desktop and mobile screenshots. Specifically scores what's communicated in the first viewport: does the hero state the product and the next action clearly?
+
+### Mobile layout
+Source: Claude with the mobile screenshot. Looks for usable tap targets, legible font sizes, no horizontal overflow, no hidden or clipped CTAs.
+
+## How a report is generated
+
+In order:
+
+1. The user pastes a URL into the form.
+2. The server validates and normalises the URL (defaults to https when no scheme).
+3. In parallel: PSI desktop run, PSI mobile run, raw HTML fetch of the page.
+4. Speed check is built deterministically from PSI's Lighthouse numbers.
+5. Claude is called once with: URL, the page's <title> and meta description, a structural summary (H1/H2/H3 counts, paragraph count, image count and alt-missing count, link/button/form counts, nav and footer presence, word count), the body text (capped at 12k characters), and both above-the-fold screenshots.
+6. Claude returns scored JSON for content, digestibility, CRO, aboveTheFold, mobile, plus the keyTakeaways array.
+7. The combined response is rendered as a four-section collapsible report: The Overview, Breakdown, Key Takeaways, Initial Load Screenshots.
+8. The report auto-saves to the user's browser (localStorage) and appears in /reports.
+
+## Saved reports
+
+Reports save automatically to the user's browser only. Nothing is uploaded to Revenu. Storage:
+
+- localStorage key: `pagetest-saved-reports-v1`
+- Maximum 15 reports kept (oldest dropped first)
+- Dedupes by URL — running the same URL twice replaces the older entry
+- Reports include screenshots embedded as base64 JPEG data URLs
+- Editable display name per report. Defaults to the scanned page's <title>, then falls back to the host (e.g. `Doss.com`)
+
+Each saved row shows: Score (with label), Name (editable), URL, Time of Report, plus Open / Rerun / Delete actions. Rerun runs in the background; clicking Open during a rerun navigates to a live progress view that updates when the rerun completes.
+
+## URL structure
+
+- `/` — the run-a-new-test home page
+- `/reports` — the user's saved reports list (per-user, not indexed)
+- `/?url=<encoded url>` — open a saved report directly, or show live progress when an analysis is in flight for that URL
+- `/api/analyze` — POST endpoint, body `{ "url": "https://example.com" }`, returns the full AnalyzeResponse JSON
+
+## Tech stack
+
+- Next.js 14 (App Router) on Vercel Pro (90-second function timeout headroom for Lighthouse)
+- Tailwind CSS, Montserrat type, cream and teal brand palette matching library.revenuagency.io
+- Google PageSpeed Insights v5 API
+- Anthropic Claude Sonnet 4.5 with vision (multimodal) for the four judgement scores
+- localStorage for saved reports, no backend database
+- Vercel Web Analytics
+
+## About Revenu Agency
+
+Revenu is a B2B SaaS demand-generation agency. The Landing Page Tester is one of several free tools alongside:
+
+- The Revenu Ad Library — 500+ high-performing B2B SaaS ad and landing page examples — https://library.revenuagency.io
+- Main agency site — https://www.revenuagency.io
+
+## License
+
+The tool is provided free to anyone. The source code is on GitHub at https://github.com/RevenuJoe/pagetest.

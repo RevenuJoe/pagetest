@@ -1,0 +1,42 @@
+# Revenu Landing Page Tester
+
+> A free landing page audit tool by Revenu Agency. Paste any URL, get a six-point health check in 60 seconds: Speed, Content, Digestibility, CRO, Above-the-fold, and Mobile layout. Powered by Google PageSpeed Insights (real Lighthouse runs) and Claude.
+
+## What it scores
+
+Every test returns an overall 0-100 score plus six dimensions, each 0-100:
+
+- **Speed** — Lighthouse desktop + mobile performance, LCP, CLS, TBT
+- **Content** — copy clarity, value proposition strength, message-to-market match
+- **Digestibility** — visual hierarchy, scannability, navigation, information architecture
+- **CRO** — primary CTAs, forms, friction, conversion design
+- **Above the fold** — what the first viewport communicates
+- **Mobile layout** — phone render: tap targets, font sizes, overflow, hidden CTAs
+
+Each dimension also returns a one-line verdict plus 2-4 concrete observations or recommendations specific to that page.
+
+The report also includes 5-8 prioritised "Key Takeaways" — concrete actions ranked by impact.
+
+## Pages
+
+- [Home / run a new test](https://pages.revenuagency.io/) — paste a URL and run an audit
+- [Your saved reports](https://pages.revenuagency.io/reports) — local-only list of past runs (per-user, not indexed)
+
+## How it works
+
+1. The user submits a landing page URL.
+2. Google PageSpeed Insights runs Lighthouse against the URL in parallel for desktop and mobile, returning performance scores, Core Web Vitals, and a viewport screenshot.
+3. The page HTML is fetched server-side and parsed for structural signals (heading counts, button/form counts, navigation, body text).
+4. Claude Sonnet 4.5 receives the URL, structural summary, body text, and both above-the-fold screenshots, and returns scored JSON for content, digestibility, CRO, above-the-fold, and mobile, plus prioritised key takeaways.
+5. The Speed score is derived deterministically from Lighthouse numbers; the four judgement scores come from Claude with vision input.
+
+## Data
+
+- [Sitemap](https://pages.revenuagency.io/sitemap.xml)
+- [Detailed plain-text version](https://pages.revenuagency.io/llms-full.txt)
+
+## About
+
+Built by [Revenu Agency](https://www.revenuagency.io), a B2B SaaS demand-generation agency. Free to use, no login required. Saved reports live in the user's browser only (localStorage), nothing is sent to a Revenu server.
+
+Also available at https://pagetest.revenuagency.io (alias of the same site).

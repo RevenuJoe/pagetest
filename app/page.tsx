@@ -104,6 +104,71 @@ function Home() {
 
   return (
     <div className="min-h-screen">
+      {/* Page-specific JSON-LD: WebPage + FAQPage. Helps Google and AI search
+          parsers understand the page's intent and surface answers directly. */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@graph": [
+              {
+                "@type": "WebPage",
+                "@id": "https://pages.revenuagency.io/#webpage",
+                url: "https://pages.revenuagency.io/",
+                name: "Landing Page Tester | Revenu",
+                isPartOf: {
+                  "@id": "https://pages.revenuagency.io/#website",
+                },
+                description:
+                  "Score any landing page in 60 seconds. Speed, content, digestibility, CRO, above-the-fold and mobile, all scored automatically.",
+                inLanguage: "en-GB",
+                primaryImageOfPage: {
+                  "@type": "ImageObject",
+                  url: "https://pages.revenuagency.io/favicon/favicon-192.png",
+                },
+              },
+              {
+                "@type": "FAQPage",
+                mainEntity: [
+                  {
+                    "@type": "Question",
+                    name: "What does the Revenu Landing Page Tester score?",
+                    acceptedAnswer: {
+                      "@type": "Answer",
+                      text: "Six dimensions for any landing page: load speed (via Google PageSpeed Insights / Lighthouse), content quality, digestibility, conversion rate optimisation (CRO), above-the-fold strength, and mobile layout. Each scored 0 to 100, with a concrete prioritised list of fixes.",
+                    },
+                  },
+                  {
+                    "@type": "Question",
+                    name: "How long does a test take?",
+                    acceptedAnswer: {
+                      "@type": "Answer",
+                      text: "Around 30 to 60 seconds. Lighthouse runs a full real-world render on Google's servers, then Claude analyses the page text and screenshots in parallel.",
+                    },
+                  },
+                  {
+                    "@type": "Question",
+                    name: "Is it free?",
+                    acceptedAnswer: {
+                      "@type": "Answer",
+                      text: "Yes. The tester is provided free by Revenu Agency. No login required.",
+                    },
+                  },
+                  {
+                    "@type": "Question",
+                    name: "Do reports save automatically?",
+                    acceptedAnswer: {
+                      "@type": "Answer",
+                      text: "Yes. Every test you run is saved in your browser. Open the report icon in the top right to revisit, rename, rerun, or delete past reports.",
+                    },
+                  },
+                ],
+              },
+            ],
+          }),
+        }}
+      />
       <Header />
 
       <main className="mx-auto max-w-[1180px] px-6 pb-24 sm:px-14">
