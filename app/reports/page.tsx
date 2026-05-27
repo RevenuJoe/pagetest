@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Header from "@/components/Header";
-import { IconRerun, IconPencil, Spinner } from "@/components/Icons";
+import { IconRerun, IconPencil, IconTrash, Spinner } from "@/components/Icons";
 import { useRunningUrls, useSavedReports } from "@/lib/storeHooks";
 import { analysisStore } from "@/lib/analysisStore";
 import { savedStore } from "@/lib/savedStore";
@@ -139,11 +139,11 @@ function ReportRow({
   }
 
   return (
-    <li className="flex items-start gap-5 rounded-card border border-beige-line bg-card px-5 pt-6 pb-5 shadow-card">
-      {/* SCORE column — label on top, circle beneath. The extra top padding
-          on the card combined with this column's natural height drops the
-          SCORE label to sit on the Name row Y and the 69 circle's bottom to
-          land near the Time of Report row Y. */}
+    <li className="relative flex items-start gap-5 rounded-card border border-beige-line bg-card px-6 pt-8 pb-7 shadow-card">
+      {/* SCORE column — label on top, circle beneath. Circle is ~10% smaller
+          than before so it sits visually a touch lower next to the Name row,
+          and the extra card padding gives the whole row more breathing
+          room. */}
       <div className="flex flex-shrink-0 flex-col items-center gap-1.5">
         <div
           className="text-[10px] font-bold uppercase text-ink-soft"
@@ -152,8 +152,14 @@ function ReportRow({
           Score
         </div>
         <div
-          className="flex h-14 w-14 items-center justify-center rounded-full font-bold tabular-nums tracking-tight"
-          style={{ background: `${color}1a`, color, fontSize: 22 }}
+          className="flex items-center justify-center rounded-full font-bold tabular-nums tracking-tight"
+          style={{
+            background: `${color}1a`,
+            color,
+            fontSize: 20,
+            width: 50,
+            height: 50,
+          }}
         >
           {report.overall}
         </div>
@@ -230,14 +236,13 @@ function ReportRow({
         </LabelledRow>
       </div>
 
-      {/* Actions column — three same-width pill buttons stacked vertically:
-          Open (outline), Rerun (filled accent), Delete (outline, ink-soft
-          → red on hover). */}
+      {/* Actions column — Open + Rerun stacked, content flush-left within
+          each button so the labels line up vertically. */}
       <div className="flex flex-shrink-0 flex-col items-stretch justify-center gap-1.5">
         <button
           type="button"
           onClick={onOpen}
-          className="w-24 rounded-full border border-beige-line bg-card px-3.5 py-1.5 text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent"
+          className="w-24 rounded-full border border-beige-line bg-card px-4 py-1.5 text-left text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent"
         >
           Open
         </button>
@@ -245,20 +250,25 @@ function ReportRow({
           type="button"
           onClick={onRerun}
           disabled={running}
-          className="inline-flex w-24 items-center justify-center gap-1.5 rounded-full bg-accent px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex w-24 items-center justify-start gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
         >
           <IconRerun />
           {running ? "Running…" : "Rerun"}
         </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          aria-label="Remove this saved report"
-          className="w-24 rounded-full border border-beige-line bg-card px-3.5 py-1.5 text-[12px] font-semibold text-ink-soft transition hover:border-bad hover:text-bad"
-        >
-          Delete
-        </button>
       </div>
+
+      {/* Trash icon — sits OUTSIDE the card's right edge with no background,
+          just a small transparent ink-soft icon that turns red on hover.
+          Absolutely positioned against the relative <li> parent. */}
+      <button
+        type="button"
+        onClick={onDelete}
+        aria-label="Delete this saved report"
+        title="Delete"
+        className="absolute right-[-32px] top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center bg-transparent text-ink-soft transition hover:text-bad"
+      >
+        <IconTrash />
+      </button>
     </li>
   );
 }
