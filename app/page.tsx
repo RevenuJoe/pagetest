@@ -72,22 +72,30 @@ export default function Home() {
       <main className="mx-auto max-w-[1180px] px-6 pb-24 sm:px-14">
         <section className="pt-14 md:pt-20">
           <div className="text-center">
-            <span
-              className="inline-flex items-center gap-2 rounded-full border border-beige-line bg-card px-3.5 py-1.5 text-xs font-semibold text-ink-soft"
-              style={{ letterSpacing: "0.04em" }}
-            >
-              <span className="h-[7px] w-[7px] rounded-full bg-accent" />
-              POWERED BY LIGHTHOUSE + CLAUDE
-            </span>
-            <h1 className="mt-6 text-[clamp(36px,5.2vw,60px)] font-bold leading-[1.04] tracking-tight text-ink">
-              Score any page in{" "}
-              <span className="text-accent">60 seconds</span>.
+            <h1 className="text-[clamp(32px,4.7vw,54px)] font-bold leading-[1.04] tracking-tight text-ink">
+              Score any landing page in{" "}
+              <span style={{ color: "#76A09C" }}>60 seconds</span>.
             </h1>
-            <p className="mx-auto mt-[18px] max-w-[620px] text-[16px] font-medium leading-[1.65] text-ink-soft">
-              Drop in a URL. Get an instant six-point health check — speed,
-              content, layout, CRO, above-the-fold and mobile — with concrete
-              recommendations.
-            </p>
+            <ul className="mx-auto mt-7 flex flex-wrap items-center justify-center gap-2.5 p-0 list-none">
+              {[
+                "Speed test via Google",
+                "Context",
+                "Content analysis by Claude",
+              ].map((label, i) => (
+                <li
+                  key={label}
+                  className="inline-flex items-center gap-2 rounded-full border border-beige-line bg-card py-1 pl-1 pr-3.5 text-[12px] font-medium text-ink"
+                >
+                  <span
+                    className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                    style={{ background: "#76A09C" }}
+                  >
+                    {i + 1}
+                  </span>
+                  {label}
+                </li>
+              ))}
+            </ul>
           </div>
 
           <form
@@ -192,13 +200,14 @@ export default function Home() {
           </section>
         )}
 
-        <footer
-          className="mt-20 pb-10 text-center text-xs font-medium text-ink-soft"
-          style={{ letterSpacing: "0.04em" }}
-        >
-          © {new Date().getFullYear()} REVENU AGENCY · pagetest.revenuagency.io
-        </footer>
       </main>
+
+      {/* Matches .site-footer on library.revenuagency.io exactly */}
+      <footer className="mt-20 border-t border-beige-line bg-bg py-9 text-center text-[14px] text-ink-soft">
+        <div className="mx-auto max-w-[1180px] px-6 sm:px-14">
+          <p className="m-0">© Revenu</p>
+        </div>
+      </footer>
     </div>
   );
 }
@@ -396,19 +405,19 @@ function FeaturesGrid() {
     },
   ];
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((it) => (
         <div
           key={it.title}
-          className="rounded-card border border-beige-line bg-card p-[22px]"
+          className="rounded-card border border-beige-line bg-card p-4"
         >
-          <div className="flex h-[38px] w-[38px] items-center justify-center rounded-[10px] bg-accent-soft text-accent-dark">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent-dark">
             {it.icon}
           </div>
-          <h3 className="mt-3.5 text-sm font-bold tracking-tight text-ink">
+          <h3 className="mt-3 text-[13px] font-bold tracking-tight text-ink">
             {it.title}
           </h3>
-          <p className="mt-1 text-[13px] font-medium leading-[1.6] text-ink-soft">
+          <p className="mt-1 text-[12px] font-medium leading-[1.55] text-ink-soft">
             {it.desc}
           </p>
         </div>
