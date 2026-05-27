@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   // Matches the "Revenu · …" middle-dot pattern used across revenuagency.io.
-  title: "Revenu · the landing page tester",
+  title: "Landing Page Tester | Revenu",
   description:
     "Score any landing page in 60 seconds. Speed, content, digestibility, CRO, above-the-fold and mobile, all scored automatically.",
   metadataBase: new URL("https://pages.revenuagency.io"),
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     shortcut: "/favicon/favicon.ico",
   },
   openGraph: {
-    title: "Revenu · the landing page tester",
+    title: "Landing Page Tester | Revenu",
     description:
       "Instant six-point health check for any web page. Powered by Lighthouse and Claude.",
     url: "https://pages.revenuagency.io",
