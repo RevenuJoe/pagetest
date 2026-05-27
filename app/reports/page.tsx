@@ -166,9 +166,9 @@ function ReportRow({
       </div>
 
       {/* Metadata column — three labelled rows stacked with a tight gap.
-          Top row (Name) lines up with the Score label; the bottom row
-          (Time of Report) lines up with the bottom of the score circle. */}
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          A small negative top margin (~10% of the card's top padding) nudges
+          the Name row up so the gap above it feels tighter on desktop. */}
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5 mt-[-3px]">
         <LabelledRow label="Name">
           {editing ? (
             <input
@@ -236,13 +236,12 @@ function ReportRow({
         </LabelledRow>
       </div>
 
-      {/* Actions column — Open + Rerun stacked, content flush-left within
-          each button so the labels line up vertically. */}
+      {/* Actions column — Open + Rerun stacked, button content centred. */}
       <div className="flex flex-shrink-0 flex-col items-stretch justify-center gap-1.5">
         <button
           type="button"
           onClick={onOpen}
-          className="w-24 rounded-full border border-beige-line bg-card px-4 py-1.5 text-left text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent"
+          className="w-24 rounded-full border border-beige-line bg-card px-3.5 py-1.5 text-center text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent"
         >
           Open
         </button>
@@ -250,7 +249,7 @@ function ReportRow({
           type="button"
           onClick={onRerun}
           disabled={running}
-          className="inline-flex w-24 items-center justify-start gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex w-24 items-center justify-center gap-1.5 rounded-full bg-accent px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
         >
           <IconRerun />
           {running ? "Running…" : "Rerun"}
