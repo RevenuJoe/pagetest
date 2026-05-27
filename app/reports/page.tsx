@@ -166,9 +166,9 @@ function ReportRow({
       </div>
 
       {/* Metadata column — three labelled rows stacked with a tight gap.
-          A small negative top margin (~10% of the card's top padding) nudges
-          the Name row up so the gap above it feels tighter on desktop. */}
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5 mt-[-3px]">
+          Top-aligned with the score column so the SCORE label and NAME
+          label sit on the same Y. */}
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <LabelledRow label="Name">
           {editing ? (
             <input
