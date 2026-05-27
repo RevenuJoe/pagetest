@@ -38,13 +38,13 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       // Everyone (including standard search crawlers).
-      { userAgent: "*", allow: "/", disallow: ["/reports"] },
+      { userAgent: "*", allow: "/", disallow: ["/reports", "/report"] },
       // Each AI crawler called out explicitly so future bot-blocking defaults
       // upstream can't silently exclude us.
       ...AI_BOTS.map((ua) => ({
         userAgent: ua,
         allow: "/",
-        disallow: ["/reports"],
+        disallow: ["/reports", "/report"],
       })),
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,

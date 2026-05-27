@@ -55,6 +55,11 @@ interface PsiAudit {
     screenshot?: { data?: string };
     overallSavingsMs?: number;
     overallSavingsBytes?: number;
+    /** Lighthouse table column definitions for `items`. */
+    headings?: Array<{ key?: string; label?: string; valueType?: string }>;
+    /** Per-row breakdown — what Lighthouse shows when you expand an audit
+     *  inside PSI. Shape varies wildly by audit, so we accept loose records. */
+    items?: Array<Record<string, unknown>>;
   };
 }
 
@@ -124,9 +129,49 @@ function extractImprovements(
       overallSavingsMs: audit.details?.overallSavingsMs,
       overallSavingsBytes: audit.details?.overallSavingsBytes,
       source: strategy,
+      items: shapeItems(audit.details?.items),
+      headings: audit.details?.headings,
     });
   }
   return out;
+}
+
+/**
+ * Pull the parts of Lighthouse `details.items` we actually want to render in
+ * the expanded view, and drop the noise. Items are unioned record types; we
+ * keep the primitive fields and discard nested objects (like SubItems trees
+ * Lighthouse occasionally returns for tree-shaking audits). Cap at 20 rows
+ * so the UI stays reasonable.
+ */
+function shapeItems(
+  raw: Array<Record<string, unknown>> | undefined,
+):
+  | Array<Record<string, string | number | boolean | undefined | null>>
+  | undefined {
+  if (!raw || raw.length === 0) return undefined;
+  const out: Array<Record<string, string | number | boolean | undefined | null>> = [];
+  for (const row of raw.slice(0, 20)) {
+    const shaped: Record<string, string | number | boolean | undefined | null> = {};
+    for (const [k, v] of Object.entries(row)) {
+      if (v == null) continue;
+      // Lighthouse sometimes nests a "url" inside `{ url: { value: "..." } }`
+      // when the cell renders as a link. Unwrap when we can.
+      if (typeof v === "object") {
+        if ("url" in (v as Record<string, unknown>) && typeof (v as { url: unknown }).url === "string") {
+          shaped[k] = (v as { url: string }).url;
+        } else if ("text" in (v as Record<string, unknown>) && typeof (v as { text: unknown }).text === "string") {
+          shaped[k] = (v as { text: string }).text;
+        }
+        // Otherwise skip — we only render primitives.
+        continue;
+      }
+      if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+        shaped[k] = v;
+      }
+    }
+    if (Object.keys(shaped).length > 0) out.push(shaped);
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 /**

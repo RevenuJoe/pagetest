@@ -39,6 +39,16 @@ export interface TechnicalImprovement {
   overallSavingsBytes?: number;
   /** Which device this finding came from (used when merging desktop + mobile). */
   source?: "desktop" | "mobile" | "both";
+  /** Raw Lighthouse `details.items`: the per-resource breakdown that powers
+   *  the "click to expand" row in Google's own PSI UI. Each item is a row
+   *  with arbitrary keys (url, totalBytes, wastedBytes, wastedMs, label,
+   *  duration, etc.). We keep them as loose records and pick out the most
+   *  useful fields when rendering. */
+  items?: Array<Record<string, string | number | boolean | undefined | null>>;
+  /** Heading definitions Lighthouse provides for the items table. Each one
+   *  has a `key` matching a field on the items, a human label, and a value
+   *  type ("bytes", "ms", "url", "text", "thumbnail", etc.). */
+  headings?: Array<{ key?: string; label?: string; valueType?: string }>;
 }
 
 export interface AnalyzeResponse {

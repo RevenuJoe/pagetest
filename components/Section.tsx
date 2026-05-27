@@ -7,10 +7,17 @@
 export default function Section({
   title,
   defaultOpen = true,
+  headerAction,
   children,
 }: {
   title: string;
   defaultOpen?: boolean;
+  /** Optional element rendered to the LEFT of the chevron. Use for icons
+   *  that should NOT toggle the section (e.g. a copy-to-clipboard button).
+   *  The button itself must stopPropagation + preventDefault on its click
+   *  handler — clicking anywhere in a native <summary> toggles the
+   *  <details> by default. */
+  headerAction?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -28,18 +35,21 @@ export default function Section({
         >
           {title}
         </h2>
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-4 w-4 text-ink-soft transition-transform group-open:rotate-180"
-          aria-hidden
-        >
-          <path d="M6 9l6 6 6-6" />
-        </svg>
+        <div className="flex items-center gap-2">
+          {headerAction}
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4 text-ink-soft transition-transform group-open:rotate-180"
+            aria-hidden
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </div>
       </summary>
       <div className="border-t border-beige-line px-7 py-7">{children}</div>
     </details>

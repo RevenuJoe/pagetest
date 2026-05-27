@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Header from "@/components/Header";
-import { IconRerun, IconPencil, IconX, Spinner } from "@/components/Icons";
+import { IconRerun, IconPencil, Spinner } from "@/components/Icons";
 import { useRunningUrls, useSavedReports } from "@/lib/storeHooks";
 import { analysisStore } from "@/lib/analysisStore";
 import { savedStore } from "@/lib/savedStore";
@@ -18,10 +18,10 @@ export default function ReportsPage() {
   const router = useRouter();
 
   function openReport(r: AnalyzeResponse) {
-    // Always navigate to / with the URL — the home page handles both
-    // "show saved report" and "show live progress" depending on whether
-    // there's an active analysis for that URL.
-    router.push(`/?url=${encodeURIComponent(r.url)}`);
+    // /report is the dedicated viewer for saved reports — same canonical
+    // URL for every report, with the report's URL passed in the query so
+    // the page can look it up from savedStore.
+    router.push(`/report?url=${encodeURIComponent(r.url)}`);
   }
 
   function rerunReport(r: AnalyzeResponse) {
@@ -139,8 +139,11 @@ function ReportRow({
   }
 
   return (
-    <li className="flex items-stretch gap-5 rounded-card border border-beige-line bg-card px-5 py-4 shadow-card">
-      {/* SCORE column — label on top, circle beneath. Sets the row height. */}
+    <li className="flex items-start gap-5 rounded-card border border-beige-line bg-card px-5 pt-6 pb-5 shadow-card">
+      {/* SCORE column — label on top, circle beneath. The extra top padding
+          on the card combined with this column's natural height drops the
+          SCORE label to sit on the Name row Y and the 69 circle's bottom to
+          land near the Time of Report row Y. */}
       <div className="flex flex-shrink-0 flex-col items-center gap-1.5">
         <div
           className="text-[10px] font-bold uppercase text-ink-soft"
@@ -156,12 +159,10 @@ function ReportRow({
         </div>
       </div>
 
-      {/* Metadata column — Name aligned with the Score label at the top,
-          Time of Report aligned with the bottom of the score circle.
-          justify-between stretches the three rows evenly across the same
-          vertical height. All three values share the same font style; the
-          uppercase label is what distinguishes them. */}
-      <div className="flex min-w-0 flex-1 flex-col justify-between">
+      {/* Metadata column — three labelled rows stacked with a tight gap.
+          Top row (Name) lines up with the Score label; the bottom row
+          (Time of Report) lines up with the bottom of the score circle. */}
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
         <LabelledRow label="Name">
           {editing ? (
             <input
@@ -229,9 +230,9 @@ function ReportRow({
         </LabelledRow>
       </div>
 
-      {/* Actions column — Open above Rerun, both same width. Delete is a
-          small × tucked beneath. The whole column centres vertically inside
-          the row so it sits next to the score chip. */}
+      {/* Actions column — three same-width pill buttons stacked vertically:
+          Open (outline), Rerun (filled accent), Delete (outline, ink-soft
+          → red on hover). */}
       <div className="flex flex-shrink-0 flex-col items-stretch justify-center gap-1.5">
         <button
           type="button"
@@ -253,10 +254,9 @@ function ReportRow({
           type="button"
           onClick={onDelete}
           aria-label="Remove this saved report"
-          title="Delete"
-          className="mx-auto mt-0.5 flex h-6 w-6 items-center justify-center rounded-full text-ink-soft transition hover:bg-bg hover:text-bad"
+          className="w-24 rounded-full border border-beige-line bg-card px-3.5 py-1.5 text-[12px] font-semibold text-ink-soft transition hover:border-bad hover:text-bad"
         >
-          <IconX />
+          Delete
         </button>
       </div>
     </li>

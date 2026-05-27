@@ -10,11 +10,23 @@
 
 "use client";
 
-import type { AnalyzeResponse, CheckKey, CheckResult } from "@/lib/types";
+import { useState } from "react";
+import type {
+  AnalyzeResponse,
+  CheckKey,
+  CheckResult,
+  TechnicalImprovement,
+} from "@/lib/types";
 import ScoreRing from "@/components/ScoreRing";
 import ScoreCard from "@/components/ScoreCard";
 import Section from "@/components/Section";
-import { CHECK_META, IconRerun } from "@/components/Icons";
+import {
+  CHECK_META,
+  IconRerun,
+  IconCopy,
+  IconCheck,
+  IconChevron,
+} from "@/components/Icons";
 import { scoreColor } from "@/lib/scoreColor";
 import { displayName } from "@/lib/nameUtil";
 
@@ -35,10 +47,20 @@ export default function Results({
       <Section title="Breakdown">
         <BreakdownBlock data={data} />
       </Section>
-      <Section title="Key Takeaways">
+      <Section
+        title="Key Takeaways"
+        headerAction={
+          <CopyButton getText={() => formatTakeawaysForClipboard(data)} />
+        }
+      >
         <KeyTakeawaysBlock data={data} />
       </Section>
-      <Section title="Technical Improvements">
+      <Section
+        title="Technical Improvements"
+        headerAction={
+          <CopyButton getText={() => formatTechImprovementsForClipboard(data)} />
+        }
+      >
         <TechnicalImprovementsBlock data={data} />
       </Section>
       <Section title="Initial Load Screenshots">
@@ -46,6 +68,119 @@ export default function Results({
       </Section>
     </div>
   );
+}
+
+/**
+ * Header action for a Section. Renders a small grey "two-pages" copy icon
+ * that writes a clean text version of the section to the clipboard. Briefly
+ * swaps to a check icon as confirmation. Stops the click from toggling the
+ * surrounding <details>.
+ */
+function CopyButton({ getText }: { getText: () => string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label="Copy section to clipboard"
+      title="Copy"
+      onClick={(e) => {
+        // <summary> children toggle the parent <details> on click. Stop both
+        // so the section stays in its current open/closed state.
+        e.preventDefault();
+        e.stopPropagation();
+        const text = getText();
+        if (!text) return;
+        navigator.clipboard
+          .writeText(text)
+          .then(() => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1400);
+          })
+          .catch(() => {
+            // Some browsers block clipboard writes outside secure contexts.
+            // Fallback to a textarea + execCommand.
+            try {
+              const ta = document.createElement("textarea");
+              ta.value = text;
+              ta.style.position = "fixed";
+              ta.style.left = "-9999px";
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand("copy");
+              document.body.removeChild(ta);
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1400);
+            } catch {
+              /* give up silently */
+            }
+          });
+      }}
+      className="flex h-7 w-7 items-center justify-center rounded-md text-ink-soft transition hover:bg-bg hover:text-ink"
+    >
+      {copied ? <IconCheck className="h-4 w-4 text-accent" /> : <IconCopy />}
+    </button>
+  );
+}
+
+function formatTakeawaysForClipboard(data: AnalyzeResponse): string {
+  const items = data.keyTakeaways ?? [];
+  if (items.length === 0) return "";
+  const header =
+    `Key Takeaways — ${displayName(data)}\n` +
+    `${data.url}\n` +
+    `${new Date(data.analyzedAt).toLocaleString()}\n` +
+    `\n`;
+  const body = items.map((t, i) => `${i + 1}. ${t}`).join("\n");
+  return header + body + "\n";
+}
+
+function formatTechImprovementsForClipboard(data: AnalyzeResponse): string {
+  const items = data.technicalImprovements ?? [];
+  if (items.length === 0) return "";
+  const header =
+    `Technical Improvements — ${displayName(data)}\n` +
+    `${data.url}\n` +
+    `${new Date(data.analyzedAt).toLocaleString()}\n` +
+    `\n`;
+  const body = items
+    .map((it, i) => {
+      const savings = formatSavings(it);
+      const source =
+        it.source === "both"
+          ? "Desktop + Mobile"
+          : it.source === "mobile"
+          ? "Mobile"
+          : "Desktop";
+      const top =
+        `${i + 1}. ${it.title}` +
+        (savings ? `  —  ${savings}` : "") +
+        `  (${source})`;
+      const desc = it.description ? `\n   ${it.description}` : "";
+      const dv = it.displayValue ? `\n   ${it.displayValue}` : "";
+      const detailRows = formatItemsForClipboard(it);
+      const items = detailRows ? `\n${detailRows}` : "";
+      return top + desc + dv + items;
+    })
+    .join("\n\n");
+  return header + body + "\n";
+}
+
+/**
+ * Turn a TechnicalImprovement's `items` array into indented "   - " lines
+ * for the clipboard copy. Picks out url + the most useful numeric field.
+ */
+function formatItemsForClipboard(it: TechnicalImprovement): string {
+  if (!it.items || it.items.length === 0) return "";
+  const lines: string[] = [];
+  for (const row of it.items) {
+    const label = pickItemLabel(row);
+    const value = pickItemValue(row);
+    if (!label && !value) continue;
+    if (label && value) lines.push(`   - ${label}  (${value})`);
+    else if (label) lines.push(`   - ${label}`);
+    else if (value) lines.push(`   - ${value}`);
+  }
+  return lines.join("\n");
 }
 
 function OverviewBlock({
@@ -240,51 +375,173 @@ function TechnicalImprovementsBlock({ data }: { data: AnalyzeResponse }) {
   }
   return (
     <ul className="m-0 flex flex-col gap-3 p-0 list-none">
-      {items.map((it) => {
-        const savings = formatSavings(it);
-        const tagClass = sourceTagClass(it.source);
-        const tagLabel =
-          it.source === "both"
-            ? "DESKTOP + MOBILE"
-            : it.source === "mobile"
-            ? "MOBILE"
-            : "DESKTOP";
-        return (
-          <li
-            key={it.id}
-            className="rounded-card border border-beige-line bg-bg/40 px-4 py-3"
-          >
-            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-              <h3 className="m-0 text-[14px] font-semibold tracking-tight text-ink">
-                {it.title}
-              </h3>
-              <div className="flex flex-shrink-0 items-center gap-2">
-                {savings && (
-                  <span className="text-[12px] font-semibold text-accent-dark">
-                    {savings}
-                  </span>
-                )}
-                <span
-                  className={
-                    "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase " +
-                    tagClass
-                  }
-                  style={{ letterSpacing: "0.08em" }}
-                >
-                  {tagLabel}
+      {items.map((it) => (
+        <TechImprovementRow key={it.id} it={it} />
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * One expandable technical-improvement row. The collapsed view shows the
+ * title, savings, and which device(s) the issue applies to. Clicking the
+ * row reveals Lighthouse's full description, the displayValue, and the
+ * per-resource breakdown table when Lighthouse provides one (this mirrors
+ * the click-to-expand behaviour inside Google's own PSI UI).
+ */
+function TechImprovementRow({ it }: { it: TechnicalImprovement }) {
+  const savings = formatSavings(it);
+  const tagClass = sourceTagClass(it.source);
+  const tagLabel =
+    it.source === "both"
+      ? "DESKTOP + MOBILE"
+      : it.source === "mobile"
+      ? "MOBILE"
+      : "DESKTOP";
+  const hasDetails =
+    Boolean(it.description) ||
+    Boolean(it.displayValue) ||
+    (it.items?.length ?? 0) > 0;
+
+  return (
+    <li className="overflow-hidden rounded-card border border-beige-line bg-bg/40">
+      <details className="group">
+        <summary
+          className={
+            "flex list-none items-center gap-3 px-4 py-3 " +
+            (hasDetails ? "cursor-pointer" : "cursor-default")
+          }
+          style={{ outline: "none" }}
+        >
+          <div className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <h3 className="m-0 text-[14px] font-semibold tracking-tight text-ink">
+              {it.title}
+            </h3>
+            <div className="flex flex-shrink-0 items-center gap-2">
+              {savings && (
+                <span className="text-[12px] font-semibold text-accent-dark">
+                  {savings}
                 </span>
-              </div>
+              )}
+              <span
+                className={
+                  "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase " +
+                  tagClass
+                }
+                style={{ letterSpacing: "0.08em" }}
+              >
+                {tagLabel}
+              </span>
             </div>
+          </div>
+          {hasDetails && (
+            <IconChevron className="h-4 w-4 flex-shrink-0 text-ink-soft transition-transform group-open:rotate-180" />
+          )}
+        </summary>
+        {hasDetails && (
+          <div className="border-t border-beige-line bg-card px-4 py-3">
             {it.description && (
-              <p className="mt-1.5 text-[13px] font-medium leading-[1.55] text-ink-soft">
+              <p className="m-0 text-[13px] font-medium leading-[1.55] text-ink-soft">
                 {it.description}
               </p>
+            )}
+            {it.displayValue && (
+              <p className="mt-1.5 text-[12px] font-semibold tracking-tight text-ink">
+                {it.displayValue}
+              </p>
+            )}
+            {it.items && it.items.length > 0 && (
+              <TechImprovementItems it={it} />
+            )}
+          </div>
+        )}
+      </details>
+    </li>
+  );
+}
+
+function TechImprovementItems({ it }: { it: TechnicalImprovement }) {
+  if (!it.items) return null;
+  return (
+    <ul className="mt-3 flex flex-col gap-1.5 border-t border-beige-line/60 pt-3 list-none p-0">
+      {it.items.map((row, i) => {
+        const label = pickItemLabel(row);
+        const value = pickItemValue(row);
+        if (!label && !value) return null;
+        return (
+          <li
+            key={i}
+            className="flex items-baseline justify-between gap-3 text-[12px] font-medium text-ink-soft"
+          >
+            <span className="min-w-0 flex-1 truncate" title={label || undefined}>
+              {label || "—"}
+            </span>
+            {value && (
+              <span className="flex-shrink-0 font-semibold tabular-nums text-ink">
+                {value}
+              </span>
             )}
           </li>
         );
       })}
     </ul>
   );
+}
+
+/**
+ * Pick the most readable text label from a Lighthouse details row. Almost
+ * every audit row has one of: url, label, groupLabel, statistic, source.
+ */
+function pickItemLabel(
+  row: Record<string, string | number | boolean | undefined | null>,
+): string {
+  const candidates = ["url", "label", "groupLabel", "statistic", "source", "node", "selector", "name"];
+  for (const key of candidates) {
+    const v = row[key];
+    if (typeof v === "string" && v.length > 0) return v;
+  }
+  return "";
+}
+
+/**
+ * Pick the most useful numeric reading from a Lighthouse details row and
+ * format it as "1.2 s", "42 KB", "320 ms", etc. We check the common keys
+ * Lighthouse uses across audit types.
+ */
+function pickItemValue(
+  row: Record<string, string | number | boolean | undefined | null>,
+): string {
+  const wastedMs = row.wastedMs;
+  if (typeof wastedMs === "number" && wastedMs > 0) {
+    return wastedMs >= 1000
+      ? `${(wastedMs / 1000).toFixed(2)} s`
+      : `${Math.round(wastedMs)} ms`;
+  }
+  const wastedBytes = row.wastedBytes;
+  if (typeof wastedBytes === "number" && wastedBytes > 0) {
+    return formatBytes(wastedBytes);
+  }
+  const totalBytes = row.totalBytes;
+  if (typeof totalBytes === "number" && totalBytes > 0) {
+    return formatBytes(totalBytes);
+  }
+  const duration = row.duration;
+  if (typeof duration === "number" && duration > 0) {
+    return duration >= 1000
+      ? `${(duration / 1000).toFixed(2)} s`
+      : `${Math.round(duration)} ms`;
+  }
+  const transferSize = row.transferSize;
+  if (typeof transferSize === "number" && transferSize > 0) {
+    return formatBytes(transferSize);
+  }
+  return "";
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${Math.round(bytes)} B`;
 }
 
 function formatSavings(it: {
@@ -316,12 +573,11 @@ function sourceTagClass(source: "desktop" | "mobile" | "both" | undefined): stri
 /**
  * Initial Load Screenshots.
  *
- * Both cards share the same fixed height. Desktop fills its card edge to
- * edge (image scales to card width, vertical overflow cropped from the top
- * so the above-the-fold leads). Mobile keeps `object-fit: contain` so the
- * narrow phone screenshot displays at its natural aspect inside a slimmer
- * card. Smaller display size relative to PSI's source pixels also means
- * the images render crisper.
+ * Each card grows to its image's natural aspect ratio. No artificial height
+ * crop — Joe specifically wants to see the screenshot at full resolution
+ * and have the BOX match the screenshot's shape, not chop the image off.
+ * The image is constrained to `max-width: 100%` so the card width controls
+ * scale, while `height: auto` keeps the natural aspect.
  */
 function ScreenshotsBlock({ data }: { data: AnalyzeResponse }) {
   if (!data.desktopScreenshot && !data.mobileScreenshot) {
@@ -331,14 +587,12 @@ function ScreenshotsBlock({ data }: { data: AnalyzeResponse }) {
       </p>
     );
   }
-  const H = 340;
   return (
-    <div className="flex flex-col items-stretch gap-6 md:flex-row md:items-stretch md:justify-center">
+    <div className="flex flex-col items-start gap-6 md:flex-row md:items-start md:justify-center">
       {data.desktopScreenshot && (
         <ScreenshotCard
           label="DESKTOP"
           src={data.desktopScreenshot}
-          height={H}
           mode="desktop"
         />
       )}
@@ -346,7 +600,6 @@ function ScreenshotsBlock({ data }: { data: AnalyzeResponse }) {
         <ScreenshotCard
           label="MOBILE"
           src={data.mobileScreenshot}
-          height={H}
           mode="mobile"
         />
       )}
@@ -357,19 +610,17 @@ function ScreenshotsBlock({ data }: { data: AnalyzeResponse }) {
 function ScreenshotCard({
   label,
   src,
-  height,
   mode,
 }: {
   label: string;
   src: string;
-  height: number;
   mode: "desktop" | "mobile";
 }) {
   return (
     <div
       className={
         "overflow-hidden rounded-card border border-beige-line bg-card " +
-        (mode === "desktop" ? "md:flex-1 md:min-w-0" : "md:flex-shrink-0")
+        (mode === "desktop" ? "md:flex-1 md:min-w-0" : "md:w-[320px] md:flex-shrink-0")
       }
     >
       <div
@@ -378,37 +629,20 @@ function ScreenshotCard({
       >
         <span>{label}</span>
       </div>
-      <div
-        className="overflow-hidden bg-bg/30"
-        style={{ height }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={src}
-          alt={label}
-          className="block"
-          style={
-            mode === "desktop"
-              ? {
-                  // Fill the card width edge to edge; crop vertical overflow
-                  // from the top so the user sees the above-the-fold.
-                  width: "100%",
-                  height: "auto",
-                  display: "block",
-                  imageRendering: "auto",
-                }
-              : {
-                  // Mobile screenshots are tall + narrow; fit by height so
-                  // they keep their native aspect inside a slim card.
-                  height: "100%",
-                  width: "auto",
-                  margin: "0 auto",
-                  display: "block",
-                  imageRendering: "auto",
-                }
-          }
-        />
-      </div>
+      {/* Image displays at its natural aspect ratio inside the card.
+          width:100% scales to card width, height:auto keeps the proportion.
+          No cropping — the card grows to match the screenshot. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={label}
+        className="block"
+        style={{
+          width: "100%",
+          height: "auto",
+          display: "block",
+        }}
+      />
     </div>
   );
 }
