@@ -68,11 +68,16 @@ Scoring rubric (apply to every dimension):
 - 0–39:   Poor. Major issues, urgent fixes needed.
 
 For each check return:
-- score: integer 0–100
+- score: integer 0 to 100
 - headline: ONE sentence (max ~16 words) summarising the verdict
-- notes: 2–4 bullet-style observations, each a concrete, specific recommendation or fact about THIS page — never generic advice
+- notes: 2 to 4 bullet-style observations, each a concrete, specific recommendation or fact about THIS page. Never generic advice.
 
-ALSO return a "keyTakeaways" array: 5–8 prioritised, page-specific recommendations the team should action to lift this page's overall score. List the highest-impact items first. Each takeaway is ONE sentence, no more than ~22 words. Be concrete about WHAT to do, not just what's wrong (e.g. "Add a benefit-led subheadline under the H1 explaining what visitors get if they sign up" — not "improve the headline").
+ALSO return a "keyTakeaways" array: 5 to 8 prioritised, page-specific recommendations the team should action to lift this page's overall score. List the highest-impact items first. Each takeaway is ONE sentence, no more than ~22 words. Be concrete about WHAT to do, not just what's wrong (e.g. "Add a benefit-led subheadline under the H1 explaining what visitors get if they sign up", not "improve the headline").
+
+WRITING STYLE RULES (apply to every string you return):
+- NEVER use em dashes (—) or en dashes (–) anywhere in headlines, notes, or takeaways. Em dashes read as AI-generated. Use commas, periods, parentheses, or a colon instead.
+- Prefer plain, direct sentences. No corporate filler.
+- Use British English (analyse, optimise, colour) to match Revenu Agency house style.
 
 Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
 
