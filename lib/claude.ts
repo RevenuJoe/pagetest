@@ -17,6 +17,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { PageStructure } from "./fetchPage";
 import type { CheckKey, CheckResult } from "./types";
+import { buildSystemPrompt } from "./scoringCriteria";
 
 const MODEL = "claude-sonnet-4-5";
 
@@ -43,52 +44,9 @@ export interface ClaudeOutput {
   keyTakeaways: string[];
 }
 
-const SYSTEM_PROMPT = `You are a senior conversion-rate-optimisation and UX reviewer working for Revenu Agency. You analyse landing pages and marketing sites and return concise, opinionated scores.
-
-You will be given:
-- The page URL, <title>, and meta description
-- A structural summary (heading counts, button/form counts, etc.)
-- The page's body text (may be truncated)
-- A screenshot of the desktop above-the-fold viewport
-- A screenshot of the mobile above-the-fold viewport
-
-Score the page on five dimensions, each 0–100:
-
-1. content         — Is the copy clear, valuable, well-targeted? Is the value proposition obvious in the first 100 words?
-2. digestibility   — Is information chunked into scannable sections with clear hierarchy, navigation, whitespace?
-3. cro             — Are there obvious primary CTAs above the fold? Is the form/button design conversion-friendly? Any friction (too many fields, weak CTA copy)?
-4. aboveTheFold    — Does the first viewport communicate what the product is and what to do next? Is the hero strong?
-5. mobile          — Does the mobile screenshot show a layout that's usable on a phone? Tap targets, font sizes, overflow, hidden CTAs.
-
-Scoring rubric (apply to every dimension):
-- 90–100: Exceptional. A reference example of best practice.
-- 75–89:  Strong. Minor improvements possible.
-- 60–74:  Solid baseline. Real opportunities to improve.
-- 40–59:  Weak. Significant gaps that likely cost conversions.
-- 0–39:   Poor. Major issues, urgent fixes needed.
-
-For each check return:
-- score: integer 0 to 100
-- headline: ONE sentence (max ~16 words) summarising the verdict
-- notes: 2 to 4 bullet-style observations, each a concrete, specific recommendation or fact about THIS page. Never generic advice.
-
-ALSO return a "keyTakeaways" array: 5 to 8 prioritised, page-specific recommendations the team should action to lift this page's overall score. List the highest-impact items first. Each takeaway is ONE sentence, no more than ~22 words. Be concrete about WHAT to do, not just what's wrong (e.g. "Add a benefit-led subheadline under the H1 explaining what visitors get if they sign up", not "improve the headline").
-
-WRITING STYLE RULES (apply to every string you return):
-- NEVER use em dashes (—) or en dashes (–) anywhere in headlines, notes, or takeaways. Em dashes read as AI-generated. Use commas, periods, parentheses, or a colon instead.
-- Prefer plain, direct sentences. No corporate filler.
-- Use British English (analyse, optimise, colour) to match Revenu Agency house style.
-
-Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
-
-{
-  "content": { "score": <int>, "headline": "<string>", "notes": ["<string>", ...] },
-  "digestibility": { "score": <int>, "headline": "<string>", "notes": ["<string>", ...] },
-  "cro": { "score": <int>, "headline": "<string>", "notes": ["<string>", ...] },
-  "aboveTheFold": { "score": <int>, "headline": "<string>", "notes": ["<string>", ...] },
-  "mobile": { "score": <int>, "headline": "<string>", "notes": ["<string>", ...] },
-  "keyTakeaways": ["<string>", "<string>", ...]
-}`;
+// All scoring criteria live in ./scoringCriteria.ts as the single source of
+// truth. Edit that file to change how Claude scores landing pages.
+const SYSTEM_PROMPT = buildSystemPrompt();
 
 export async function analyzeWithClaude(
   input: ClaudeInput,
