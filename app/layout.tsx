@@ -3,10 +3,11 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Revenu PageTest — Score any URL",
+  // Matches the "Revenu · …" middle-dot pattern used across revenuagency.io.
+  title: "Revenu · the landing page tester",
   description:
-    "Run an instant health check on any URL. Speed, content, digestibility, CRO, above-the-fold and mobile — all scored automatically.",
-  metadataBase: new URL("https://pagetest.revenuagency.io"),
+    "Score any landing page in 60 seconds. Speed, content, digestibility, CRO, above-the-fold and mobile, all scored automatically.",
+  metadataBase: new URL("https://pages.revenuagency.io"),
   // Favicons match library.revenuagency.io exactly.
   icons: {
     icon: [
@@ -17,11 +18,11 @@ export const metadata: Metadata = {
     shortcut: "/favicon/favicon.ico",
   },
   openGraph: {
-    title: "Revenu PageTest — Score any URL",
+    title: "Revenu · the landing page tester",
     description:
-      "Instant 6-point health check for any web page. Powered by Lighthouse and Claude.",
-    url: "https://pagetest.revenuagency.io",
-    siteName: "Revenu PageTest",
+      "Instant six-point health check for any web page. Powered by Lighthouse and Claude.",
+    url: "https://pages.revenuagency.io",
+    siteName: "Revenu",
     type: "website",
   },
 };
