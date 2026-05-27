@@ -175,8 +175,9 @@ function Home() {
         <section className="pt-14 md:pt-20">
           <div className="text-center">
             <h1 className="text-[clamp(32px,4.7vw,54px)] font-bold leading-[1.04] tracking-tight text-ink">
-              Score Your B2B{" "}
+              Put Your B2B{" "}
               <span style={{ color: "#76A09C" }}>Landing Page</span>
+              {" "}To The Test
             </h1>
             <HeroPills />
           </div>
