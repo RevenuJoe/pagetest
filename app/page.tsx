@@ -74,23 +74,62 @@ export default function Home() {
           <div className="text-center">
             <h1 className="text-[clamp(32px,4.7vw,54px)] font-bold leading-[1.04] tracking-tight text-ink">
               Score any landing page in{" "}
-              <span style={{ color: "#76A09C" }}>60 seconds</span>.
+              <span style={{ color: "#76A09C" }}>60 seconds.</span>
             </h1>
             <ul className="mx-auto mt-7 flex flex-wrap items-center justify-center gap-2.5 p-0 list-none">
-              {[
-                "Speed test via Google",
-                "Context",
-                "Content analysis by Claude",
-              ].map((label, i) => (
+              {(
+                [
+                  [
+                    "Enter your landing page URL",
+                    <svg
+                      key="ico"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-3 w-3"
+                      aria-hidden
+                    >
+                      <path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1" />
+                      <path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1" />
+                    </svg>,
+                  ],
+                  [
+                    "We'll check its speed with Google Page Insights",
+                    <svg
+                      key="ico"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      stroke="none"
+                      className="h-3 w-3"
+                      aria-hidden
+                    >
+                      <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
+                    </svg>,
+                  ],
+                  [
+                    "We'll analyse its content with Claude",
+                    <svg
+                      key="ico"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                      stroke="none"
+                      className="h-3 w-3"
+                      aria-hidden
+                    >
+                      <path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2z" />
+                    </svg>,
+                  ],
+                ] as const
+              ).map(([label, icon]) => (
                 <li
                   key={label}
                   className="inline-flex items-center gap-2 rounded-full border border-beige-line bg-card py-1 pl-1 pr-3.5 text-[12px] font-medium text-ink"
                 >
-                  <span
-                    className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white"
-                    style={{ background: "#76A09C" }}
-                  >
-                    {i + 1}
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-soft text-accent-dark">
+                    {icon}
                   </span>
                   {label}
                 </li>
@@ -409,17 +448,19 @@ function FeaturesGrid() {
       {items.map((it) => (
         <div
           key={it.title}
-          className="rounded-card border border-beige-line bg-card p-4"
+          className="flex items-start gap-3.5 rounded-card border border-beige-line bg-card p-4"
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-soft text-accent-dark">
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-dark">
             {it.icon}
           </div>
-          <h3 className="mt-3 text-[13px] font-bold tracking-tight text-ink">
-            {it.title}
-          </h3>
-          <p className="mt-1 text-[12px] font-medium leading-[1.55] text-ink-soft">
-            {it.desc}
-          </p>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-[13px] font-bold tracking-tight text-ink">
+              {it.title}
+            </h3>
+            <p className="mt-1 text-[12px] font-medium leading-[1.55] text-ink-soft">
+              {it.desc}
+            </p>
+          </div>
         </div>
       ))}
     </div>
