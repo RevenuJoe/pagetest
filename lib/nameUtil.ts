@@ -22,8 +22,19 @@ export function deriveReportName(url: string): string {
   }
 }
 
-/** Best display name for a report: user-edited if present, otherwise derived. */
-export function displayName(report: { url: string; name?: string }): string {
+/**
+ * Best display name for a report. Precedence:
+ *   1. User-edited `name` (if the user has explicitly renamed it).
+ *   2. The page's <title> tag captured at scan time.
+ *   3. Derived domain ("Doss.com", "Example.com", etc).
+ */
+export function displayName(report: {
+  url: string;
+  name?: string;
+  pageTitle?: string;
+}): string {
   if (report.name && report.name.trim().length > 0) return report.name;
+  if (report.pageTitle && report.pageTitle.trim().length > 0)
+    return report.pageTitle.trim();
   return deriveReportName(report.url);
 }

@@ -114,6 +114,10 @@ export async function POST(req: NextRequest) {
 
     const response: AnalyzeResponse = {
       url,
+      // Cleaned <title> from the scanned page (when present). The saved-reports
+      // list uses this as the default report name so users see something
+      // meaningful like "Odoo vs Doss — Doss" instead of just "Doss.com".
+      pageTitle: page.value.title?.trim() || undefined,
       analyzedAt: new Date().toISOString(),
       overall,
       checks,

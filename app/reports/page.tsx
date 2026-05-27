@@ -139,67 +139,92 @@ function ReportRow({
   }
 
   return (
-    <li className="flex flex-wrap items-center gap-4 rounded-card border border-beige-line bg-card px-5 py-4 shadow-card">
-      <div
-        className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-full font-bold tabular-nums tracking-tight"
-        style={{ background: `${color}1a`, color, fontSize: 22 }}
-      >
-        {report.overall}
+    <li className="flex flex-wrap items-start gap-5 rounded-card border border-beige-line bg-card px-5 py-4 shadow-card">
+      {/* SCORE column — labelled so the number means something at a glance */}
+      <div className="flex flex-shrink-0 flex-col items-center gap-1.5">
+        <div
+          className="text-[10px] font-bold uppercase text-ink-soft"
+          style={{ letterSpacing: "0.16em" }}
+        >
+          Score
+        </div>
+        <div
+          className="flex h-14 w-14 items-center justify-center rounded-full font-bold tabular-nums tracking-tight"
+          style={{ background: `${color}1a`, color, fontSize: 22 }}
+        >
+          {report.overall}
+        </div>
       </div>
-      <div className="min-w-0 flex-1">
-        {editing ? (
-          <input
-            ref={inputRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commit();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                setDraft(displayName(report));
-                setEditing(false);
-              }
-            }}
-            className="w-full rounded-md border border-accent bg-card px-2 py-1 text-[15px] font-bold tracking-tight text-ink outline-none focus:ring-4 focus:ring-accent-soft"
-          />
-        ) : (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onOpen}
-              className="min-w-0 max-w-full truncate text-left text-[15px] font-bold tracking-tight text-ink hover:text-accent"
-              title={report.url}
-            >
-              {displayName(report)}
-            </button>
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              aria-label="Rename this report"
-              title="Rename"
-              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-ink-soft transition hover:bg-bg hover:text-accent"
-            >
-              <IconPencil />
-            </button>
-          </div>
-        )}
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[12px] font-medium text-ink-soft">
-          <span className="break-all">{report.url}</span>
-          <span aria-hidden>·</span>
-          <span>{new Date(report.analyzedAt).toLocaleString()}</span>
+
+      {/* Labelled metadata column — Name / URL / Time of Report */}
+      <div className="min-w-0 flex-1 space-y-2">
+        <LabelledRow label="Name">
+          {editing ? (
+            <input
+              ref={inputRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commit();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  setDraft(displayName(report));
+                  setEditing(false);
+                }
+              }}
+              className="w-full rounded-md border border-accent bg-card px-2 py-1 text-[14px] font-bold tracking-tight text-ink outline-none focus:ring-4 focus:ring-accent-soft"
+            />
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onOpen}
+                className="min-w-0 max-w-full truncate text-left text-[14px] font-bold tracking-tight text-ink hover:text-accent"
+                title={report.url}
+              >
+                {displayName(report)}
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                aria-label="Rename this report"
+                title="Rename"
+                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-ink-soft transition hover:bg-bg hover:text-accent"
+              >
+                <IconPencil />
+              </button>
+            </div>
+          )}
+        </LabelledRow>
+
+        <LabelledRow label="URL">
+          <a
+            href={report.url}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="break-all text-[13px] font-medium text-ink hover:text-accent"
+          >
+            {report.url}
+          </a>
+        </LabelledRow>
+
+        <LabelledRow label="Time of Report">
+          <span className="text-[13px] font-medium text-ink-soft">
+            {new Date(report.analyzedAt).toLocaleString()}
+          </span>
           {running && (
-            <span className="inline-flex items-center gap-1 text-accent">
-              <span aria-hidden>·</span>
+            <span className="ml-2 inline-flex items-center gap-1 text-[12px] font-semibold text-accent">
               <Spinner className="h-3 w-3" />
               Rerunning…
             </span>
           )}
-        </div>
+        </LabelledRow>
       </div>
-      <div className="flex flex-shrink-0 items-center gap-2">
+
+      <div className="flex flex-shrink-0 items-center gap-2 self-center">
         <button
           type="button"
           onClick={onOpen}
@@ -227,5 +252,25 @@ function ReportRow({
         </button>
       </div>
     </li>
+  );
+}
+
+function LabelledRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2">
+      <span
+        className="flex-shrink-0 text-[10px] font-bold uppercase text-ink-soft"
+        style={{ letterSpacing: "0.12em" }}
+      >
+        {label}:
+      </span>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
   );
 }

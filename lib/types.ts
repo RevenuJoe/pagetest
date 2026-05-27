@@ -17,10 +17,14 @@ export interface CheckResult {
 
 export interface AnalyzeResponse {
   url: string;
-  /** Optional user-set display name for the report. Defaults to a derivation
-   *  of the URL (host + path) when not set. Only the saved-reports list
-   *  uses this — the main results view always shows the full URL. */
+  /** User-set display name for the report. Optional — when not set, the UI
+   *  falls back to `pageTitle`, then to a derivation from the URL. Only the
+   *  saved-reports list shows this; the main results view always shows the
+   *  full URL too. */
   name?: string;
+  /** The <title> the analysed page returned. Used as the default report
+   *  name on the saved-reports list when the user hasn't set one. */
+  pageTitle?: string;
   /** ISO timestamp when the analysis completed. */
   analyzedAt: string;
   /** Overall score = average of the six checks, rounded to int. */
