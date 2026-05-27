@@ -17,7 +17,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { runPageSpeed } from "@/lib/pagespeed";
+import { runPageSpeed, mergeImprovements } from "@/lib/pagespeed";
 import { fetchPage } from "@/lib/fetchPage";
 import { analyzeWithClaude } from "@/lib/claude";
 import type { AnalyzeResponse, CheckResult } from "@/lib/types";
@@ -112,6 +112,14 @@ export async function POST(req: NextRequest) {
         6,
     );
 
+    // Merge desktop + mobile Lighthouse opportunities + diagnostics into
+    // one ranked list. Dedupes by audit id, prefers the worse (lower) score
+    // so we surface the more urgent reading.
+    const technicalImprovements = mergeImprovements(
+      desktop?.technicalImprovements ?? [],
+      mobile?.technicalImprovements ?? [],
+    );
+
     const response: AnalyzeResponse = {
       url,
       // Cleaned <title> from the scanned page (when present). The saved-reports
@@ -122,6 +130,7 @@ export async function POST(req: NextRequest) {
       overall,
       checks,
       keyTakeaways: ai.keyTakeaways,
+      technicalImprovements,
       // Prefer the higher-resolution full-page screenshot when PSI gave us
       // one; otherwise fall back to the viewport-only final screenshot.
       desktopScreenshot:

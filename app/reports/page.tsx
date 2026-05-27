@@ -139,8 +139,8 @@ function ReportRow({
   }
 
   return (
-    <li className="flex flex-wrap items-start gap-5 rounded-card border border-beige-line bg-card px-5 py-4 shadow-card">
-      {/* SCORE column — labelled so the number means something at a glance */}
+    <li className="flex items-stretch gap-5 rounded-card border border-beige-line bg-card px-5 py-4 shadow-card">
+      {/* SCORE column — label on top, circle beneath. Sets the row height. */}
       <div className="flex flex-shrink-0 flex-col items-center gap-1.5">
         <div
           className="text-[10px] font-bold uppercase text-ink-soft"
@@ -156,8 +156,12 @@ function ReportRow({
         </div>
       </div>
 
-      {/* Labelled metadata column — Name / URL / Time of Report */}
-      <div className="min-w-0 flex-1 space-y-2">
+      {/* Metadata column — Name aligned with the Score label at the top,
+          Time of Report aligned with the bottom of the score circle.
+          justify-between stretches the three rows evenly across the same
+          vertical height. All three values share the same font style; the
+          uppercase label is what distinguishes them. */}
+      <div className="flex min-w-0 flex-1 flex-col justify-between">
         <LabelledRow label="Name">
           {editing ? (
             <input
@@ -175,14 +179,14 @@ function ReportRow({
                   setEditing(false);
                 }
               }}
-              className="w-full rounded-md border border-accent bg-card px-2 py-1 text-[14px] font-bold tracking-tight text-ink outline-none focus:ring-4 focus:ring-accent-soft"
+              className="w-full rounded-md border border-accent bg-card px-2 py-0.5 text-[14px] font-semibold tracking-tight text-ink outline-none focus:ring-4 focus:ring-accent-soft"
             />
           ) : (
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onOpen}
-                className="min-w-0 max-w-full truncate text-left text-[14px] font-bold tracking-tight text-ink hover:text-accent"
+                className="min-w-0 max-w-full truncate text-left text-[14px] font-semibold tracking-tight text-ink hover:text-accent"
                 title={report.url}
               >
                 {displayName(report)}
@@ -205,14 +209,15 @@ function ReportRow({
             href={report.url}
             target="_blank"
             rel="noreferrer noopener"
-            className="break-all text-[13px] font-medium text-ink hover:text-accent"
+            className="block min-w-0 truncate text-[14px] font-semibold tracking-tight text-ink hover:text-accent"
+            title={report.url}
           >
             {report.url}
           </a>
         </LabelledRow>
 
         <LabelledRow label="Time of Report">
-          <span className="text-[13px] font-medium text-ink-soft">
+          <span className="text-[14px] font-semibold tracking-tight text-ink">
             {new Date(report.analyzedAt).toLocaleString()}
           </span>
           {running && (
@@ -224,11 +229,14 @@ function ReportRow({
         </LabelledRow>
       </div>
 
-      <div className="flex flex-shrink-0 items-center gap-2 self-center">
+      {/* Actions column — Open above Rerun, both same width. Delete is a
+          small × tucked beneath. The whole column centres vertically inside
+          the row so it sits next to the score chip. */}
+      <div className="flex flex-shrink-0 flex-col items-stretch justify-center gap-1.5">
         <button
           type="button"
           onClick={onOpen}
-          className="rounded-full border border-beige-line bg-card px-3.5 py-1.5 text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent"
+          className="w-24 rounded-full border border-beige-line bg-card px-3.5 py-1.5 text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent"
         >
           Open
         </button>
@@ -236,7 +244,7 @@ function ReportRow({
           type="button"
           onClick={onRerun}
           disabled={running}
-          className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex w-24 items-center justify-center gap-1.5 rounded-full bg-accent px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
         >
           <IconRerun />
           {running ? "Running…" : "Rerun"}
@@ -246,7 +254,7 @@ function ReportRow({
           onClick={onDelete}
           aria-label="Remove this saved report"
           title="Delete"
-          className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft transition hover:bg-bg hover:text-bad"
+          className="mx-auto mt-0.5 flex h-6 w-6 items-center justify-center rounded-full text-ink-soft transition hover:bg-bg hover:text-bad"
         >
           <IconX />
         </button>
@@ -255,6 +263,13 @@ function ReportRow({
   );
 }
 
+/**
+ * One labelled metadata row inside a saved-report card.
+ *
+ * The label is small caps in the muted ink-soft colour. The value owns its
+ * own styling (passed as children) so the three rows visually share the
+ * same font, weight and colour even though their content is different.
+ */
 function LabelledRow({
   label,
   children,
@@ -263,14 +278,14 @@ function LabelledRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-baseline gap-x-2">
+    <div className="flex items-baseline gap-2 min-w-0">
       <span
         className="flex-shrink-0 text-[10px] font-bold uppercase text-ink-soft"
         style={{ letterSpacing: "0.12em" }}
       >
         {label}:
       </span>
-      <div className="min-w-0 flex-1">{children}</div>
+      <div className="min-w-0 flex-1 truncate">{children}</div>
     </div>
   );
 }

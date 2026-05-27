@@ -38,6 +38,9 @@ export default function Results({
       <Section title="Key Takeaways">
         <KeyTakeawaysBlock data={data} />
       </Section>
+      <Section title="Technical Improvements">
+        <TechnicalImprovementsBlock data={data} />
+      </Section>
       <Section title="Initial Load Screenshots">
         <ScreenshotsBlock data={data} />
       </Section>
@@ -214,6 +217,100 @@ function KeyTakeawaysBlock({ data }: { data: AnalyzeResponse }) {
       ))}
     </ol>
   );
+}
+
+/**
+ * Technical Improvements.
+ *
+ * The list of Lighthouse opportunities + diagnostics returned by PageSpeed
+ * Insights, merged across desktop and mobile and ranked by impact. Each row
+ * shows the title, the estimated savings (if Lighthouse provides them),
+ * which device the issue appears on, and Lighthouse's own description so
+ * the engineer reading the report doesn't need to look anything up.
+ */
+function TechnicalImprovementsBlock({ data }: { data: AnalyzeResponse }) {
+  const items = data.technicalImprovements ?? [];
+  if (items.length === 0) {
+    return (
+      <p className="text-sm font-medium text-ink-soft">
+        No technical improvements were flagged by Lighthouse for this URL.
+        Performance is solid.
+      </p>
+    );
+  }
+  return (
+    <ul className="m-0 flex flex-col gap-3 p-0 list-none">
+      {items.map((it) => {
+        const savings = formatSavings(it);
+        const tagClass = sourceTagClass(it.source);
+        const tagLabel =
+          it.source === "both"
+            ? "DESKTOP + MOBILE"
+            : it.source === "mobile"
+            ? "MOBILE"
+            : "DESKTOP";
+        return (
+          <li
+            key={it.id}
+            className="rounded-card border border-beige-line bg-bg/40 px-4 py-3"
+          >
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <h3 className="m-0 text-[14px] font-semibold tracking-tight text-ink">
+                {it.title}
+              </h3>
+              <div className="flex flex-shrink-0 items-center gap-2">
+                {savings && (
+                  <span className="text-[12px] font-semibold text-accent-dark">
+                    {savings}
+                  </span>
+                )}
+                <span
+                  className={
+                    "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase " +
+                    tagClass
+                  }
+                  style={{ letterSpacing: "0.08em" }}
+                >
+                  {tagLabel}
+                </span>
+              </div>
+            </div>
+            {it.description && (
+              <p className="mt-1.5 text-[13px] font-medium leading-[1.55] text-ink-soft">
+                {it.description}
+              </p>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function formatSavings(it: {
+  overallSavingsMs?: number;
+  overallSavingsBytes?: number;
+  displayValue?: string;
+}): string | undefined {
+  if (it.overallSavingsMs && it.overallSavingsMs > 0) {
+    const s = it.overallSavingsMs / 1000;
+    return s >= 1
+      ? `Save ${s.toFixed(1)} s`
+      : `Save ${Math.round(it.overallSavingsMs)} ms`;
+  }
+  if (it.overallSavingsBytes && it.overallSavingsBytes > 0) {
+    const kb = it.overallSavingsBytes / 1024;
+    return kb >= 1024
+      ? `Save ${(kb / 1024).toFixed(1)} MB`
+      : `Save ${Math.round(kb)} KB`;
+  }
+  return it.displayValue || undefined;
+}
+
+function sourceTagClass(source: "desktop" | "mobile" | "both" | undefined): string {
+  if (source === "both") return "bg-accent text-white";
+  if (source === "mobile") return "bg-accent-soft text-accent-dark";
+  return "bg-beige-line text-ink-soft";
 }
 
 /**
