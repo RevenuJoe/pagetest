@@ -25,8 +25,14 @@ export interface PageSpeedResult {
   tbtMs: number | null;
   /** Cumulative Layout Shift score. */
   cls: number | null;
-  /** data:image/jpeg;base64,... of the final viewport (above the fold). */
+  /** Low-res data:image/jpeg;base64,... of the final viewport. We pass this
+   *  to Claude for vision analysis — keeps the API request small. */
   finalScreenshot: string | null;
+  /** Higher-resolution full-page screenshot from PSI. PSI captures this at
+   *  the full device-emulation width (≈1350px desktop, ≈412px mobile) which
+   *  is much sharper than `finalScreenshot` when displayed at container
+   *  widths. We use this for the on-page screenshot display. */
+  fullPageScreenshot: string | null;
   /** Final HTML the page rendered to (useful for content/CRO analysis). */
   renderedHtml: string | null;
 }
@@ -93,6 +99,8 @@ export async function runPageSpeed(
   );
 
   const finalScreenshot = audits["final-screenshot"]?.details?.data ?? null;
+  const fullPageScreenshot =
+    audits["full-page-screenshot"]?.details?.screenshot?.data ?? null;
 
   return {
     strategy,
@@ -103,6 +111,7 @@ export async function runPageSpeed(
     tbtMs: audits["total-blocking-time"]?.numericValue ?? null,
     cls: audits["cumulative-layout-shift"]?.numericValue ?? null,
     finalScreenshot,
+    fullPageScreenshot,
     renderedHtml: null,
   };
 }

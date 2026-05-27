@@ -17,14 +17,20 @@ export interface CheckResult {
 
 export interface AnalyzeResponse {
   url: string;
+  /** Optional user-set display name for the report. Defaults to a derivation
+   *  of the URL (host + path) when not set. Only the saved-reports list
+   *  uses this — the main results view always shows the full URL. */
+  name?: string;
   /** ISO timestamp when the analysis completed. */
   analyzedAt: string;
   /** Overall score = average of the six checks, rounded to int. */
   overall: number;
   checks: Record<CheckKey, CheckResult>;
-  /** Final viewport screenshot from desktop Lighthouse run, as data URL. */
+  /** 5–8 prioritized, page-specific recommendations from Claude. */
+  keyTakeaways: string[];
+  /** High-resolution above-the-fold screenshot from the desktop Lighthouse run, as data URL. */
   desktopScreenshot?: string;
-  /** Final viewport screenshot from mobile Lighthouse run, as data URL. */
+  /** High-resolution above-the-fold screenshot from the mobile Lighthouse run, as data URL. */
   mobileScreenshot?: string;
 }
 

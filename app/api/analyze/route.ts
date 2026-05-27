@@ -95,11 +95,11 @@ export async function POST(req: NextRequest) {
 
     const checks = {
       speed: speedCheck,
-      content: ai.content,
-      digestibility: ai.digestibility,
-      cro: ai.cro,
-      aboveTheFold: ai.aboveTheFold,
-      mobile: ai.mobile,
+      content: ai.checks.content,
+      digestibility: ai.checks.digestibility,
+      cro: ai.checks.cro,
+      aboveTheFold: ai.checks.aboveTheFold,
+      mobile: ai.checks.mobile,
     };
 
     const overall = Math.round(
@@ -117,8 +117,13 @@ export async function POST(req: NextRequest) {
       analyzedAt: new Date().toISOString(),
       overall,
       checks,
-      desktopScreenshot: desktop?.finalScreenshot ?? undefined,
-      mobileScreenshot: mobile?.finalScreenshot ?? undefined,
+      keyTakeaways: ai.keyTakeaways,
+      // Prefer the higher-resolution full-page screenshot when PSI gave us
+      // one; otherwise fall back to the viewport-only final screenshot.
+      desktopScreenshot:
+        desktop?.fullPageScreenshot ?? desktop?.finalScreenshot ?? undefined,
+      mobileScreenshot:
+        mobile?.fullPageScreenshot ?? mobile?.finalScreenshot ?? undefined,
     };
 
     return NextResponse.json(response);

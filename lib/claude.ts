@@ -37,6 +37,12 @@ export type ClaudeChecks = Pick<
   "content" | "digestibility" | "cro" | "aboveTheFold" | "mobile"
 >;
 
+export interface ClaudeOutput {
+  checks: ClaudeChecks;
+  /** 5–8 prioritized, page-specific takeaways to lift the score. */
+  keyTakeaways: string[];
+}
+
 const SYSTEM_PROMPT = `You are a senior conversion-rate-optimisation and UX reviewer working for Revenu Agency. You analyse landing pages and marketing sites and return concise, opinionated scores.
 
 You will be given:
@@ -66,6 +72,8 @@ For each check return:
 - headline: ONE sentence (max ~16 words) summarising the verdict
 - notes: 2–4 bullet-style observations, each a concrete, specific recommendation or fact about THIS page — never generic advice
 
+ALSO return a "keyTakeaways" array: 5–8 prioritised, page-specific recommendations the team should action to lift this page's overall score. List the highest-impact items first. Each takeaway is ONE sentence, no more than ~22 words. Be concrete about WHAT to do, not just what's wrong (e.g. "Add a benefit-led subheadline under the H1 explaining what visitors get if they sign up" — not "improve the headline").
+
 Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
 
 {
@@ -73,12 +81,13 @@ Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
   "digestibility": { "score": <int>, "headline": "<string>", "notes": ["<string>", ...] },
   "cro": { "score": <int>, "headline": "<string>", "notes": ["<string>", ...] },
   "aboveTheFold": { "score": <int>, "headline": "<string>", "notes": ["<string>", ...] },
-  "mobile": { "score": <int>, "headline": "<string>", "notes": ["<string>", ...] }
+  "mobile": { "score": <int>, "headline": "<string>", "notes": ["<string>", ...] },
+  "keyTakeaways": ["<string>", "<string>", ...]
 }`;
 
 export async function analyzeWithClaude(
   input: ClaudeInput,
-): Promise<ClaudeChecks> {
+): Promise<ClaudeOutput> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error(
@@ -125,7 +134,7 @@ export async function analyzeWithClaude(
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 2000,
+    max_tokens: 2500,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userBlocks }],
   });
@@ -136,7 +145,7 @@ export async function analyzeWithClaude(
     .join("\n")
     .trim();
 
-  return parseChecks(text);
+  return parseOutput(text);
 }
 
 function buildPromptText(input: ClaudeInput): string {
@@ -165,7 +174,7 @@ function buildPromptText(input: ClaudeInput): string {
   ].join("\n");
 }
 
-function parseChecks(raw: string): ClaudeChecks {
+function parseOutput(raw: string): ClaudeOutput {
   // Be forgiving: strip code fences if Claude returns them despite instructions.
   let cleaned = raw.trim();
   if (cleaned.startsWith("```")) {
@@ -194,14 +203,14 @@ function parseChecks(raw: string): ClaudeChecks {
     "aboveTheFold",
     "mobile",
   ];
-  const result = {} as ClaudeChecks;
+  const checks = {} as ClaudeChecks;
   for (const k of requiredKeys) {
     const v = (parsed as Record<string, unknown>)[k];
     if (!v || typeof v !== "object") {
       throw new Error(`Claude response missing "${k}" check`);
     }
     const obj = v as Record<string, unknown>;
-    result[k] = {
+    checks[k] = {
       score: clampScore(obj.score),
       headline:
         typeof obj.headline === "string" ? obj.headline : "(no summary)",
@@ -210,7 +219,13 @@ function parseChecks(raw: string): ClaudeChecks {
         : [],
     };
   }
-  return result;
+
+  const rawTakeaways = (parsed as Record<string, unknown>).keyTakeaways;
+  const keyTakeaways = Array.isArray(rawTakeaways)
+    ? rawTakeaways.filter((x): x is string => typeof x === "string")
+    : [];
+
+  return { checks, keyTakeaways };
 }
 
 function clampScore(v: unknown): number {
