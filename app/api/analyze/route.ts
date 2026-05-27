@@ -20,7 +20,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { runPageSpeed, mergeImprovements } from "@/lib/pagespeed";
 import { fetchPage } from "@/lib/fetchPage";
 import { analyzeWithClaude } from "@/lib/claude";
-import type { AnalyzeResponse, CheckResult } from "@/lib/types";
+import type {
+  AnalyzeResponse,
+  CheckResult,
+  TechnicalImprovement,
+} from "@/lib/types";
 
 // Lighthouse can take 30+ seconds. Vercel's default is 10s — we need more.
 export const maxDuration = 90;
@@ -77,7 +81,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const speedCheck = buildSpeedCheck(desktop, mobile);
+    // Merge desktop + mobile Lighthouse opportunities + diagnostics into
+    // one ranked list. We build it before the speed check so we can pull
+    // image-format audits into the speed notes as priority signals.
+    const technicalImprovements = mergeImprovements(
+      desktop?.technicalImprovements ?? [],
+      mobile?.technicalImprovements ?? [],
+    );
+
+    const speedCheck = buildSpeedCheck(desktop, mobile, technicalImprovements);
 
     // Pull screenshots from PSI (already base64-encoded JPEGs, prefixed).
     const desktopShotData = stripDataUrlPrefix(desktop?.finalScreenshot ?? null);
@@ -112,14 +124,6 @@ export async function POST(req: NextRequest) {
         6,
     );
 
-    // Merge desktop + mobile Lighthouse opportunities + diagnostics into
-    // one ranked list. Dedupes by audit id, prefers the worse (lower) score
-    // so we surface the more urgent reading.
-    const technicalImprovements = mergeImprovements(
-      desktop?.technicalImprovements ?? [],
-      mobile?.technicalImprovements ?? [],
-    );
-
     const response: AnalyzeResponse = {
       url,
       // Cleaned <title> from the scanned page (when present). The saved-reports
@@ -152,9 +156,46 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// Lighthouse audits that tell us whether the page is leaving image-format
+// performance on the table. Ordered so the most directly actionable
+// observation (next-gen formats) appears first.
+const IMAGE_AUDIT_IDS = [
+  "modern-image-formats", // "Serve images in next-gen formats" (WebP, AVIF)
+  "uses-optimized-images", // "Efficiently encode images"
+  "uses-responsive-images", // "Properly size images"
+];
+
+/**
+ * Turn a Lighthouse image-format audit into a Speed-section note. We surface
+ * the savings number Lighthouse gives us (ms or KB) so the message lands as
+ * "here's how much faster the page would load if you fix this".
+ */
+function buildImageNote(audit: TechnicalImprovement): string {
+  const savings =
+    audit.overallSavingsMs && audit.overallSavingsMs > 0
+      ? ` (potential savings of ${(audit.overallSavingsMs / 1000).toFixed(1)}s)`
+      : audit.overallSavingsBytes && audit.overallSavingsBytes > 0
+      ? ` (potential savings of ${Math.round(audit.overallSavingsBytes / 1024)} KB)`
+      : audit.displayValue
+      ? ` (${audit.displayValue})`
+      : "";
+  // Prefix the most actionable audit ("next-gen formats") with a clear
+  // recommendation so the reader knows exactly what to do.
+  const prefix =
+    audit.id === "modern-image-formats"
+      ? "Images aren't served in next-gen formats: convert JPEG/PNG to WebP or AVIF for much smaller files"
+      : audit.id === "uses-optimized-images"
+      ? "Images aren't efficiently encoded: re-compress them to cut weight"
+      : audit.id === "uses-responsive-images"
+      ? "Images are larger than they need to be: serve correctly sized versions for the device"
+      : audit.title;
+  return `${prefix}${savings}.`;
+}
+
 function buildSpeedCheck(
   desktop: { performanceScore: number; lcpMs: number | null; fcpMs: number | null; speedIndexMs: number | null; tbtMs: number | null; cls: number | null } | null,
   mobile: { performanceScore: number; lcpMs: number | null } | null,
+  technicalImprovements: TechnicalImprovement[] = [],
 ): CheckResult {
   if (!desktop && !mobile) {
     return {
@@ -172,6 +213,17 @@ function buildSpeedCheck(
     : (desktop?.performanceScore ?? mobile?.performanceScore ?? 0);
 
   const notes: string[] = [];
+
+  // PRIORITY: image-format observations always come first. Pulls the
+  // relevant Lighthouse audits and surfaces them as the top notes when
+  // they're failing. Sorted by IMAGE_AUDIT_IDS order so "next-gen formats"
+  // (WebP / AVIF) leads when it's relevant.
+  for (const id of IMAGE_AUDIT_IDS) {
+    const audit = technicalImprovements.find((t) => t.id === id);
+    if (!audit) continue;
+    notes.push(buildImageNote(audit));
+  }
+
   if (desktop) {
     notes.push(
       `Desktop Lighthouse score: ${desktop.performanceScore}/100.`,

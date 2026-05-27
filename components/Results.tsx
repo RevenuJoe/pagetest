@@ -316,12 +316,12 @@ function sourceTagClass(source: "desktop" | "mobile" | "both" | undefined): stri
 /**
  * Initial Load Screenshots.
  *
- * Both screenshots are rendered at the same fixed height (480px) using
- * `object-fit: contain`. PSI's full-page screenshots are taller than they
- * are wide on mobile, so when constrained to the same height, mobile
- * naturally becomes a narrower column and the image displays at close to
- * its native pixel size (which fixes the blurry upscale issue from
- * stretching it to fill a 50% grid column).
+ * Both cards share the same fixed height. Desktop fills its card edge to
+ * edge (image scales to card width, vertical overflow cropped from the top
+ * so the above-the-fold leads). Mobile keeps `object-fit: contain` so the
+ * narrow phone screenshot displays at its natural aspect inside a slimmer
+ * card. Smaller display size relative to PSI's source pixels also means
+ * the images render crisper.
  */
 function ScreenshotsBlock({ data }: { data: AnalyzeResponse }) {
   if (!data.desktopScreenshot && !data.mobileScreenshot) {
@@ -331,7 +331,7 @@ function ScreenshotsBlock({ data }: { data: AnalyzeResponse }) {
       </p>
     );
   }
-  const H = 480;
+  const H = 340;
   return (
     <div className="flex flex-col items-stretch gap-6 md:flex-row md:items-stretch md:justify-center">
       {data.desktopScreenshot && (
@@ -377,22 +377,36 @@ function ScreenshotCard({
         style={{ letterSpacing: "0.12em" }}
       >
         <span>{label}</span>
-        <a
-          href={src}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="text-ink-soft hover:text-accent"
-        >
-          Open full size ↗
-        </a>
       </div>
-      <div className="flex items-start justify-center bg-bg/30" style={{ height }}>
+      <div
+        className="overflow-hidden bg-bg/30"
+        style={{ height }}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
           alt={label}
           className="block"
-          style={{ height: "100%", width: "auto", objectFit: "contain" }}
+          style={
+            mode === "desktop"
+              ? {
+                  // Fill the card width edge to edge; crop vertical overflow
+                  // from the top so the user sees the above-the-fold.
+                  width: "100%",
+                  height: "auto",
+                  display: "block",
+                  imageRendering: "auto",
+                }
+              : {
+                  // Mobile screenshots are tall + narrow; fit by height so
+                  // they keep their native aspect inside a slim card.
+                  height: "100%",
+                  width: "auto",
+                  margin: "0 auto",
+                  display: "block",
+                  imageRendering: "auto",
+                }
+          }
         />
       </div>
     </div>

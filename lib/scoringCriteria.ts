@@ -47,7 +47,12 @@ export const INPUTS = `You will be given:
 export const CRITERIA_SPEED = `1. speed
 Scored deterministically from Google PageSpeed Insights (Lighthouse desktop + mobile). This dimension is NOT scored by Claude, but is reported alongside the others.
 
-The score is the mean of the desktop and mobile performance scores. Notes report Largest Contentful Paint, Cumulative Layout Shift, and Total Blocking Time when they cross Google's recommended thresholds.`;
+The score is the mean of the desktop and mobile performance scores.
+
+PRIORITY OBSERVATION (always called out first in the speed notes):
+- Image formats. Are images on the page served in next-gen formats (WebP, AVIF)? Many sites still ship JPEG/PNG when WebP would be a fraction of the size and load far faster. We surface Lighthouse's "Serve images in next-gen formats", "Efficiently encode images", and "Properly size images" audits at the top of the speed notes when they're failing, with the savings number Lighthouse provides.
+
+Additional notes include Largest Contentful Paint, Cumulative Layout Shift, and Total Blocking Time when they cross Google's recommended thresholds.`;
 
 /**
  * CONTENT — copy quality and value proposition. Update with more criteria
