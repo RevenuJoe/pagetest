@@ -175,9 +175,9 @@ function Home() {
         <section className="pt-14 md:pt-20">
           <div className="text-center">
             <h1 className="text-[clamp(32px,4.7vw,54px)] font-bold leading-[1.04] tracking-tight text-ink">
-              Put Your B2B{" "}
-              <span style={{ color: "#76A09C" }}>Landing Page</span>
-              {" "}To The Test
+              Score Your{" "}
+              <span style={{ color: "#76A09C" }}>B2B</span>
+              {" "}Landing Page
             </h1>
             <HeroPills />
           </div>
@@ -240,6 +240,28 @@ function Home() {
             </button>
           </form>
 
+          {/* Trust line under the form: subtle, two-up. */}
+          {!isLoading && (
+            <div className="mt-5 flex items-center justify-center gap-7 text-[13px] font-medium text-ink-soft">
+              <span className="inline-flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-soft text-accent-dark">
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3" aria-hidden>
+                    <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
+                  </svg>
+                </span>
+                No email required
+              </span>
+              <span className="inline-flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-soft text-accent-dark">
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3" aria-hidden>
+                    <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
+                  </svg>
+                </span>
+                100% free
+              </span>
+            </div>
+          )}
+
           {error && (
             <div className="mx-auto mt-[18px] max-w-[640px] rounded-[14px] border border-[#f1c9c5] bg-[#fbece9] px-4 py-3.5 text-sm font-medium text-bad">
               {error}
@@ -285,6 +307,10 @@ function Home() {
 
         {!isLoading && !focusResult && (
           <section className="mt-[72px]">
+            <div
+              className="mx-auto mb-[72px] h-px max-w-[760px]"
+              style={{ background: "rgba(28,31,29,0.08)" }}
+            />
             <FeaturesGrid />
           </section>
         )}
