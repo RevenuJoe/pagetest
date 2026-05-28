@@ -1,0 +1,108 @@
+/**
+ * High-resolution screenshot fetcher.
+ *
+ * Lighthouse's PSI screenshots are JPEG-compressed at ~50 quality and capped
+ * at the device-emulation viewport (1350px desktop / 412px mobile). On Retina
+ * displays they look blurry after the browser scales them up.
+ *
+ * This module calls Microlink's free screenshot API in parallel with PSI to
+ * fetch crisp full-page screenshots at 2x device-pixel-ratio. We use the
+ * result for the displayed images on the report. Microlink's free tier
+ * allows ~50 requests/day per IP — if we get rate-limited or anything else
+ * fails, the caller falls back to PSI's base64 image so the tool keeps
+ * working.
+ */
+export interface MicrolinkScreenshot {
+  /** Public URL to the high-res image, served from Microlink's CDN. */
+  url: string;
+  /** Pixel dimensions of the captured image. */
+  width: number;
+  height: number;
+}
+
+interface MicrolinkResponse {
+  status?: string;
+  message?: string;
+  data?: {
+    screenshot?: {
+      url?: string;
+      width?: number;
+      height?: number;
+    };
+  };
+}
+
+const MICROLINK_ENDPOINT = "https://api.microlink.io/";
+
+/**
+ * Capture a single screenshot via Microlink for one device strategy.
+ *
+ * - `desktop` → 1440×900 viewport, deviceScaleFactor 2, full-page true.
+ * - `mobile`  → 390×844 viewport, deviceScaleFactor 2, isMobile true.
+ *
+ * We use `waitUntil=networkidle0` so animations + lazy-loaded images settle
+ * before the capture. Hard timeout of 45 s per call so a slow page can't
+ * blow past our route's maxDuration.
+ *
+ * Returns null on ANY failure (rate-limit, timeout, parse error) so the
+ * caller can fall back gracefully.
+ */
+export async function fetchMicrolinkScreenshot(
+  url: string,
+  strategy: "desktop" | "mobile",
+): Promise<MicrolinkScreenshot | null> {
+  try {
+    const params = new URLSearchParams({
+      url,
+      screenshot: "true",
+      meta: "false",
+      type: "jpeg",
+      fullPage: "true",
+      waitUntil: "networkidle0",
+    });
+
+    if (strategy === "desktop") {
+      params.set("viewport.width", "1440");
+      params.set("viewport.height", "900");
+      params.set("viewport.deviceScaleFactor", "2");
+    } else {
+      // iPhone 14-ish viewport. isMobile triggers mobile UA + touch events.
+      params.set("viewport.width", "390");
+      params.set("viewport.height", "844");
+      params.set("viewport.deviceScaleFactor", "2");
+      params.set("viewport.isMobile", "true");
+    }
+
+    const res = await fetch(`${MICROLINK_ENDPOINT}?${params.toString()}`, {
+      signal: AbortSignal.timeout(45_000),
+      headers: { "user-agent": "pagetest-revenuagency.io" },
+    });
+
+    if (!res.ok) {
+      // 429 = rate-limited (free tier), 5xx = Microlink trouble.
+      console.warn(
+        `Microlink ${strategy} returned ${res.status} ${res.statusText} for ${url}`,
+      );
+      return null;
+    }
+
+    const body = (await res.json()) as MicrolinkResponse;
+    if (body.status !== "success" || !body.data?.screenshot?.url) {
+      console.warn(
+        `Microlink ${strategy} response missing screenshot URL for ${url}: ${body.message ?? body.status}`,
+      );
+      return null;
+    }
+
+    return {
+      url: body.data.screenshot.url,
+      width: body.data.screenshot.width ?? 0,
+      height: body.data.screenshot.height ?? 0,
+    };
+  } catch (err) {
+    console.warn(
+      `Microlink ${strategy} failed for ${url}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}

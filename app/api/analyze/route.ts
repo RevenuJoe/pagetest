@@ -20,6 +20,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runPageSpeed, mergeImprovements } from "@/lib/pagespeed";
 import { fetchPage } from "@/lib/fetchPage";
 import { analyzeWithClaude } from "@/lib/claude";
+import { fetchMicrolinkScreenshot } from "@/lib/screenshot";
 import type {
   AnalyzeResponse,
   CheckResult,
@@ -58,11 +59,19 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const [desktopRes, mobileRes, page] = await Promise.allSettled([
-      runPageSpeed(url, "desktop"),
-      runPageSpeed(url, "mobile"),
-      fetchPage(url),
-    ]);
+    // Kick off PSI + page fetch + high-res screenshot fetches all in
+    // parallel. PSI screenshots are low-quality JPEGs at low resolution;
+    // Microlink gives us crisp 2× DPR full-page captures for the displayed
+    // images. Microlink can rate-limit on the free tier — in that case we
+    // fall back to the PSI screenshots so the report still renders.
+    const [desktopRes, mobileRes, page, microDesktopRes, microMobileRes] =
+      await Promise.allSettled([
+        runPageSpeed(url, "desktop"),
+        runPageSpeed(url, "mobile"),
+        fetchPage(url),
+        fetchMicrolinkScreenshot(url, "desktop"),
+        fetchMicrolinkScreenshot(url, "mobile"),
+      ]);
 
     // PSI is allowed to fail; we degrade gracefully. Log failures to the
     // server so we can see WHY in Vercel logs (e.g. timeout, 4xx, 5xx)
@@ -77,6 +86,13 @@ export async function POST(req: NextRequest) {
     if (mobileRes.status === "rejected") {
       console.error("PSI mobile failed for", url, "—", errorMessage(mobileRes.reason));
     }
+
+    // Microlink screenshot URLs (may be null if Microlink failed or
+    // rate-limited). The route falls back to PSI base64 when null.
+    const microDesktop =
+      microDesktopRes.status === "fulfilled" ? microDesktopRes.value : null;
+    const microMobile =
+      microMobileRes.status === "fulfilled" ? microMobileRes.value : null;
 
     if (page.status !== "fulfilled") {
       return NextResponse.json(
@@ -166,12 +182,21 @@ export async function POST(req: NextRequest) {
       checks,
       keyTakeaways: ai.keyTakeaways,
       technicalImprovements,
-      // Prefer the higher-resolution full-page screenshot when PSI gave us
-      // one; otherwise fall back to the viewport-only final screenshot.
+      // For the displayed screenshots, prefer the Microlink CDN URL (crisp
+      // 2× DPR full-page capture) when available. Fall back to PSI's
+      // higher-res full-page screenshot, then PSI's viewport-only final
+      // screenshot. The PSI base64 images are still used by Claude for
+      // vision analysis — only the *displayed* image changes here.
       desktopScreenshot:
-        desktop?.fullPageScreenshot ?? desktop?.finalScreenshot ?? undefined,
+        microDesktop?.url
+        ?? desktop?.fullPageScreenshot
+        ?? desktop?.finalScreenshot
+        ?? undefined,
       mobileScreenshot:
-        mobile?.fullPageScreenshot ?? mobile?.finalScreenshot ?? undefined,
+        microMobile?.url
+        ?? mobile?.fullPageScreenshot
+        ?? mobile?.finalScreenshot
+        ?? undefined,
       pageSpeedInsights: psiInsights,
     };
 
@@ -259,7 +284,31 @@ function buildSpeedCheck(
 
   const notes: string[] = [];
 
-  // PRIORITY 1: image-format observation. The single biggest speed lever.
+  const secs = (ms: number | null | undefined) =>
+    ms == null ? null : `${(ms / 1000).toFixed(2)} secs`;
+
+  // Bullets 1–2: raw performance scores. Always show both lines when we
+  // have both strategies. If one PSI run failed we just skip that bullet.
+  if (desktop) {
+    notes.push(`Desktop score: ${desktop.performanceScore}/100.`);
+  }
+  if (mobile) {
+    notes.push(`Mobile score: ${mobile.performanceScore}/100.`);
+  }
+
+  // Bullets 3–4: Speed Index, mobile first (mobile is the experience
+  // most visitors actually feel), then desktop.
+  if (mobile?.speedIndexMs != null) {
+    notes.push(`Mobile speed index: ${secs(mobile.speedIndexMs)}.`);
+  }
+  if (desktop?.speedIndexMs != null) {
+    notes.push(`Desktop speed index: ${secs(desktop.speedIndexMs)}.`);
+  }
+
+  // Bullet 5: image-format observation. Pulled from technicalImprovements,
+  // which now keeps the image audits whenever PSI lists any items, even
+  // when Lighthouse rates them passing. If PSI somehow returned nothing
+  // for all three image audits, this bullet is silently skipped.
   for (const id of IMAGE_AUDIT_IDS) {
     const audit = technicalImprovements.find((t) => t.id === id);
     if (!audit) continue;
@@ -267,51 +316,17 @@ function buildSpeedCheck(
     break;
   }
 
-  const fmt = (ms: number | null | undefined) =>
-    ms == null ? null : `${(ms / 1000).toFixed(2)}s`;
-
-  // PRIORITY 2: separate desktop and mobile speed lines so the user sees
-  // both even if one strategy timed out at PSI. Includes the headline
-  // performance score, LCP and Speed Index.
-  if (desktop) {
-    const extras = [fmt(desktop.lcpMs) && `LCP ${fmt(desktop.lcpMs)}`, fmt(desktop.speedIndexMs) && `SI ${fmt(desktop.speedIndexMs)}`]
-      .filter(Boolean)
-      .join(", ");
-    notes.push(
-      `Desktop speed: ${desktop.performanceScore}/100${extras ? ` (${extras})` : ""}.`,
-    );
-  }
-  if (mobile) {
-    const extras = [fmt(mobile.lcpMs) && `LCP ${fmt(mobile.lcpMs)}`, fmt(mobile.speedIndexMs) && `SI ${fmt(mobile.speedIndexMs)}`]
-      .filter(Boolean)
-      .join(", ");
-    notes.push(
-      `Mobile speed: ${mobile.performanceScore}/100${extras ? ` (${extras})` : ""}.`,
-    );
-  }
-
-  // PRIORITY 3: individual Core Web Vital callouts when they cross
-  // Google's thresholds. Each as its own bullet so the user sees exactly
-  // what's failing — this restores the detail level we had originally.
-  if (desktop?.tbtMs != null && desktop.tbtMs > 200) {
-    notes.push(
-      `Total Blocking Time is ${Math.round(desktop.tbtMs)}ms — JavaScript is delaying interactivity.`,
-    );
-  }
-  if (desktop?.cls != null && desktop.cls > 0.1) {
-    notes.push(
-      `Cumulative Layout Shift is ${desktop.cls.toFixed(2)} — content is jumping during load.`,
-    );
-  }
-  if (mobile?.lcpMs != null && mobile.lcpMs > 4000) {
-    notes.push(
-      `Mobile LCP is ${(mobile.lcpMs / 1000).toFixed(2)}s, well above Google's 2.5s target.`,
-    );
-  } else if (desktop?.lcpMs != null && desktop.lcpMs > 2500) {
-    notes.push(
-      `Desktop LCP is ${(desktop.lcpMs / 1000).toFixed(2)}s, slower than Google's 2.5s target.`,
-    );
-  }
+  // Bullet 6: one additional speed observation. Pick from the most
+  // actionable thing left, in this order:
+  //   1) The next non-image technical improvement with savings.
+  //   2) A failing Core Web Vital (LCP, TBT, CLS).
+  //   3) Page weight observation if total bytes is heavy.
+  const otherObservation = pickSpeedObservation(
+    desktop,
+    mobile,
+    technicalImprovements,
+  );
+  if (otherObservation) notes.push(otherObservation);
 
   const headline =
     score >= 90
@@ -322,10 +337,52 @@ function buildSpeedCheck(
       ? "Load speed is mediocre, visitors will feel the lag."
       : "Page is slow enough to hurt conversions.";
 
-  // Speed is intentionally allowed more bullets than the other cards
-  // because it's deterministic + multi-strategy. Cap at 6 so it stays
-  // skimmable while still surfacing the desktop + mobile detail.
+  // Six-bullet structure: scores, speed index, image, other. Cap defensively.
   return { score, headline, notes: notes.slice(0, 6) };
+}
+
+/**
+ * Pick a single extra observation for the Speed card's last bullet. We
+ * prefer concrete, actionable findings (a Lighthouse opportunity with real
+ * savings) over generic CWV thresholds, and CWV misses over nothing.
+ */
+function pickSpeedObservation(
+  desktop: { lcpMs: number | null; tbtMs: number | null; cls: number | null } | null,
+  mobile: { lcpMs: number | null; tbtMs?: number | null; cls?: number | null } | null,
+  technicalImprovements: TechnicalImprovement[],
+): string | null {
+  // 1) Next-most-impactful Lighthouse improvement that isn't an image
+  //    audit (image is already on bullet 5).
+  const nonImage = technicalImprovements.find(
+    (t) =>
+      !IMAGE_AUDIT_IDS.includes(t.id) &&
+      ((t.overallSavingsMs ?? 0) > 0 || (t.overallSavingsBytes ?? 0) > 0),
+  );
+  if (nonImage) {
+    const savings =
+      nonImage.overallSavingsMs && nonImage.overallSavingsMs > 0
+        ? ` (potential savings of ${(nonImage.overallSavingsMs / 1000).toFixed(1)}s)`
+        : nonImage.overallSavingsBytes && nonImage.overallSavingsBytes > 0
+        ? ` (potential savings of ${Math.round(nonImage.overallSavingsBytes / 1024)} KB)`
+        : "";
+    return `${nonImage.title}${savings}.`;
+  }
+
+  // 2) A Core Web Vital that's failing Google's threshold.
+  if (mobile?.lcpMs != null && mobile.lcpMs > 4000) {
+    return `Mobile LCP is ${(mobile.lcpMs / 1000).toFixed(2)}s, well above Google's 2.5s target.`;
+  }
+  if (desktop?.lcpMs != null && desktop.lcpMs > 2500) {
+    return `Desktop LCP is ${(desktop.lcpMs / 1000).toFixed(2)}s, slower than Google's 2.5s target.`;
+  }
+  if (desktop?.tbtMs != null && desktop.tbtMs > 200) {
+    return `Total Blocking Time is ${Math.round(desktop.tbtMs)}ms, JavaScript is delaying interactivity.`;
+  }
+  if (desktop?.cls != null && desktop.cls > 0.1) {
+    return `Cumulative Layout Shift is ${desktop.cls.toFixed(2)}, content is jumping during load.`;
+  }
+
+  return null;
 }
 
 function stripDataUrlPrefix(s: string | null): string | null {
