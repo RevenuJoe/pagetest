@@ -61,6 +61,17 @@ export async function fetchMicrolinkScreenshot(
       screenshot: "true",
       meta: "false",
       type: "jpeg",
+      // EXPLICITLY false. Microlink's public API was observed returning
+      // full-page captures when this isn't set, despite the documented
+      // default. We want above-the-fold only.
+      fullPage: "false",
+      // Microlink caches by URL aggressively (default TTL 12h+) and the
+      // cache key does NOT include screenshot params like fullPage. So a
+      // URL that was previously captured with fullPage=true keeps
+      // returning the old 15000px image. force=true bypasses the cache
+      // and gives us a fresh capture every run — which is what a page
+      // TESTER wants anyway (current state of the live page).
+      force: "true",
       waitUntil: "networkidle0",
     });
 
