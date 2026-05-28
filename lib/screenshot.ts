@@ -44,9 +44,10 @@ const MICROLINK_ENDPOINT = "https://api.microlink.io/";
  * initial visible viewport. Joe wants the report to show what a visitor
  * sees the moment the page loads, not a 5000px stitched scroll capture.
  *
- * `waitUntil=networkidle0` lets animations + lazy-loaded images settle
- * before the capture. Hard timeout of 45 s per call so a slow page can't
- * blow past our route's maxDuration.
+ * `waitUntil=load` captures as soon as the initial HTML/CSS/images are
+ * ready, which is the right trade-off for an above-the-fold view. Hard
+ * timeout of 45s per call — Joe values Microlink's high-quality images
+ * enough to wait for them rather than fall back to lower-res PSI.
  *
  * Returns null on ANY failure (rate-limit, timeout, parse error) so the
  * caller can fall back gracefully.
@@ -72,7 +73,14 @@ export async function fetchMicrolinkScreenshot(
       // and gives us a fresh capture every run — which is what a page
       // TESTER wants anyway (current state of the live page).
       force: "true",
-      waitUntil: "networkidle0",
+      // `load` fires when the DOM load event triggers. We deliberately
+      // do NOT use `networkidle0` (zero connections for 500ms) because
+      // marketing sites with analytics polling, web sockets, or chat
+      // widgets can NEVER reach idle, which makes Microlink hang on
+      // them for the full 25s timeout. `load` captures the
+      // above-the-fold view as soon as the initial HTML/CSS/images are
+      // ready, which is what we want.
+      waitUntil: "load",
     });
 
     if (strategy === "desktop") {
@@ -88,6 +96,10 @@ export async function fetchMicrolinkScreenshot(
     }
 
     const res = await fetch(`${MICROLINK_ENDPOINT}?${params.toString()}`, {
+      // 45s ceiling. Joe specifically values Microlink's high-quality
+      // screenshots and would rather wait than fall back to PSI's lower
+      // resolution images. Still fits inside the route's maxDuration
+      // (270s) alongside the parallel PSI runs.
       signal: AbortSignal.timeout(45_000),
       headers: { "user-agent": "pagetest-revenuagency.io" },
     });
