@@ -54,6 +54,10 @@ export default function Section({
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
           {headerAction}
+          {/* Chevron — hidden on mobile to save horizontal space. Clicking
+              anywhere on the summary still toggles the <details> because
+              <summary> handles that natively. Desktop keeps the visual
+              affordance. */}
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -61,7 +65,7 @@ export default function Section({
             strokeWidth="2.2"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="h-4 w-4 text-ink-soft transition-transform group-open:rotate-180"
+            className="hidden h-4 w-4 text-ink-soft transition-transform group-open:rotate-180 sm:block"
             aria-hidden
           >
             <path d="M6 9l6 6 6-6" />

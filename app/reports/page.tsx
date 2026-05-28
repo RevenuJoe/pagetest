@@ -235,23 +235,23 @@ function ReportRow({
             onOpen={onOpen}
             onRerun={onRerun}
             onEdit={onEdit}
+            onDelete={onDelete}
           />
         }
       >
         <OverviewBlock data={report} />
       </Section>
 
-      {/* Trash icon. On desktop (sm+) it hangs OUTSIDE the card to the
-          right so the card's internal layout stays clean. On mobile we
-          pull it INSIDE the card (right-3) so it doesn't overflow the
-          viewport. The Section summary uses py-5 (20px each side) and
-          its tallest child is ~26px, so the centre sits at top:19px. */}
+      {/* DESKTOP trash icon. Hangs OUTSIDE the card to the right, keeping
+          the card's internal layout clean. Hidden on mobile (the trash
+          icon is rendered INSIDE HeaderActions on mobile so the three
+          icons sit in one evenly-spaced row). */}
       <button
         type="button"
         onClick={onDelete}
         aria-label="Delete this saved report"
         title="Delete"
-        className="absolute right-3 top-[19px] z-10 flex h-7 w-7 items-center justify-center bg-transparent text-ink-soft transition hover:text-bad sm:right-[-32px]"
+        className="absolute right-[-32px] top-[19px] z-10 hidden h-7 w-7 items-center justify-center bg-transparent text-ink-soft transition hover:text-bad sm:flex"
       >
         <IconTrash />
       </button>
@@ -269,11 +269,13 @@ function HeaderActions({
   onOpen,
   onRerun,
   onEdit,
+  onDelete,
 }: {
   running: boolean;
   onOpen: () => void;
   onRerun: () => void;
   onEdit: () => void;
+  onDelete: () => void;
 }) {
   function stop(handler: () => void) {
     return (e: React.MouseEvent) => {
@@ -282,8 +284,10 @@ function HeaderActions({
       handler();
     };
   }
+  // Mobile: wider gap (gap-3) between the three icon buttons so Open,
+  // Rerun and Trash sit evenly spaced. Desktop keeps the tighter gap-2.
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-3 sm:gap-2">
       {/* Rename pencil — hidden on mobile to give the title more room.
           Users can still rename by opening the report and editing there. */}
       <button
@@ -295,8 +299,8 @@ function HeaderActions({
       >
         <IconPencil className="h-[14px] w-[14px]" />
       </button>
-      {/* Open button. On mobile we compress to an arrow-only icon; on
-          sm+ we show the "Open" pill so the action is obvious. */}
+      {/* Open button. Desktop shows the "Open" pill; mobile compresses
+          to a small arrow-only icon so all three actions fit. */}
       <button
         type="button"
         onClick={stop(onOpen)}
@@ -317,17 +321,40 @@ function HeaderActions({
           <path d="M5 12h14M13 6l6 6-6 6" />
         </svg>
       </button>
+      {/* Rerun. Mobile: icon only, h-7 w-7 to match the other icon
+          buttons. Desktop: icon + label pill. */}
       <button
         type="button"
         onClick={stop(onRerun)}
         disabled={running}
         aria-label={running ? "Running…" : "Rerun this report"}
         title={running ? "Running…" : "Rerun"}
-        className="inline-flex items-center justify-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60 sm:px-4"
+        className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60 sm:hidden"
       >
         <IconRerun />
-        {/* Hide the "Rerun" label on mobile; the icon alone is enough. */}
-        <span className="hidden sm:inline">{running ? "Running…" : "Rerun"}</span>
+      </button>
+      <button
+        type="button"
+        onClick={stop(onRerun)}
+        disabled={running}
+        aria-label={running ? "Running…" : "Rerun this report"}
+        title={running ? "Running…" : "Rerun"}
+        className="hidden items-center justify-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60 sm:inline-flex"
+      >
+        <IconRerun />
+        {running ? "Running…" : "Rerun"}
+      </button>
+      {/* MOBILE trash button. Sits in the same flex row as Open + Rerun
+          so the three are evenly spaced. Desktop renders the trash
+          icon outside the card (handled in ReportRow). */}
+      <button
+        type="button"
+        onClick={stop(onDelete)}
+        aria-label="Delete this saved report"
+        title="Delete"
+        className="flex h-7 w-7 items-center justify-center bg-transparent text-ink-soft transition hover:text-bad sm:hidden"
+      >
+        <IconTrash />
       </button>
     </div>
   );
