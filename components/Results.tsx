@@ -469,10 +469,9 @@ function BreakdownBlock({ data }: { data: AnalyzeResponse }) {
   }
 
   // Mouse drag implementation. Touch already works natively via
-  // overflow-x-auto, but desktop users expect grab-and-drag. While
-  // dragging we disable scroll-snap so the position tracks the cursor
-  // exactly; on release the snap-type returns and CSS aligns to the
-  // nearest card.
+  // overflow-x-auto, but desktop users expect grab-and-drag. The
+  // carousel scrolls freely — no snap — so the row stays exactly where
+  // the user releases it. Arrow buttons still page-jump by clientWidth.
   const dragRef = useRef({ active: false, startX: 0, startScrollLeft: 0 });
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     // Only react to primary mouse / pen / touch.
@@ -485,7 +484,6 @@ function BreakdownBlock({ data }: { data: AnalyzeResponse }) {
       startScrollLeft: el.scrollLeft,
     };
     el.setPointerCapture(e.pointerId);
-    el.style.scrollSnapType = "none";
     el.style.cursor = "grabbing";
   }
   function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
@@ -507,8 +505,6 @@ function BreakdownBlock({ data }: { data: AnalyzeResponse }) {
     if (!el) return;
     if (e) el.releasePointerCapture(e.pointerId);
     el.style.cursor = "";
-    // Re-enable snap so the cards lock into alignment on release.
-    el.style.scrollSnapType = "";
   }
 
   return (
@@ -535,9 +531,9 @@ function BreakdownBlock({ data }: { data: AnalyzeResponse }) {
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         // The cursor flips to grabbing while dragging via inline style; the
-        // base cursor signals the card row is draggable.
+        // base cursor signals the card row is draggable. No scroll-snap:
+        // the row scrolls freely so the user can park it anywhere.
         className="flex gap-4 overflow-x-auto cursor-grab select-none scroll-smooth pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
-        style={{ scrollSnapType: "x mandatory" }}
       >
         {order.map((k) => (
           <div
@@ -547,7 +543,6 @@ function BreakdownBlock({ data }: { data: AnalyzeResponse }) {
             // perfectly span the container. flex-shrink-0 stops them
             // squashing when the row overflows.
             className="flex-shrink-0 w-full sm:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-2rem)/3)]"
-            style={{ scrollSnapAlign: "start" }}
           >
             <ScoreCard
               title={CHECK_META[k].title}
