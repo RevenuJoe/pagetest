@@ -9,7 +9,7 @@ Cost: Free, no login
 
 ## What you get from a single test
 
-Every audit takes 30 to 60 seconds and returns:
+Every audit takes 1 to 2 minutes and returns:
 
 1. An **overall score** from 0 to 100, the mean of the six dimensions.
 2. **Six dimension scores**, each from 0 to 100, with a colour band:

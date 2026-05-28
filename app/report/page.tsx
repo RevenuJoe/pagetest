@@ -184,8 +184,8 @@ function ReportView() {
                 />
               </div>
               <p className="mt-3 text-xs font-medium text-ink-soft">
-                This usually takes 30 to 60 seconds. Lighthouse is doing a full
-                real-world render of the page.
+                This is a detailed analysis using multiple APIs, it can take
+                1 to 2 minutes.
               </p>
               <p className="mt-3 break-all text-xs font-medium text-ink-soft">
                 URL: <span className="text-ink">{queryUrl}</span>

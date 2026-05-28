@@ -205,7 +205,7 @@ function Home() {
                     name: "How long does a test take?",
                     acceptedAnswer: {
                       "@type": "Answer",
-                      text: "Around 30 to 60 seconds. Lighthouse runs a full real-world render on Google's servers, then Claude analyses the page text and screenshots in parallel.",
+                      text: "Usually 1 to 2 minutes. The tool runs a detailed analysis using multiple APIs in parallel: Lighthouse desktop + mobile, page-content fetch, screenshot capture, and six Claude scoring calls.",
                     },
                   },
                   {
@@ -380,8 +380,8 @@ function Home() {
                 />
               </div>
               <p className="mt-3 text-xs font-medium text-ink-soft">
-                This usually takes 30 to 60 seconds. Lighthouse is doing a
-                full real-world render of the page.
+                This is a detailed analysis using multiple APIs, it can take
+                1 to 2 minutes.
               </p>
               {focusUrl && (
                 <p className="mt-3 break-all text-xs font-medium text-ink-soft">
