@@ -2,15 +2,21 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useRef, useState } from "react";
 import Header from "@/components/Header";
-import { IconRerun, IconPencil, IconTrash, Spinner } from "@/components/Icons";
+import {
+  CHECK_META,
+  IconRerun,
+  IconPencil,
+  IconTrash,
+  Spinner,
+} from "@/components/Icons";
 import { useRunningUrls, useSavedReports } from "@/lib/storeHooks";
 import { analysisStore } from "@/lib/analysisStore";
 import { savedStore } from "@/lib/savedStore";
 import { scoreColor } from "@/lib/scoreColor";
 import { deriveReportName, displayName } from "@/lib/nameUtil";
-import type { AnalyzeResponse } from "@/lib/types";
+import type { AnalyzeResponse, CheckKey } from "@/lib/types";
 
 export default function ReportsPage() {
   const reports = useSavedReports();
@@ -229,8 +235,19 @@ function ReportRow({
     setEditing(false);
   }
 
+  const order: CheckKey[] = [
+    "speed",
+    "content",
+    "digestibility",
+    "cro",
+    "aboveTheFold",
+    "mobile",
+  ];
+
   return (
-    <li className="relative flex items-start gap-7 rounded-card border border-beige-line bg-card px-7 py-5 shadow-card">
+    <li className="relative rounded-card border border-beige-line bg-card shadow-card overflow-visible">
+      {/* TOP ROW: score | metadata | actions | (trash outside) */}
+      <div className="relative flex items-start gap-7 px-7 pt-[18px] pb-5">
       {/* SCORE column — proportions match the reference screenshot: small
           uppercase label, ~52px circle below it. */}
       <div className="flex flex-shrink-0 flex-col items-center gap-2 mt-1">
@@ -304,7 +321,7 @@ function ReportRow({
             href={report.url}
             target="_blank"
             rel="noreferrer noopener"
-            className="block min-w-0 break-all text-[15px] font-semibold tracking-tight text-ink hover:text-accent"
+            className="block min-w-0 truncate text-[15px] font-semibold tracking-tight text-ink hover:text-accent"
             title={report.url}
           >
             {report.url}
@@ -344,9 +361,9 @@ function ReportRow({
         </button>
       </div>
 
-      {/* Trash icon — sits OUTSIDE the card's right edge with no background,
-          just a small transparent ink-soft icon that turns red on hover.
-          Absolutely positioned against the relative <li> parent. */}
+      {/* Trash icon — sits OUTSIDE the top row's right edge. Absolutely
+          positioned against the top-row wrapper so its vertical centre
+          stays aligned with the score circle, not the (taller) full card. */}
       <button
         type="button"
         onClick={onDelete}
@@ -356,6 +373,46 @@ function ReportRow({
       >
         <IconTrash />
       </button>
+      </div>
+
+      {/* BOTTOM STRIP: all six dimension scores across the full width. */}
+      <div className="border-t border-beige-line px-7 py-3">
+        <div className="grid grid-cols-3 gap-x-3 gap-y-2 sm:grid-cols-6">
+          {order.map((k) => {
+            const c = report.checks[k];
+            const sc = scoreColor(c.score);
+            return (
+              <div key={k} className="flex items-center gap-2 min-w-0">
+                <div
+                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md"
+                  style={{ background: `${sc}1a`, color: sc }}
+                >
+                  {isValidElement(CHECK_META[k].icon)
+                    ? cloneElement(
+                        CHECK_META[k].icon as React.ReactElement<{ className?: string }>,
+                        { className: "h-3.5 w-3.5" },
+                      )
+                    : CHECK_META[k].icon}
+                </div>
+                <div className="min-w-0">
+                  <div
+                    className="text-[14px] font-bold leading-none tabular-nums"
+                    style={{ color: sc }}
+                  >
+                    {c.score}
+                  </div>
+                  <div
+                    className="mt-0.5 truncate text-[9px] font-bold uppercase text-ink-soft"
+                    style={{ letterSpacing: "0.08em" }}
+                  >
+                    {CHECK_META[k].title}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </li>
   );
 }
@@ -375,16 +432,14 @@ function LabelledRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-w-0">
-      <div
-        className="text-[11px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.16em" }}
+    <div className="flex items-baseline gap-2 min-w-0">
+      <span
+        className="flex-shrink-0 text-[11px] font-bold uppercase text-ink-soft"
+        style={{ letterSpacing: "0.14em" }}
       >
-        {label}
-      </div>
-      <div className="mt-3 min-w-0 text-[15px] font-semibold tracking-tight text-ink break-words">
-        {children}
-      </div>
+        {label}:
+      </span>
+      <div className="min-w-0 flex-1 truncate">{children}</div>
     </div>
   );
 }
