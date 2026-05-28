@@ -194,20 +194,21 @@ export async function POST(req: NextRequest) {
       checks,
       keyTakeaways: ai.keyTakeaways,
       technicalImprovements,
-      // For the displayed screenshots, prefer the Microlink CDN URL (crisp
-      // 2× DPR full-page capture) when available. Fall back to PSI's
-      // higher-res full-page screenshot, then PSI's viewport-only final
-      // screenshot. The PSI base64 images are still used by Claude for
-      // vision analysis — only the *displayed* image changes here.
+      // For the displayed screenshots, prefer the Microlink CDN URL
+      // (crisp 2× DPR above-the-fold capture) when available. Fall back
+      // to PSI's viewport-only final screenshot (above-the-fold), then
+      // PSI's full-page screenshot only as a last resort. The PSI
+      // base64 images are still used by Claude for vision analysis;
+      // only the *displayed* image changes here.
       desktopScreenshot:
         microDesktop?.url
-        ?? desktop?.fullPageScreenshot
         ?? desktop?.finalScreenshot
+        ?? desktop?.fullPageScreenshot
         ?? undefined,
       mobileScreenshot:
         microMobile?.url
-        ?? mobile?.fullPageScreenshot
         ?? mobile?.finalScreenshot
+        ?? mobile?.fullPageScreenshot
         ?? undefined,
       pageSpeedInsights: psiInsights,
     };

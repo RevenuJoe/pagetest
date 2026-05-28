@@ -37,10 +37,14 @@ const MICROLINK_ENDPOINT = "https://api.microlink.io/";
 /**
  * Capture a single screenshot via Microlink for one device strategy.
  *
- * - `desktop` → 1440×900 viewport, deviceScaleFactor 2, full-page true.
- * - `mobile`  → 390×844 viewport, deviceScaleFactor 2, isMobile true.
+ * - `desktop` → 1440×900 viewport, deviceScaleFactor 2, ABOVE-THE-FOLD only.
+ * - `mobile`  → 390×844 viewport, deviceScaleFactor 2, ABOVE-THE-FOLD only.
  *
- * We use `waitUntil=networkidle0` so animations + lazy-loaded images settle
+ * We deliberately do NOT pass fullPage so Microlink only captures the
+ * initial visible viewport. Joe wants the report to show what a visitor
+ * sees the moment the page loads, not a 5000px stitched scroll capture.
+ *
+ * `waitUntil=networkidle0` lets animations + lazy-loaded images settle
  * before the capture. Hard timeout of 45 s per call so a slow page can't
  * blow past our route's maxDuration.
  *
@@ -57,7 +61,6 @@ export async function fetchMicrolinkScreenshot(
       screenshot: "true",
       meta: "false",
       type: "jpeg",
-      fullPage: "true",
       waitUntil: "networkidle0",
     });
 

@@ -5,7 +5,7 @@
  *   1. The Overview      — overall ring + Report name/URL/Analysed + mini scores
  *   2. Breakdown          — six ScoreCards
  *   3. Key Takeaways      — numbered list from Claude
- *   4. Initial Load Screenshots — desktop + mobile at matched height
+ *   4. Above-the-Fold Screenshots — desktop + mobile at matched height
  */
 
 "use client";
@@ -101,7 +101,7 @@ export default function Results({
     {
       key: "screenshots",
       node: (
-        <Section title="Initial Load Screenshots" defaultOpen={false}>
+        <Section title="Above-the-Fold Screenshots" defaultOpen={false}>
           <ScreenshotsBlock data={data} />
         </Section>
       ),
@@ -1358,7 +1358,7 @@ function PsiSummary({
 /* ---------- Screenshots ------------------------------------------------- */
 
 /**
- * Initial Load Screenshots.
+ * Above-the-Fold Screenshots.
  *
  * Each card grows to its image's natural aspect ratio. No artificial height
  * crop — Joe specifically wants to see the screenshot at full resolution
