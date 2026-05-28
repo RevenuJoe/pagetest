@@ -1009,26 +1009,27 @@ function PsiCategoryComparison({
 }
 
 /**
- * Speed Index → 0-100 score. Maps Lighthouse's official bands so the
- * derived score lines up with the green/orange/red colour bands used by
- * the other category bars:
- *   ≤ 3.4s → 90+ (green)
- *   3.4-5.8s → 50-90 (orange)
- *   > 5.8s → 0-50 (red)
- * Piecewise linear inside each band.
+ * Vertical bar for Speed Index. UNLIKE the score bars (where taller =
+ * better), this one's height tracks seconds directly: longer page-load
+ * time = taller bar = worse. A fast page produces a short, green bar.
+ *
+ * Colour still follows Lighthouse's official bands so green/orange/red
+ * signals good/bad regardless of bar height:
+ *   ≤ 3.4s  → green
+ *   ≤ 5.8s  → orange
+ *   > 5.8s  → red
+ *
+ * Y-axis tops out at SPEED_INDEX_MAX_SECS (10s) — values beyond that
+ * clamp to a full-height red bar.
  */
-function speedIndexToScore(secs: number): number {
-  if (secs <= 3.4) return Math.round(100 - (secs / 3.4) * 10);
-  if (secs <= 5.8) return Math.round(90 - ((secs - 3.4) / 2.4) * 40);
-  return Math.max(0, Math.round(50 - ((secs - 5.8) / 4.2) * 50));
+const SPEED_INDEX_MAX_SECS = 10;
+
+function speedIndexBandColor(secs: number): string {
+  if (secs <= 3.4) return scoreColor(95); // green
+  if (secs <= 5.8) return scoreColor(60); // orange
+  return scoreColor(30); // red
 }
 
-/**
- * Vertical bar for Speed Index. Visually matches the other category
- * bars in the chart so all five columns share one design language. The
- * difference is the value shown ABOVE the bar: seconds instead of an
- * integer score.
- */
 function SpeedIndexVerticalBar({
   label,
   ms,
@@ -1039,9 +1040,12 @@ function SpeedIndexVerticalBar({
   maxHeight: number;
 }) {
   const seconds = ms == null ? null : ms / 1000;
-  const score = seconds == null ? null : speedIndexToScore(seconds);
-  const color = score == null ? "#c4c0b6" : scoreColor(score);
-  const h = ((score ?? 0) / 100) * maxHeight;
+  const color = seconds == null ? "#c4c0b6" : speedIndexBandColor(seconds);
+  // Bar height is proportional to seconds: shorter page-load → shorter
+  // bar. Clamp at 10s so an unusually slow run doesn't overflow the
+  // chart's drawing area.
+  const clamped = Math.min(seconds ?? 0, SPEED_INDEX_MAX_SECS);
+  const h = (clamped / SPEED_INDEX_MAX_SECS) * maxHeight;
   return (
     <div className="flex w-full max-w-[44px] flex-col items-center justify-end">
       <div className="text-[13px] font-bold tabular-nums leading-none" style={{ color }}>
