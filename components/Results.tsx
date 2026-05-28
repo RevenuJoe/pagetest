@@ -1062,24 +1062,36 @@ function PsiSummary({
 }) {
   const bullets: string[] = [];
 
-  // Category-level call-outs.
+  // Build a list of the worst-score-by-category, then identify the SINGLE
+  // weakest. Only that one gets the "weakest category" call-out — multiple
+  // categories can't simultaneously be the weakest.
+  const catWorst = PSI_CATEGORIES.map((cat) => ({
+    cat,
+    worst: Math.min(
+      catScore(desktop, cat.key) ?? 100,
+      catScore(mobile, cat.key) ?? 100,
+    ),
+  }));
+  const weakestCategory = catWorst
+    .filter((c) => c.worst < 70)
+    .sort((a, b) => a.worst - b.worst)[0];
+  if (weakestCategory) {
+    bullets.push(
+      `${weakestCategory.cat.label} is the weakest category, scoring as low as ${weakestCategory.worst}/100.`,
+    );
+  }
+
+  // Per-category divergence + perfect-score call-outs.
   for (const cat of PSI_CATEGORIES) {
     const d = catScore(desktop, cat.key);
     const m = catScore(mobile, cat.key);
-    if (d != null && m != null) {
-      const diff = d - m;
-      if (Math.abs(diff) >= 15) {
-        bullets.push(
-          `${cat.label} differs by ${Math.abs(diff)} points between desktop (${d}) and mobile (${m}).`,
-        );
-      }
+    if (d != null && m != null && Math.abs(d - m) >= 15) {
+      bullets.push(
+        `${cat.label} differs by ${Math.abs(d - m)} points between desktop (${d}) and mobile (${m}).`,
+      );
     }
     const worst = Math.min(d ?? 100, m ?? 100);
-    if (worst < 70) {
-      bullets.push(
-        `${cat.label} is the weakest category, scoring as low as ${worst}/100.`,
-      );
-    } else if (worst === 100) {
+    if (worst === 100) {
       bullets.push(`${cat.label} scores a perfect 100 on both desktop and mobile.`);
     }
   }

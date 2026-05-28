@@ -234,71 +234,58 @@ function buildSpeedCheck(
 
   const notes: string[] = [];
 
-  // PRIORITY 1: image-format observation. The single biggest lever. Pick
-  // the most actionable image-format audit (in the priority order set by
-  // IMAGE_AUDIT_IDS) and surface ONE bullet for it.
+  // PRIORITY 1: image-format observation. The single biggest speed lever.
   for (const id of IMAGE_AUDIT_IDS) {
     const audit = technicalImprovements.find((t) => t.id === id);
     if (!audit) continue;
     notes.push(buildImageNote(audit));
-    break; // only the most impactful one — three-bullet cap
+    break;
   }
 
-  // PRIORITY 2: combined load-stats summary across both devices, now
-  // also including Speed Index (Joe explicitly asked for SI to surface
-  // in the Speed card alongside the headline score and LCP).
   const fmt = (ms: number | null | undefined) =>
     ms == null ? null : `${(ms / 1000).toFixed(2)}s`;
-  const parts: string[] = [];
+
+  // PRIORITY 2: separate desktop and mobile speed lines so the user sees
+  // both even if one strategy timed out at PSI. Includes the headline
+  // performance score, LCP and Speed Index.
   if (desktop) {
-    const lcp = fmt(desktop.lcpMs);
-    const si = fmt(desktop.speedIndexMs);
-    const extras = [lcp && `LCP ${lcp}`, si && `SI ${si}`].filter(Boolean).join(", ");
-    parts.push(
-      `desktop ${desktop.performanceScore}/100${extras ? ` (${extras})` : ""}`,
+    const extras = [fmt(desktop.lcpMs) && `LCP ${fmt(desktop.lcpMs)}`, fmt(desktop.speedIndexMs) && `SI ${fmt(desktop.speedIndexMs)}`]
+      .filter(Boolean)
+      .join(", ");
+    notes.push(
+      `Desktop speed: ${desktop.performanceScore}/100${extras ? ` (${extras})` : ""}.`,
     );
   }
   if (mobile) {
-    const lcp = fmt(mobile.lcpMs);
-    const si = fmt(mobile.speedIndexMs);
-    const extras = [lcp && `LCP ${lcp}`, si && `SI ${si}`].filter(Boolean).join(", ");
-    parts.push(
-      `mobile ${mobile.performanceScore}/100${extras ? ` (${extras})` : ""}`,
+    const extras = [fmt(mobile.lcpMs) && `LCP ${fmt(mobile.lcpMs)}`, fmt(mobile.speedIndexMs) && `SI ${fmt(mobile.speedIndexMs)}`]
+      .filter(Boolean)
+      .join(", ");
+    notes.push(
+      `Mobile speed: ${mobile.performanceScore}/100${extras ? ` (${extras})` : ""}.`,
     );
   }
-  if (parts.length > 0) notes.push(`Lighthouse: ${parts.join(" — ")}.`);
 
-  // PRIORITY 3: single worst Core Web Vital miss. Mobile readings are
-  // weighted higher because most landing-page traffic is mobile.
-  type Miss = { weight: number; text: string };
-  const candidates: Miss[] = [];
-  if (mobile?.lcpMs != null && mobile.lcpMs > 4000) {
-    candidates.push({
-      weight: 4,
-      text: `Mobile LCP is ${(mobile.lcpMs / 1000).toFixed(2)}s — phones are waiting far too long for the main content to paint.`,
-    });
-  }
+  // PRIORITY 3: individual Core Web Vital callouts when they cross
+  // Google's thresholds. Each as its own bullet so the user sees exactly
+  // what's failing — this restores the detail level we had originally.
   if (desktop?.tbtMs != null && desktop.tbtMs > 200) {
-    candidates.push({
-      weight: 3,
-      text: `Total Blocking Time is ${Math.round(desktop.tbtMs)}ms — JavaScript is delaying interactivity.`,
-    });
+    notes.push(
+      `Total Blocking Time is ${Math.round(desktop.tbtMs)}ms — JavaScript is delaying interactivity.`,
+    );
   }
   if (desktop?.cls != null && desktop.cls > 0.1) {
-    candidates.push({
-      weight: 2,
-      text: `Cumulative Layout Shift is ${desktop.cls.toFixed(2)} — content is jumping during load.`,
-    });
+    notes.push(
+      `Cumulative Layout Shift is ${desktop.cls.toFixed(2)} — content is jumping during load.`,
+    );
   }
-  if (desktop?.lcpMs != null && desktop.lcpMs > 2500) {
-    candidates.push({
-      weight: 1,
-      text: `Desktop LCP is ${(desktop.lcpMs / 1000).toFixed(2)}s, slower than Google's 2.5s target.`,
-    });
-  }
-  if (candidates.length > 0) {
-    candidates.sort((a, b) => b.weight - a.weight);
-    notes.push(candidates[0].text);
+  if (mobile?.lcpMs != null && mobile.lcpMs > 4000) {
+    notes.push(
+      `Mobile LCP is ${(mobile.lcpMs / 1000).toFixed(2)}s, well above Google's 2.5s target.`,
+    );
+  } else if (desktop?.lcpMs != null && desktop.lcpMs > 2500) {
+    notes.push(
+      `Desktop LCP is ${(desktop.lcpMs / 1000).toFixed(2)}s, slower than Google's 2.5s target.`,
+    );
   }
 
   const headline =
@@ -310,8 +297,10 @@ function buildSpeedCheck(
       ? "Load speed is mediocre, visitors will feel the lag."
       : "Page is slow enough to hurt conversions.";
 
-  // Hard cap at 3 to match the rule applied to the Claude-authored checks.
-  return { score, headline, notes: notes.slice(0, 3) };
+  // Speed is intentionally allowed more bullets than the other cards
+  // because it's deterministic + multi-strategy. Cap at 6 so it stays
+  // skimmable while still surfacing the desktop + mobile detail.
+  return { score, headline, notes: notes.slice(0, 6) };
 }
 
 function stripDataUrlPrefix(s: string | null): string | null {

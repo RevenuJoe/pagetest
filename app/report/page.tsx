@@ -38,10 +38,10 @@ const LOADING_STEPS = [
 const COMPILING_ROTATION = [
   "Compiling your report…",
   "Not too long now, it's worth the wait.",
-  "Compiling your report…",
-  "Putting together the report still…",
-  "Compiling your report…",
-  "Not too long now, it's worth the wait.",
+  "Putting together your report…",
+  "Still compiling your report…",
+  "It's nearly ready.",
+  "It takes time because it's actually a good report.",
 ];
 
 export default function ReportPage() {

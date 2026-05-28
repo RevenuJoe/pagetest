@@ -118,6 +118,11 @@ function extractImprovements(
   const refs = lh.categories?.performance?.auditRefs ?? [];
   const audits = lh.audits ?? {};
 
+  // We pull from BOTH the "score < 1" set (genuine fixes) AND the
+  // "near-passing but still flagged" set (score < 1 but not 0). Anything
+  // in the load-opportunities or diagnostics groups is in scope. Passing
+  // audits with a displayValue are also kept as informational rows so
+  // we comfortably reach 10 surfaced items on healthy pages.
   const out: TechnicalImprovement[] = [];
   for (const ref of refs) {
     if (!ref.id) continue;
@@ -126,14 +131,13 @@ function extractImprovements(
     }
     const audit = audits[ref.id];
     if (!audit) continue;
-    // Skip audits that don't represent a meaningful problem.
     const score = audit.score ?? null;
-    if (score === null) {
-      // Diagnostics often have null score; keep them only when they have a
-      // displayValue (i.e. something noteworthy to report).
-      if (!audit.displayValue) continue;
-    } else if (score >= 1) {
-      continue; // Passing audit — no improvement needed.
+    // Skip only if score is 1 AND there's nothing informational to show.
+    if (score !== null && score >= 1 && !audit.displayValue && !audit.details?.overallSavingsMs && !audit.details?.overallSavingsBytes) {
+      continue;
+    }
+    if (score === null && !audit.displayValue && !audit.details?.overallSavingsMs && !audit.details?.overallSavingsBytes) {
+      continue;
     }
 
     out.push({
@@ -225,8 +229,13 @@ export async function runPageSpeed(
   if (key) params.set("key", key);
 
   const res = await fetch(`${PSI_ENDPOINT}?${params.toString()}`, {
-    // PSI runs Lighthouse on Google's infrastructure, can take 20-40s.
-    signal: AbortSignal.timeout(60_000),
+    // PSI runs Lighthouse on Google's infrastructure. The desktop strategy
+    // is consistently slower than mobile because Lighthouse renders the
+    // full page-emulation viewport (~1350px wide) and waits for all
+    // network activity to settle. 60s sometimes truncated the desktop
+    // run and we'd lose it from the report; 78s gives it enough headroom
+    // while still leaving budget under Vercel's 90s maxDuration.
+    signal: AbortSignal.timeout(78_000),
   });
 
   if (!res.ok) {
