@@ -19,6 +19,7 @@ import { useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import Results from "@/components/Results";
 import {
+  Spinner,
   IconSearch,
   IconGauge,
   IconCamera,
@@ -199,13 +200,18 @@ function ReportView() {
                   {current.text}
                 </p>
               </div>
-              <div className="mt-3.5 h-1.5 w-full overflow-hidden rounded-full bg-beige-line">
-                <div
-                  className="h-full rounded-full bg-accent transition-all duration-[800ms] ease-out"
-                  style={{
-                    width: `${((stepIndex + 1) / LOADING_STEPS.length) * 100}%`,
-                  }}
-                />
+              {/* Spinner on the LEFT, progress bar fills the rest of the
+                  row. Mirrors the layout on the home page running card. */}
+              <div className="mt-3.5 flex items-center gap-3">
+                <Spinner className="h-4 w-4 flex-shrink-0 text-accent" />
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-beige-line">
+                  <div
+                    className="h-full rounded-full bg-accent transition-all duration-[800ms] ease-out"
+                    style={{
+                      width: `${((stepIndex + 1) / LOADING_STEPS.length) * 100}%`,
+                    }}
+                  />
+                </div>
               </div>
               <p className="mt-3 text-xs font-medium text-ink-soft">
                 This is a detailed analysis using multiple APIs, it can take
