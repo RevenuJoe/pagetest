@@ -423,10 +423,12 @@ function Home() {
           </section>
         )}
 
-        {/* mt-auto pushes the marquee to the bottom of main so the footer
-            settles at the bottom of the viewport on a Mac laptop. */}
+        {/* my-auto centres the marquee block vertically inside main —
+            equal flex-grow space above (between the trust line and the
+            cards) and below (between the cards and the footer). Footer
+            stays pinned to the viewport bottom by the outer flex. */}
         {phase === "idle" && (
-          <div className="mt-auto">
+          <div className="my-auto">
             <FeaturesMarqueeSection />
           </div>
         )}
@@ -642,14 +644,15 @@ function FoxIllustration() {
       aria-hidden
       className="pointer-events-none absolute z-0 hidden select-none lg:block"
       style={{
-        // Footer is `border-t + py-9 (72px) + ~21px line` ≈ 94px tall and
-        // pinned to the viewport bottom by the flex layout. Anchor the
-        // fox's bottom edge exactly at the footer's top edge so the full
-        // image is visible and never cropped. Right edge bleeds slightly
-        // off-viewport to match the Figma frame.
+        // The fox.webp is already cropped to its visible content (no
+        // transparent padding), so the image's bottom edge IS the
+        // bottom of the desk legs. Anchor `bottom: 94px` (the footer's
+        // height — `border-t + py-9 + 14px line` ≈ 94px) so the desk
+        // legs sit exactly on the footer's top edge. Right edge bleeds
+        // slightly off-viewport to match the Figma frame.
         right: "-40px",
         bottom: "94px",
-        height: "min(48vw, 460px)",
+        height: "min(38vw, 380px)",
         width: "auto",
       }}
     />
