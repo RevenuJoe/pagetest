@@ -884,14 +884,10 @@ function PageSpeedInsightsBlock({ data }: { data: AnalyzeResponse }) {
   }
   return (
     <div className="space-y-8">
-      {/* Lighthouse category scores — Performance / Accessibility / Best
-          Practices / SEO. Bar chart compares desktop vs mobile. */}
+      {/* Single comparison chart row — five columns side by side:
+          Performance / Accessibility / Best Practices / SEO / Speed Index.
+          Each column has two vertical bars (Desktop / Mobile). */}
       <PsiCategoryComparison desktop={desktop} mobile={mobile} />
-
-      {/* Speed Index — single chart with two bars (Desktop / Mobile). Lower
-          is better; bars use Lighthouse's good/needs-improvement/poor
-          colour bands so divergence between the two devices is obvious. */}
-      <PsiSpeedIndexChart desktop={desktop} mobile={mobile} />
 
       {/* Per-strategy breakdown: 6 chips per device — Performance,
           Accessibility, Best Practices, SEO, Speed Index, Page Weight. */}
@@ -932,9 +928,11 @@ function PsiCategoryComparison({
   desktop?: PsiBreakdown;
   mobile?: PsiBreakdown;
 }) {
-  // 4 categories laid out side-by-side, each with TWO vertical bars
-  // (Desktop / Mobile) so divergence reads at a glance. Bar height
-  // tracks the score as a percentage of 100.
+  // Five columns side-by-side, each with TWO vertical bars (Desktop /
+  // Mobile) so divergence reads at a glance. The first four are normal
+  // 0-100 scores; the fifth (Speed Index) shows seconds with the same
+  // bar UI, mapped to a 0-100 height so it sits visually alongside the
+  // others.
   const BAR_HEIGHT = 140; // px — the chart's max bar height
   return (
     <div className="rounded-card border border-beige-line bg-bg/40 px-5 py-4">
@@ -942,9 +940,9 @@ function PsiCategoryComparison({
         className="text-[10px] font-bold uppercase text-ink-soft"
         style={{ letterSpacing: "0.16em" }}
       >
-        Page Speed Insights — Desktop vs Mobile
+        Desktop vs. Mobile
       </div>
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {PSI_CATEGORIES.map((cat) => {
           const d = catScore(desktop, cat.key);
           const m = catScore(mobile, cat.key);
@@ -963,93 +961,82 @@ function PsiCategoryComparison({
                 className="mt-3 flex w-full items-end justify-center gap-3"
                 style={{ height: BAR_HEIGHT + 24 /* room for value labels */ }}
               >
-                <VerticalBar
-                  label="Desktop"
-                  score={d}
-                  maxHeight={BAR_HEIGHT}
-                />
-                <VerticalBar
-                  label="Mobile"
-                  score={m}
-                  maxHeight={BAR_HEIGHT}
-                />
+                <VerticalBar label="Desktop" score={d} maxHeight={BAR_HEIGHT} />
+                <VerticalBar label="Mobile" score={m} maxHeight={BAR_HEIGHT} />
               </div>
             </div>
           );
         })}
+
+        {/* Speed Index column — sits on the same row as the four
+            categories. Bar height comes from a 0-100 score derived from
+            seconds (Lighthouse's bands), but the value above the bar is
+            the actual seconds reading so the user sees what matters. */}
+        <div className="flex flex-col items-center rounded-card border border-beige-line bg-card px-3 pb-3 pt-3">
+          <div
+            className="text-center text-[11px] font-bold uppercase text-ink"
+            style={{ letterSpacing: "0.06em" }}
+          >
+            Speed Index
+          </div>
+          <div
+            className="mt-3 flex w-full items-end justify-center gap-3"
+            style={{ height: BAR_HEIGHT + 24 }}
+          >
+            <SpeedIndexVerticalBar
+              label="Desktop"
+              ms={desktop?.speedIndexMs ?? null}
+              maxHeight={BAR_HEIGHT}
+            />
+            <SpeedIndexVerticalBar
+              label="Mobile"
+              ms={mobile?.speedIndexMs ?? null}
+              maxHeight={BAR_HEIGHT}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
 /**
- * Speed Index comparison chart. Two vertical bars side-by-side, Desktop on
- * the left and Mobile on the right, showing Speed Index in seconds. Lower
- * is better; bar colour follows Lighthouse's official thresholds:
- *   ≤ 3.4s  good (green)
- *   ≤ 5.8s  needs improvement (orange)
- *   > 5.8s  poor (red)
+ * Speed Index → 0-100 score. Maps Lighthouse's official bands so the
+ * derived score lines up with the green/orange/red colour bands used by
+ * the other category bars:
+ *   ≤ 3.4s → 90+ (green)
+ *   3.4-5.8s → 50-90 (orange)
+ *   > 5.8s → 0-50 (red)
+ * Piecewise linear inside each band.
  */
-function PsiSpeedIndexChart({
-  desktop,
-  mobile,
-}: {
-  desktop?: PsiBreakdown;
-  mobile?: PsiBreakdown;
-}) {
-  const desktopS = desktop?.speedIndexMs != null ? desktop.speedIndexMs / 1000 : null;
-  const mobileS = mobile?.speedIndexMs != null ? mobile.speedIndexMs / 1000 : null;
-  // If neither strategy returned a Speed Index, don't render the chart.
-  if (desktopS == null && mobileS == null) return null;
-
-  // Y-axis max scales to the data with a 10s floor so a fast desktop bar
-  // doesn't shoot to 100% height when mobile is 2s slower.
-  const maxSecs = Math.max(10, desktopS ?? 0, mobileS ?? 0);
-  const BAR_HEIGHT = 140; // px — matches the categories chart
-
-  return (
-    <div className="rounded-card border border-beige-line bg-bg/40 px-5 py-4">
-      <div
-        className="text-[10px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.16em" }}
-      >
-        Speed Index — Desktop vs Mobile (lower is better)
-      </div>
-      <div className="mt-5 flex items-end justify-center gap-12" style={{ height: BAR_HEIGHT + 32 }}>
-        <SpeedIndexBar label="Desktop" seconds={desktopS} maxSecs={maxSecs} maxHeight={BAR_HEIGHT} />
-        <SpeedIndexBar label="Mobile" seconds={mobileS} maxSecs={maxSecs} maxHeight={BAR_HEIGHT} />
-      </div>
-    </div>
-  );
+function speedIndexToScore(secs: number): number {
+  if (secs <= 3.4) return Math.round(100 - (secs / 3.4) * 10);
+  if (secs <= 5.8) return Math.round(90 - ((secs - 3.4) / 2.4) * 40);
+  return Math.max(0, Math.round(50 - ((secs - 5.8) / 4.2) * 50));
 }
 
-/** One Speed Index bar. Colour matches Lighthouse's official bands. */
-function SpeedIndexBar({
+/**
+ * Vertical bar for Speed Index. Visually matches the other category
+ * bars in the chart so all five columns share one design language. The
+ * difference is the value shown ABOVE the bar: seconds instead of an
+ * integer score.
+ */
+function SpeedIndexVerticalBar({
   label,
-  seconds,
-  maxSecs,
+  ms,
   maxHeight,
 }: {
   label: string;
-  seconds: number | null;
-  maxSecs: number;
+  ms: number | null;
   maxHeight: number;
 }) {
-  // Lighthouse colour bands for Speed Index (seconds, lower is better).
-  // Source: web.dev/speed-index/.
-  const color =
-    seconds == null
-      ? "#c4c0b6"
-      : seconds <= 3.4
-      ? scoreColor(95) // green
-      : seconds <= 5.8
-      ? scoreColor(60) // orange
-      : scoreColor(30); // red
-  const value = seconds ?? 0;
-  const h = (Math.max(0.05, value) / maxSecs) * maxHeight;
+  const seconds = ms == null ? null : ms / 1000;
+  const score = seconds == null ? null : speedIndexToScore(seconds);
+  const color = score == null ? "#c4c0b6" : scoreColor(score);
+  const h = ((score ?? 0) / 100) * maxHeight;
   return (
-    <div className="flex w-full max-w-[80px] flex-col items-center justify-end">
-      <div className="text-[14px] font-bold tabular-nums leading-none" style={{ color }}>
+    <div className="flex w-full max-w-[44px] flex-col items-center justify-end">
+      <div className="text-[13px] font-bold tabular-nums leading-none" style={{ color }}>
         {seconds == null ? "—" : `${seconds.toFixed(2)}s`}
       </div>
       <div
@@ -1061,7 +1048,7 @@ function SpeedIndexBar({
         }}
       />
       <div
-        className="mt-1.5 text-[10px] font-bold uppercase text-ink-soft"
+        className="mt-1.5 text-[9px] font-bold uppercase text-ink-soft"
         style={{ letterSpacing: "0.08em" }}
       >
         {label}
