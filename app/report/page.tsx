@@ -18,30 +18,47 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import Results from "@/components/Results";
-import { Spinner } from "@/components/Icons";
+import {
+  IconSearch,
+  IconGauge,
+  IconCamera,
+  IconScale,
+  IconText,
+  IconStar,
+  IconReport,
+  IconClock,
+  IconHourglass,
+  IconCheck,
+  IconWrench,
+} from "@/components/Icons";
 import { analysisStore } from "@/lib/analysisStore";
 import { savedStore } from "@/lib/savedStore";
 import { useActiveRun, useSavedReports } from "@/lib/storeHooks";
 import type { AnalyzeResponse } from "@/lib/types";
 
-const LOADING_STEPS = [
-  "Booting up Lighthouse on the Google's servers…",
-  "Running speed checks on mobile and desktop…",
-  "Screenshotting above the fold loads…",
-  "Comparing to best practices…",
-  "Reading the page content…",
-  "Claude is grading page against Revenu criteria…",
-  "Compiling your report…",
+interface LoadingStep {
+  text: string;
+  icon: React.ReactNode;
+}
+
+const LOADING_STEPS: LoadingStep[] = [
+  { text: "Booting up Lighthouse on the Google's servers…", icon: <IconSearch /> },
+  { text: "Running speed checks on mobile and desktop…", icon: <IconGauge /> },
+  { text: "Screenshotting above the fold loads…", icon: <IconCamera /> },
+  { text: "Comparing to best practices…", icon: <IconScale /> },
+  { text: "Reading the page content…", icon: <IconText /> },
+  { text: "Claude is grading page against Revenu criteria…", icon: <IconStar /> },
+  { text: "Compiling your report…", icon: <IconReport /> },
 ];
 
 // Engaging cycle for the final "Compiling" step (used during reruns).
-const COMPILING_ROTATION = [
-  "Not too long now, it's worth the wait...",
-  "It's nearly ready...",
-  "I promise it's basically done",
-  "Last tweaks",
-  "Wow this is strange, sorry",
-  "It's nearly ready...",
+const COMPILING_ROTATION: LoadingStep[] = [
+  { text: "Not too long now, it's worth the wait...", icon: <IconClock /> },
+  { text: "It's nearly ready...", icon: <IconHourglass /> },
+  { text: "I promise it's basically done", icon: <IconCheck className="h-[18px] w-[18px]" /> },
+  { text: "Last tweaks", icon: <IconWrench /> },
+  { text: "Wow this is strange, sorry", icon: <IconHourglass /> },
+  { text: "It's nearly ready...", icon: <IconClock /> },
 ];
 
 export default function ReportPage() {
@@ -164,15 +181,22 @@ function ReportView() {
           </div>
         </section>
 
-        {isLoading && (
+        {isLoading && (() => {
+          const current =
+            stepIndex === LOADING_STEPS.length - 1
+              ? COMPILING_ROTATION[rotationIndex]
+              : LOADING_STEPS[stepIndex];
+          return (
           <section className="mx-auto mt-7 max-w-[640px]">
             <div className="rounded-card border border-beige-line bg-card p-[22px] shadow-card">
               <div className="flex items-center gap-3">
-                <Spinner className="h-[18px] w-[18px] text-accent" />
+                {/* Step-specific icon in a small green chip. Same pattern
+                    as the home page running card. */}
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-soft text-accent-dark">
+                  {current.icon}
+                </span>
                 <p className="text-sm font-semibold text-ink">
-                  {stepIndex === LOADING_STEPS.length - 1
-                    ? COMPILING_ROTATION[rotationIndex]
-                    : LOADING_STEPS[stepIndex]}
+                  {current.text}
                 </p>
               </div>
               <div className="mt-3.5 h-1.5 w-full overflow-hidden rounded-full bg-beige-line">
@@ -192,7 +216,8 @@ function ReportView() {
               </p>
             </div>
           </section>
-        )}
+          );
+        })()}
 
         {focusResult && (
           <section ref={resultsRef} className="mt-8 scroll-mt-12">

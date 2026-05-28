@@ -144,6 +144,58 @@ export function IconBulb({ className = "h-[18px] w-[18px]" }: { className?: stri
     </svg>
   );
 }
+export function IconSearch({ className = "h-[18px] w-[18px]" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+export function IconCamera({ className = "h-[18px] w-[18px]" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M3 8h3l2-3h8l2 3h3v11H3z" />
+      <circle cx="12" cy="13" r="3.5" />
+    </svg>
+  );
+}
+export function IconScale({ className = "h-[18px] w-[18px]" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M12 4v16" />
+      <path d="M5 8h14" />
+      <path d="M2 12l3-6 3 6a3 3 0 0 1-6 0z" />
+      <path d="M16 12l3-6 3 6a3 3 0 0 1-6 0z" />
+      <path d="M8 20h8" />
+    </svg>
+  );
+}
+export function IconStar({ className = "h-[18px] w-[18px]" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <polygon points="12 2 15 9 22 9.3 17 14 18.5 21 12 17.5 5.5 21 7 14 2 9.3 9 9 12 2" />
+    </svg>
+  );
+}
+export function IconClock({ className = "h-[18px] w-[18px]" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
+export function IconHourglass({ className = "h-[18px] w-[18px]" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M6 2h12" />
+      <path d="M6 22h12" />
+      <path d="M6 2v4l6 6-6 6v4" />
+      <path d="M18 2v4l-6 6 6 6v4" />
+    </svg>
+  );
+}
 export function Spinner({ className = "h-[18px] w-[18px]" }: { className?: string }) {
   return (
     <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" fill="none" aria-hidden>
