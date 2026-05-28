@@ -130,8 +130,10 @@ function extractBodyText(html: string): string {
   const text = decodeEntities(stripTags(cleaned))
     .replace(/\s+/g, " ")
     .trim();
-  // Cap at 20k chars — Claude doesn't need more to judge content quality.
-  return text.length > 20_000 ? text.slice(0, 20_000) + " …" : text;
+  // Cap at 60k chars so Claude sees the entire page top to bottom —
+  // forms in the footer, FAQ sections, social-proof logo captions all
+  // count. The Anthropic context window easily fits this.
+  return text.length > 60_000 ? text.slice(0, 60_000) + " …" : text;
 }
 
 function stripTags(s: string): string {

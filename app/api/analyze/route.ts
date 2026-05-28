@@ -95,8 +95,13 @@ export async function POST(req: NextRequest) {
     const speedCheck = buildSpeedCheck(desktop, mobile, technicalImprovements);
 
     // Pull screenshots from PSI (already base64-encoded JPEGs, prefixed).
+    // Send Claude BOTH the above-the-fold viewport AND the full-page
+    // screenshots so it can see content below the fold — forms at the
+    // bottom, FAQ sections, social-proof logo strips, footer CTAs.
     const desktopShotData = stripDataUrlPrefix(desktop?.finalScreenshot ?? null);
     const mobileShotData = stripDataUrlPrefix(mobile?.finalScreenshot ?? null);
+    const desktopFullData = stripDataUrlPrefix(desktop?.fullPageScreenshot ?? null);
+    const mobileFullData = stripDataUrlPrefix(mobile?.fullPageScreenshot ?? null);
 
     const ai = await analyzeWithClaude({
       url,
@@ -106,6 +111,8 @@ export async function POST(req: NextRequest) {
       structure: page.value.structure,
       desktopScreenshotB64: desktopShotData,
       mobileScreenshotB64: mobileShotData,
+      desktopFullPageB64: desktopFullData,
+      mobileFullPageB64: mobileFullData,
     });
 
     const checks = {

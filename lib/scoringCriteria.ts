@@ -31,9 +31,13 @@ export const INTRO = `You are a senior conversion-rate-optimisation and UX revie
 export const INPUTS = `You will be given:
 - The page URL, <title>, and meta description
 - A structural summary (heading counts, button/form counts, etc.)
-- The page's body text (may be truncated)
-- A screenshot of the desktop above-the-fold viewport
-- A screenshot of the mobile above-the-fold viewport`;
+- The page's body text covering the FULL page top to bottom (may be lightly truncated for very long pages)
+- A screenshot of the desktop ABOVE-THE-FOLD viewport (first paint, used specifically for the aboveTheFold dimension)
+- A screenshot of the mobile ABOVE-THE-FOLD viewport
+- A FULL-PAGE desktop screenshot (the entire page scrolled top to bottom)
+- A FULL-PAGE mobile screenshot (the entire page scrolled top to bottom)
+
+CRITICAL: when judging Content, Digestibility, and CRO you must take the WHOLE page into account, not just the hero. Bottom-of-page forms, FAQ sections, social-proof logo strips, footer CTAs, and customer quotes count. Do NOT claim something is missing without checking the full-page screenshot and the body text together — both are provided so you can verify.`;
 
 // ---------------------------------------------------------------------------
 // CRITERIA — one constant per dimension. Edit these freely.

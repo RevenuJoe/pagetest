@@ -27,10 +27,17 @@ export interface ClaudeInput {
   metaDescription: string | null;
   bodyText: string;
   structure: PageStructure;
-  /** Base64-only (no data URL prefix) JPEG of the desktop final viewport. */
+  /** Base64-only JPEG of the desktop above-the-fold viewport (first paint).
+   *  Used specifically for the aboveTheFold dimension. */
   desktopScreenshotB64: string | null;
-  /** Base64-only (no data URL prefix) JPEG of the mobile final viewport. */
+  /** Base64-only JPEG of the mobile above-the-fold viewport (first paint). */
   mobileScreenshotB64: string | null;
+  /** Base64-only JPEG of the FULL desktop page (scrolled). Gives Claude the
+   *  full picture so it can see forms, FAQs, footer CTAs, social proof
+   *  logos, and anything else below the fold. */
+  desktopFullPageB64: string | null;
+  /** Base64-only JPEG of the FULL mobile page (scrolled). */
+  mobileFullPageB64: string | null;
 }
 
 export type ClaudeChecks = Pick<
@@ -66,10 +73,12 @@ export async function analyzeWithClaude(
     text: buildPromptText(input),
   });
 
+  // Above-the-fold screenshots — used specifically for the aboveTheFold
+  // dimension. Sent first so Claude evaluates them in that context.
   if (input.desktopScreenshotB64) {
     userBlocks.push({
       type: "text",
-      text: "Desktop above-the-fold screenshot:",
+      text: "Desktop ABOVE-THE-FOLD screenshot (what visitors see before any scroll):",
     });
     userBlocks.push({
       type: "image",
@@ -83,7 +92,7 @@ export async function analyzeWithClaude(
   if (input.mobileScreenshotB64) {
     userBlocks.push({
       type: "text",
-      text: "Mobile above-the-fold screenshot:",
+      text: "Mobile ABOVE-THE-FOLD screenshot (what visitors see before any scroll):",
     });
     userBlocks.push({
       type: "image",
@@ -91,6 +100,37 @@ export async function analyzeWithClaude(
         type: "base64",
         media_type: "image/jpeg",
         data: input.mobileScreenshotB64,
+      },
+    });
+  }
+
+  // Full-page screenshots — give Claude the WHOLE page so it can see
+  // forms below the fold, FAQ sections, social-proof logos, footer CTAs.
+  if (input.desktopFullPageB64) {
+    userBlocks.push({
+      type: "text",
+      text: "Desktop FULL-PAGE screenshot (entire page scrolled). Use this to evaluate content, digestibility, CRO. The page may include forms, FAQs, social proof logos, footer CTAs that you must take into account:",
+    });
+    userBlocks.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/jpeg",
+        data: input.desktopFullPageB64,
+      },
+    });
+  }
+  if (input.mobileFullPageB64) {
+    userBlocks.push({
+      type: "text",
+      text: "Mobile FULL-PAGE screenshot (entire page scrolled):",
+    });
+    userBlocks.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/jpeg",
+        data: input.mobileFullPageB64,
       },
     });
   }
@@ -128,12 +168,15 @@ function buildPromptText(input: ClaudeInput): string {
     `- <nav>: ${s.hasNav}, <footer>: ${s.hasFooter}`,
     `- Word count: ${s.wordCount}`,
     "",
-    "Body text (may be truncated):",
+    "Body text of the FULL page (top to bottom, may be lightly truncated):",
     "---",
-    input.bodyText.slice(0, 12_000),
+    // Bumped well past the previous 12K cap so Claude sees the FAQ
+    // section, the footer CTA copy, social-proof captions, etc. Claude's
+    // context window easily fits this.
+    input.bodyText.slice(0, 60_000),
     "---",
     "",
-    "Score the page on content, digestibility, cro, aboveTheFold, mobile. Return JSON only.",
+    "You have FOUR images attached: desktop above-the-fold, mobile above-the-fold, desktop full-page, and mobile full-page. Use the full-page screenshots to evaluate everything below the fold — forms at the bottom of the page, FAQ sections, customer-logo strips, and footer CTAs all count and must be considered. Score the page on content, digestibility, cro, aboveTheFold, mobile. Return JSON only.",
   ].join("\n");
 }
 
