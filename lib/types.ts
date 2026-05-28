@@ -61,6 +61,33 @@ export interface TechnicalImprovement {
   headings?: Array<{ key?: string; label?: string; valueType?: string }>;
 }
 
+/**
+ * Per-strategy (desktop or mobile) Lighthouse breakdown surfaced in the
+ * "PageSpeed Insights" report section. Wraps the four category scores
+ * (performance / accessibility / best-practices / SEO) plus the headline
+ * timing metrics from PSI's audits.
+ */
+export interface PsiBreakdown {
+  performanceScore: number;
+  accessibilityScore: number | null;
+  bestPracticesScore: number | null;
+  seoScore: number | null;
+  lcpMs: number | null;
+  fcpMs: number | null;
+  speedIndexMs: number | null;
+  tbtMs: number | null;
+  cls: number | null;
+  ttiMs: number | null;
+  serverResponseMs: number | null;
+  totalByteWeight: number | null;
+  domSize: number | null;
+}
+
+export interface PsiInsightsBundle {
+  desktop?: PsiBreakdown;
+  mobile?: PsiBreakdown;
+}
+
 export interface AnalyzeResponse {
   url: string;
   /** User-set display name for the report. Optional — when not set, the UI
@@ -84,6 +111,9 @@ export interface AnalyzeResponse {
   /** Lighthouse audit suggestions (opportunities + diagnostics) merged
    *  across desktop and mobile runs, sorted by impact. */
   technicalImprovements?: TechnicalImprovement[];
+  /** Raw per-strategy PSI breakdown surfaced as its own report section so
+   *  no useful data from the API run is lost. */
+  pageSpeedInsights?: PsiInsightsBundle;
   /** High-resolution above-the-fold screenshot from the desktop Lighthouse run, as data URL. */
   desktopScreenshot?: string;
   /** High-resolution above-the-fold screenshot from the mobile Lighthouse run, as data URL. */

@@ -17,6 +17,12 @@ export interface PageSpeedResult {
   strategy: Strategy;
   /** 0–100 Lighthouse performance score. */
   performanceScore: number;
+  /** 0–100 Lighthouse accessibility score. Null when PSI didn't return it. */
+  accessibilityScore: number | null;
+  /** 0–100 Lighthouse best-practices score. */
+  bestPracticesScore: number | null;
+  /** 0–100 Lighthouse SEO score. */
+  seoScore: number | null;
   /** Largest Contentful Paint, in ms. */
   lcpMs: number | null;
   /** First Contentful Paint, in ms. */
@@ -27,6 +33,14 @@ export interface PageSpeedResult {
   tbtMs: number | null;
   /** Cumulative Layout Shift score. */
   cls: number | null;
+  /** Time to Interactive, in ms. */
+  ttiMs: number | null;
+  /** Server response time (TTFB), in ms. */
+  serverResponseMs: number | null;
+  /** Total page weight in bytes. */
+  totalByteWeight: number | null;
+  /** Number of DOM nodes Lighthouse counted. */
+  domSize: number | null;
   /** Low-res data:image/jpeg;base64,... of the final viewport. We pass this
    *  to Claude for vision analysis — keeps the API request small. */
   finalScreenshot: string | null;
@@ -74,6 +88,9 @@ interface PsiApiResponse {
   lighthouseResult?: {
     categories?: {
       performance?: { score?: number; auditRefs?: PsiAuditRef[] };
+      accessibility?: { score?: number };
+      "best-practices"?: { score?: number };
+      seo?: { score?: number };
     };
     audits?: Record<string, PsiAudit>;
     /** Full HTML retrieved by Lighthouse. */
@@ -197,11 +214,13 @@ export async function runPageSpeed(
   url: string,
   strategy: Strategy,
 ): Promise<PageSpeedResult> {
-  const params = new URLSearchParams({
-    url,
-    strategy,
-    category: "performance",
-  });
+  // Ask PSI for all four Lighthouse categories so we can surface
+  // accessibility / best-practices / SEO scores alongside performance.
+  const params = new URLSearchParams({ url, strategy });
+  params.append("category", "performance");
+  params.append("category", "accessibility");
+  params.append("category", "best-practices");
+  params.append("category", "seo");
   const key = process.env.PAGESPEED_API_KEY;
   if (key) params.set("key", key);
 
@@ -230,9 +249,14 @@ export async function runPageSpeed(
   }
 
   const audits = lh.audits ?? {};
-  const performanceScore = Math.round(
-    ((lh.categories?.performance?.score ?? 0) as number) * 100,
+  const categoryScore = (raw: number | undefined | null): number | null =>
+    typeof raw === "number" ? Math.round(raw * 100) : null;
+  const performanceScore = categoryScore(lh.categories?.performance?.score) ?? 0;
+  const accessibilityScore = categoryScore(lh.categories?.accessibility?.score);
+  const bestPracticesScore = categoryScore(
+    lh.categories?.["best-practices"]?.score,
   );
+  const seoScore = categoryScore(lh.categories?.seo?.score);
 
   const finalScreenshot = audits["final-screenshot"]?.details?.data ?? null;
   const fullPageScreenshot =
@@ -241,11 +265,18 @@ export async function runPageSpeed(
   return {
     strategy,
     performanceScore,
+    accessibilityScore,
+    bestPracticesScore,
+    seoScore,
     lcpMs: audits["largest-contentful-paint"]?.numericValue ?? null,
     fcpMs: audits["first-contentful-paint"]?.numericValue ?? null,
     speedIndexMs: audits["speed-index"]?.numericValue ?? null,
     tbtMs: audits["total-blocking-time"]?.numericValue ?? null,
     cls: audits["cumulative-layout-shift"]?.numericValue ?? null,
+    ttiMs: audits["interactive"]?.numericValue ?? null,
+    serverResponseMs: audits["server-response-time"]?.numericValue ?? null,
+    totalByteWeight: audits["total-byte-weight"]?.numericValue ?? null,
+    domSize: audits["dom-size"]?.numericValue ?? null,
     finalScreenshot,
     fullPageScreenshot,
     renderedHtml: null,
@@ -288,5 +319,7 @@ export function mergeImprovements(
       if (aScore !== bScore) return aScore - bScore;
       return a.title.localeCompare(b.title);
     })
-    .slice(0, 15);
+    // Cap at 25 so even on a clean page we comfortably surface 10+ when
+    // Lighthouse finds plenty of opportunities + diagnostics.
+    .slice(0, 25);
 }

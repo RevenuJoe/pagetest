@@ -23,8 +23,11 @@ import { analyzeWithClaude } from "@/lib/claude";
 import type {
   AnalyzeResponse,
   CheckResult,
+  PsiBreakdown,
+  PsiInsightsBundle,
   TechnicalImprovement,
 } from "@/lib/types";
+import type { PageSpeedResult } from "@/lib/pagespeed";
 
 // Lighthouse can take 30+ seconds. Vercel's default is 10s — we need more.
 export const maxDuration = 90;
@@ -124,6 +127,15 @@ export async function POST(req: NextRequest) {
         6,
     );
 
+    // Bundle the raw per-strategy PSI breakdown so the new "PageSpeed
+    // Insights" section can render it. Everything except the screenshots
+    // and the technical-improvements list is dropped here — those are
+    // already surfaced in their own sections.
+    const psiInsights: PsiInsightsBundle = {
+      desktop: desktop ? psiToBreakdown(desktop) : undefined,
+      mobile: mobile ? psiToBreakdown(mobile) : undefined,
+    };
+
     const response: AnalyzeResponse = {
       url,
       // Cleaned <title> from the scanned page (when present). The saved-reports
@@ -141,6 +153,7 @@ export async function POST(req: NextRequest) {
         desktop?.fullPageScreenshot ?? desktop?.finalScreenshot ?? undefined,
       mobileScreenshot:
         mobile?.fullPageScreenshot ?? mobile?.finalScreenshot ?? undefined,
+      pageSpeedInsights: psiInsights,
     };
 
     return NextResponse.json(response);
@@ -284,6 +297,24 @@ function normalizeUrl(input: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+function psiToBreakdown(r: PageSpeedResult): PsiBreakdown {
+  return {
+    performanceScore: r.performanceScore,
+    accessibilityScore: r.accessibilityScore,
+    bestPracticesScore: r.bestPracticesScore,
+    seoScore: r.seoScore,
+    lcpMs: r.lcpMs,
+    fcpMs: r.fcpMs,
+    speedIndexMs: r.speedIndexMs,
+    tbtMs: r.tbtMs,
+    cls: r.cls,
+    ttiMs: r.ttiMs,
+    serverResponseMs: r.serverResponseMs,
+    totalByteWeight: r.totalByteWeight,
+    domSize: r.domSize,
+  };
 }
 
 function errorMessage(err: unknown): string {
