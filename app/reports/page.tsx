@@ -139,14 +139,13 @@ function ReportRow({
   }
 
   return (
-    <li className="relative flex items-start gap-5 rounded-card border border-beige-line bg-card px-6 py-5 shadow-card">
-      {/* SCORE column — label on top, circle beneath. Pushed down by ~4px
-          (about 20% more top padding above SCORE) and circle a touch
-          smaller so the whole column sits lower next to the Name row. */}
-      <div className="flex flex-shrink-0 flex-col items-center gap-1.5 mt-1">
+    <li className="relative flex items-start gap-8 rounded-card border border-beige-line bg-card px-8 py-6 shadow-card">
+      {/* SCORE column — larger label + bigger circle to match the reference
+          screenshot. */}
+      <div className="flex flex-shrink-0 flex-col items-center gap-3 mt-1">
         <div
-          className="text-[10px] font-bold uppercase text-ink-soft"
-          style={{ letterSpacing: "0.16em" }}
+          className="text-[13px] font-bold uppercase text-ink-soft"
+          style={{ letterSpacing: "0.18em" }}
         >
           Score
         </div>
@@ -155,19 +154,18 @@ function ReportRow({
           style={{
             background: `${color}1a`,
             color,
-            fontSize: 18,
-            width: 44,
-            height: 44,
+            fontSize: 32,
+            width: 76,
+            height: 76,
           }}
         >
           {report.overall}
         </div>
       </div>
 
-      {/* Metadata column — three labelled rows stacked with a tight gap.
-          Top-aligned with the score column so the SCORE label and NAME
-          label sit on the same Y. */}
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+      {/* Metadata column — three labelled rows with larger type and
+          generous vertical spacing between rows. */}
+      <div className="flex min-w-0 flex-1 flex-col gap-4 mt-1">
         <LabelledRow label="Name">
           {editing ? (
             <input
@@ -185,14 +183,14 @@ function ReportRow({
                   setEditing(false);
                 }
               }}
-              className="w-full rounded-md border border-accent bg-card px-2 py-0.5 text-[14px] font-semibold tracking-tight text-ink outline-none focus:ring-4 focus:ring-accent-soft"
+              className="w-full rounded-md border border-accent bg-card px-2 py-1 text-[18px] font-semibold tracking-tight text-ink outline-none focus:ring-4 focus:ring-accent-soft"
             />
           ) : (
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onOpen}
-                className="min-w-0 max-w-full truncate text-left text-[14px] font-semibold tracking-tight text-ink hover:text-accent"
+                className="min-w-0 max-w-full truncate text-left text-[18px] font-semibold tracking-tight text-ink hover:text-accent"
                 title={report.url}
               >
                 {displayName(report)}
@@ -202,9 +200,9 @@ function ReportRow({
                 onClick={() => setEditing(true)}
                 aria-label="Rename this report"
                 title="Rename"
-                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-ink-soft transition hover:bg-bg hover:text-accent"
+                className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-ink-soft transition hover:bg-bg hover:text-accent"
               >
-                <IconPencil />
+                <IconPencil className="h-[18px] w-[18px]" />
               </button>
             </div>
           )}
@@ -215,7 +213,7 @@ function ReportRow({
             href={report.url}
             target="_blank"
             rel="noreferrer noopener"
-            className="block min-w-0 truncate text-[14px] font-semibold tracking-tight text-ink hover:text-accent"
+            className="block min-w-0 truncate text-[18px] font-semibold tracking-tight text-ink hover:text-accent"
             title={report.url}
           >
             {report.url}
@@ -223,7 +221,7 @@ function ReportRow({
         </LabelledRow>
 
         <LabelledRow label="Time of Report">
-          <span className="text-[14px] font-semibold tracking-tight text-ink">
+          <span className="text-[18px] font-semibold tracking-tight text-ink">
             {new Date(report.analyzedAt).toLocaleString()}
           </span>
           {running && (
@@ -286,10 +284,10 @@ function LabelledRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-baseline gap-2 min-w-0">
+    <div className="flex items-baseline gap-3 min-w-0">
       <span
-        className="flex-shrink-0 text-[10px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.12em" }}
+        className="flex-shrink-0 text-[13px] font-bold uppercase text-ink-soft"
+        style={{ letterSpacing: "0.16em" }}
       >
         {label}:
       </span>
