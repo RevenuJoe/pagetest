@@ -150,14 +150,17 @@ Look for:
 - LOTS of clickable conversion paths throughout the page. Ideally every major section has at least one CTA button or interactive element pointing at conversion. Comment on which sections have CTAs and which don't.
 - Multiple competing CTAs are GOOD, not bad. Two clear primary actions (e.g. "Book a demo" AND "Get started for free") give the user a choice and lift overall conversion. A single CTA option is a negative signal; score it accordingly.
 - A clear conversion widget above the fold (form, multi-step question, calculator, or a prominent primary CTA) AND another at the bottom of the page (e.g. a final form or final CTA section). Having only one or having neither loses major points.
-- MULTI-STEP FORMS THAT OPEN WITH A QUESTION are one of the strongest conversion widgets and should be scored HIGHER than a plain email field. Examples: "What is your annual revenue?", "How many orders do you get per month?", "What's your biggest channel?". The question pulls people in, then the form asks for personal info later.
-- DROPDOWN or PRESELECTED-RANGE answers on those opening questions are even better than open-text fields. Clicking a preset option ("£10k-£50k", "£50k-£250k", "£250k+") is lower friction than typing, so dropdown / radio / chip-style answer pickers convert higher than free-text inputs. When you see a hero form that opens with a question AND uses a dropdown / preselected options for the answer, call this out positively. When the same question forces the user to type a free-text answer, recommend converting it to a dropdown or preset options.
+- THE IDEAL HERO FORM — read this as ONE pattern, not two separate things. A "multi-step form opening with a question" and a "dropdown / preset-range answer" describe the SAME ideal: the visitor sees a qualifying question (e.g. "What is your annual revenue?", "How many orders do you get per month?", "What's your biggest channel?") and answers it by clicking a preset option (e.g. "£10k-£50k", "£50k-£250k", "£250k+") via a dropdown / radio / chip picker, BEFORE the form asks for an email or any personal info. This pattern converts significantly higher than a plain email-only form because the question pulls people in and clicking a preset is lower friction than typing.
+  Scoring guidance:
+    • Page has a question + dropdown/preset answer above the fold → score HIGH on this dimension and call it out positively. Do NOT recommend changing it. Specifically: do NOT recommend converting it to "a multi-step form", "a question-led form", or "preset ranges" — it already IS that pattern.
+    • Page opens with a question but the answer is a free-text input → recommend converting the answer to a dropdown / preset options. Do NOT say "convert to a multi-step form" — the multi-step is already in place.
+    • Page only has an email field → recommend introducing a question-led step BEFORE the email capture, with preset answers from day one.
+    • Page opens with a question via preset answers but never captures an email → recommend adding an email capture step AFTER the question.
 - Form quality: short forms (1-3 fields above the fold) outperform long forms. CTA button copy that promises a specific outcome ("Get my free audit") outperforms generic copy ("Submit", "Send", "Learn more").
 - Sticky CTAs, exit-intent forms, or chat widgets are bonuses.
 
 When making recommendations:
-- If the page only has an email field, suggest opening with a question-led multi-step form instead, to lift engagement.
-- If the page opens with a question but never captures an email, suggest adding an email capture step after the question.
+- (See "THE IDEAL HERO FORM" above for the question+dropdown logic — do not duplicate or contradict it.)
 - If the page has only one CTA, suggest adding a clear secondary CTA alongside it (e.g. add "Get started for free" next to the existing "Book a demo").
 - If specific sections have no CTA, name those sections and suggest adding one.
 - If CTA copy is generic, suggest specific replacement copy that promises an outcome.`;

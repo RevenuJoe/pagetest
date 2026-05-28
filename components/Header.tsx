@@ -1,17 +1,38 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { IconReport } from "@/components/Icons";
 import { useSavedReports } from "@/lib/storeHooks";
 
 export default function Header({ active = false }: { active?: boolean }) {
   const saved = useSavedReports();
   const count = saved.length;
+  const router = useRouter();
   return (
     <header className="px-6 py-5 sm:px-14">
       <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-6">
         <Link
           href="/"
+          // Explicit click handler: navigate to the home root (drop any
+          // ?url= query params on /report or /reports) AND scroll to top
+          // so the user always lands on the hero, even if they were
+          // scrolled deep into a report. The Link itself is the source
+          // of truth for the href so right-click + open-in-new-tab still
+          // works; the onClick just enforces clean behaviour on a
+          // primary click.
+          onClick={(e) => {
+            // Allow modifier-click / middle-click to do their normal thing.
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+              return;
+            }
+            e.preventDefault();
+            router.push("/");
+            // Scroll to top after the navigation kicks in. Using
+            // requestAnimationFrame so it happens after Next's route
+            // transition has started painting.
+            requestAnimationFrame(() => window.scrollTo({ top: 0 }));
+          }}
           className="text-[clamp(18px,1.6vw,24px)] font-semibold text-ink"
           style={{ letterSpacing: "0.24em", lineHeight: 1 }}
         >
