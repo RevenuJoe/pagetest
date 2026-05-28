@@ -6,11 +6,15 @@
 
 export default function Section({
   title,
+  icon,
   defaultOpen = true,
   headerAction,
   children,
 }: {
   title: string;
+  /** Optional small icon rendered on the LEFT of the title. Picks up the
+   *  same ink-soft tint as the title text via currentColor. */
+  icon?: React.ReactNode;
   defaultOpen?: boolean;
   /** Optional element rendered to the LEFT of the chevron. Use for icons
    *  that should NOT toggle the section (e.g. a copy-to-clipboard button).
@@ -29,12 +33,15 @@ export default function Section({
         className="flex cursor-pointer list-none items-center justify-between px-7 py-5"
         style={{ outline: "none" }}
       >
-        <h2
-          className="m-0 text-[12px] font-bold uppercase text-ink-soft"
-          style={{ letterSpacing: "0.18em" }}
-        >
-          {title}
-        </h2>
+        <div className="flex items-center gap-3 text-ink-soft">
+          {icon}
+          <h2
+            className="m-0 text-[12px] font-bold uppercase"
+            style={{ letterSpacing: "0.18em" }}
+          >
+            {title}
+          </h2>
+        </div>
         <div className="flex items-center gap-2">
           {headerAction}
           <svg

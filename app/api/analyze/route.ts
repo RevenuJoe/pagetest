@@ -120,18 +120,17 @@ export async function POST(req: NextRequest) {
       mobile?.technicalImprovements ?? [],
     );
 
-    // Scan the raw rendered HTML for PNG/JPEG/GIF/BMP/TIFF image references.
-    // This catches images Lighthouse rates the modern-image-formats audit
-    // as "passing" on but which would still benefit from WebP/AVIF. The
-    // count is used as a fallback signal in the Speed bullets when the
-    // Lighthouse audit returned empty items.
-    const nonModernImageCount = countNonModernImages(page.value.html);
+    // Scan the raw rendered HTML for image references by format. We use
+    // the per-format breakdown for the Speed section's image-format count
+    // bullet and the context-aware commentary bullet. Counts are deduped
+    // by URL so the same image referenced multiple times only counts once.
+    const imageFormats = scanImageFormats(page.value.html);
 
     const speedCheck = buildSpeedCheck(
       desktop,
       mobile,
       technicalImprovements,
-      nonModernImageCount,
+      imageFormats,
     );
 
     // Pull screenshots from PSI (already base64-encoded JPEGs, prefixed).
@@ -236,60 +235,149 @@ const IMAGE_AUDIT_IDS = [
 ];
 
 /**
- * Count distinct PNG/JPEG/GIF/BMP/TIFF image references in the raw HTML.
- *
- * Lighthouse's modern-image-formats audit only flags images where it
- * computes a worthwhile byte-savings, so small icons/logos in raster format
- * slip through with a "passing" score and empty items list. We can't
- * accept that — Joe's scoring rule says any non-modern image format should
- * be flagged.
+ * Per-format inventory of every image reference on the page. Keys are
+ * lowercase extensions. We use this to drive the "Image format count"
+ * bullet and the context-aware commentary bullet in the Speed section.
+ */
+interface ImageFormatBreakdown {
+  png: number;
+  jpeg: number;
+  gif: number;
+  webp: number;
+  avif: number;
+  svg: number;
+  /** Sum of png + jpeg + gif (raster formats that have a modern replacement). */
+  legacyRaster: number;
+  /** Sum of webp + avif (modern raster formats). */
+  modernRaster: number;
+}
+
+/**
+ * Walk the raw HTML and count image references by format.
  *
  * Scans:
  *   1. <img src="..."> attribute values.
- *   2. <source srcset="..."> for picture/img candidates.
+ *   2. <img srcset="..."> and <source srcset="..."> for picture/img candidates.
  *   3. CSS url(...) references in inline styles and <style> blocks.
  *
- * Dedupes by URL so the same image referenced multiple times only counts
- * once. Strips query strings so cache-busted URLs aren't double-counted.
+ * Dedupes by URL (case-insensitive, with query strings stripped) so the
+ * same image referenced multiple times only counts once. SVG is included
+ * because the user wants to see the full picture, but it's a vector
+ * format and doesn't need conversion.
  */
-function countNonModernImages(html: string): number {
-  if (!html) return 0;
-  const RASTER_EXTENSION = /\.(png|jpe?g|gif|bmp|tiff?)(\?|$|"|'|\))/i;
-  const found = new Set<string>();
+function scanImageFormats(html: string): ImageFormatBreakdown {
+  const empty: ImageFormatBreakdown = {
+    png: 0,
+    jpeg: 0,
+    gif: 0,
+    webp: 0,
+    avif: 0,
+    svg: 0,
+    legacyRaster: 0,
+    modernRaster: 0,
+  };
+  if (!html) return empty;
+
+  // Set per format keeps the dedupe stable across the various scan paths.
+  const seen: Record<string, Set<string>> = {
+    png: new Set(),
+    jpeg: new Set(),
+    gif: new Set(),
+    webp: new Set(),
+    avif: new Set(),
+    svg: new Set(),
+  };
+
+  const EXT_RE = /\.(png|jpe?g|gif|webp|avif|svg)(?:\?|$|"|'|\))/i;
 
   const collect = (value: string | undefined | null): void => {
     if (!value) return;
     // srcset is comma-separated "url 1x, url 2x" — split and check each.
     const candidates = value.split(/,\s*/).map((c) => c.trim().split(/\s+/)[0]);
-    for (const url of candidates) {
-      if (!url) continue;
-      if (RASTER_EXTENSION.test(url)) {
-        // Normalise: strip query string + lowercase so the dedupe is stable.
-        const normalised = url.split("?")[0].toLowerCase();
-        found.add(normalised);
-      }
+    for (const raw of candidates) {
+      if (!raw) continue;
+      const m = raw.match(EXT_RE);
+      if (!m) continue;
+      // Normalise extension (jpg → jpeg) and the URL itself for dedupe.
+      const ext = m[1].toLowerCase().replace(/^jpg$/, "jpeg");
+      const normalised = raw.split("?")[0].toLowerCase();
+      if (seen[ext]) seen[ext].add(normalised);
     }
   };
 
-  // <img src="..."> and <img srcset="...">
   for (const m of html.matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi)) {
     collect(m[1]);
   }
   for (const m of html.matchAll(/<img\b[^>]*\bsrcset=["']([^"']+)["'][^>]*>/gi)) {
     collect(m[1]);
   }
-  // <source srcset="..."> inside <picture>
   for (const m of html.matchAll(
     /<source\b[^>]*\bsrcset=["']([^"']+)["'][^>]*>/gi,
   )) {
     collect(m[1]);
   }
-  // CSS url(...) references in inline styles and <style> blocks
   for (const m of html.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)) {
     collect(m[1]);
   }
 
-  return found.size;
+  const png = seen.png.size;
+  const jpeg = seen.jpeg.size;
+  const gif = seen.gif.size;
+  const webp = seen.webp.size;
+  const avif = seen.avif.size;
+  const svg = seen.svg.size;
+  return {
+    png,
+    jpeg,
+    gif,
+    webp,
+    avif,
+    svg,
+    legacyRaster: png + jpeg + gif,
+    modernRaster: webp + avif,
+  };
+}
+
+/**
+ * Two bullets describing the page's image-format mix:
+ *   1. "Image format count: 4 PNGs, 5 JPEGs, 3 WebPs..." — only formats
+ *      with count > 0 are listed.
+ *   2. Context-aware commentary based on the legacy/modern ratio.
+ * Returns an empty array when the page has no images at all.
+ */
+function buildImageFormatBullets(b: ImageFormatBreakdown): string[] {
+  const total = b.png + b.jpeg + b.gif + b.webp + b.avif + b.svg;
+  if (total === 0) return [];
+
+  // Bullet 1: count breakdown. Only show formats with at least one image.
+  const parts: string[] = [];
+  const plural = (n: number, name: string) => `${n} ${name}${n === 1 ? "" : "s"}`;
+  if (b.png > 0) parts.push(plural(b.png, "PNG"));
+  if (b.jpeg > 0) parts.push(plural(b.jpeg, "JPEG"));
+  if (b.gif > 0) parts.push(plural(b.gif, "GIF"));
+  if (b.webp > 0) parts.push(plural(b.webp, "WebP"));
+  if (b.avif > 0) parts.push(plural(b.avif, "AVIF"));
+  if (b.svg > 0) parts.push(plural(b.svg, "SVG"));
+  const countBullet = `Image format count: ${parts.join(", ")}.`;
+
+  // Bullet 2: commentary. Only react to raster images (SVG is vector and
+  // doesn't need converting). Four cases by mix of legacy/modern raster.
+  let commentary: string;
+  if (b.legacyRaster === 0 && b.modernRaster === 0) {
+    // Page is SVG-only — nothing to convert.
+    commentary =
+      "All raster images on the page are vector (SVG), so format conversion isn't relevant here.";
+  } else if (b.legacyRaster === 0 && b.modernRaster > 0) {
+    commentary = `All raster images use modern formats (WebP/AVIF). Good work, nothing to convert here.`;
+  } else if (b.modernRaster === 0 && b.legacyRaster > 0) {
+    commentary = `No modern image formats in use. Convert the ${b.legacyRaster} PNG/JPEG/GIF image${b.legacyRaster === 1 ? "" : "s"} to WebP or AVIF for major file-size savings.`;
+  } else if (b.modernRaster >= b.legacyRaster) {
+    commentary = `Good use of WebP/AVIF, but ${b.legacyRaster} PNG/JPEG/GIF image${b.legacyRaster === 1 ? "" : "s"} remain. Migrate those too for further savings.`;
+  } else {
+    commentary = `Mostly PNG/JPEG with some WebP/AVIF in the mix. Convert the remaining ${b.legacyRaster} legacy raster image${b.legacyRaster === 1 ? "" : "s"} to WebP or AVIF.`;
+  }
+
+  return [countBullet, commentary];
 }
 
 /**
@@ -336,7 +424,16 @@ function buildSpeedCheck(
   desktop: { performanceScore: number; lcpMs: number | null; fcpMs: number | null; speedIndexMs: number | null; tbtMs: number | null; cls: number | null } | null,
   mobile: { performanceScore: number; lcpMs: number | null; speedIndexMs?: number | null; tbtMs?: number | null; cls?: number | null } | null,
   technicalImprovements: TechnicalImprovement[] = [],
-  nonModernImageCount = 0,
+  imageFormats: ImageFormatBreakdown = {
+    png: 0,
+    jpeg: 0,
+    gif: 0,
+    webp: 0,
+    avif: 0,
+    svg: 0,
+    legacyRaster: 0,
+    modernRaster: 0,
+  },
 ): CheckResult {
   if (!desktop && !mobile) {
     return {
@@ -376,25 +473,10 @@ function buildSpeedCheck(
     notes.push(`Desktop speed index: ${secs(desktop.speedIndexMs)}.`);
   }
 
-  // Bullet 5: image-format observation. Try Lighthouse first — it gives
-  // us the most precise message (with savings numbers). If Lighthouse
-  // didn't surface ANY of the three image audits (because it considered
-  // them all passing), fall back to our own HTML scan: if we found ANY
-  // PNG/JPEG/GIF references on the page, we still surface a bullet
-  // because Joe's rule is that any non-modern format is a finding.
-  let imageBulletAdded = false;
-  for (const id of IMAGE_AUDIT_IDS) {
-    const audit = technicalImprovements.find((t) => t.id === id);
-    if (!audit) continue;
-    notes.push(buildImageNote(audit));
-    imageBulletAdded = true;
-    break;
-  }
-  if (!imageBulletAdded && nonModernImageCount > 0) {
-    notes.push(
-      `Images aren't served in next-gen formats: convert JPEG/PNG to WebP or AVIF for much smaller files (${nonModernImageCount} non-modern image${nonModernImageCount === 1 ? "" : "s"} found on the page).`,
-    );
-  }
+  // Bullets 5 & 6: image format count + context-aware commentary based
+  // on the HTML scan. Two short bullets are easier to act on than one
+  // long Lighthouse-style sentence.
+  notes.push(...buildImageFormatBullets(imageFormats));
 
   // Bullet 6: one additional speed observation. Pick from the most
   // actionable thing left, in this order:
@@ -417,8 +499,9 @@ function buildSpeedCheck(
       ? "Load speed is mediocre, visitors will feel the lag."
       : "Page is slow enough to hurt conversions.";
 
-  // Six-bullet structure: scores, speed index, image, other. Cap defensively.
-  return { score, headline, notes: notes.slice(0, 6) };
+  // Up to 7 bullets: 2 scores + 2 speed-index + image count + image
+  // commentary + one other observation. Cap defensively.
+  return { score, headline, notes: notes.slice(0, 7) };
 }
 
 /**

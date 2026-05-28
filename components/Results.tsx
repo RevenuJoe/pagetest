@@ -26,6 +26,12 @@ import {
   IconCopy,
   IconCheck,
   IconChevron,
+  IconReport,
+  IconLayers,
+  IconBulb,
+  IconWrench,
+  IconGauge,
+  IconEye,
 } from "@/components/Icons";
 import { scoreColor } from "@/lib/scoreColor";
 import { displayName } from "@/lib/nameUtil";
@@ -49,7 +55,7 @@ export default function Results({
     {
       key: "overview",
       node: (
-        <Section title={displayName(data)} defaultOpen>
+        <Section title={displayName(data)} icon={<IconReport className="h-[18px] w-[18px]" />} defaultOpen>
           <OverviewBlock data={data} onRerun={onRerun} rerunning={rerunning ?? false} />
         </Section>
       ),
@@ -57,7 +63,7 @@ export default function Results({
     {
       key: "breakdown",
       node: (
-        <Section title="Breakdown" defaultOpen={false}>
+        <Section title="Breakdown" icon={<IconLayers />} defaultOpen={false}>
           <BreakdownBlock data={data} />
         </Section>
       ),
@@ -67,6 +73,7 @@ export default function Results({
       node: (
         <Section
           title="Key Takeaways"
+          icon={<IconBulb />}
           defaultOpen={false}
           headerAction={
             <CopyButton getText={() => formatTakeawaysForClipboard(data)} />
@@ -81,6 +88,7 @@ export default function Results({
       node: (
         <Section
           title="Technical Improvements"
+          icon={<IconWrench />}
           defaultOpen={false}
           headerAction={
             <CopyButton getText={() => formatTechImprovementsForClipboard(data)} />
@@ -93,7 +101,7 @@ export default function Results({
     {
       key: "psi",
       node: (
-        <Section title="PageSpeed Insights" defaultOpen={false}>
+        <Section title="PageSpeed Insights" icon={<IconGauge />} defaultOpen={false}>
           <PageSpeedInsightsBlock data={data} />
         </Section>
       ),
@@ -101,7 +109,7 @@ export default function Results({
     {
       key: "screenshots",
       node: (
-        <Section title="Above-the-Fold Screenshots" defaultOpen={false}>
+        <Section title="Above-the-Fold Screenshots" icon={<IconEye />} defaultOpen={false}>
           <ScreenshotsBlock data={data} />
         </Section>
       ),
