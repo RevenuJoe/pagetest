@@ -646,17 +646,19 @@ function FoxIllustration() {
       src="/fox.webp"
       alt=""
       aria-hidden
-      className="pointer-events-none absolute z-0 hidden select-none lg:block"
+      className="pointer-events-none absolute z-0 select-none"
       style={{
         // The fox.webp is already cropped to its visible content (no
         // transparent padding), so the image's bottom edge IS the
         // bottom of the desk legs. Anchor `bottom: 94px` (the footer's
         // height — `border-t + py-9 + 14px line` ≈ 94px) so the desk
-        // legs sit exactly on the footer's top edge. Right edge bleeds
-        // slightly off-viewport to match the Figma frame.
-        right: "-40px",
+        // legs sit exactly on the footer's top edge on any viewport.
+        // Right edge bleeds a touch off-viewport. clamp() scales the fox
+        // smoothly: ~150px tall on a 320px phone, growing to a 380px
+        // cap on desktop. Visible on all sizes.
+        right: "-20px",
         bottom: "94px",
-        height: "min(38vw, 380px)",
+        height: "clamp(150px, 42vw, 380px)",
         width: "auto",
       }}
     />
