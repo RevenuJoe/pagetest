@@ -207,7 +207,7 @@ function buildImageNote(audit: TechnicalImprovement): string {
 
 function buildSpeedCheck(
   desktop: { performanceScore: number; lcpMs: number | null; fcpMs: number | null; speedIndexMs: number | null; tbtMs: number | null; cls: number | null } | null,
-  mobile: { performanceScore: number; lcpMs: number | null } | null,
+  mobile: { performanceScore: number; lcpMs: number | null; tbtMs?: number | null; cls?: number | null } | null,
   technicalImprovements: TechnicalImprovement[] = [],
 ): CheckResult {
   if (!desktop && !mobile) {
@@ -227,45 +227,59 @@ function buildSpeedCheck(
 
   const notes: string[] = [];
 
-  // PRIORITY: image-format observations always come first. Pulls the
-  // relevant Lighthouse audits and surfaces them as the top notes when
-  // they're failing. Sorted by IMAGE_AUDIT_IDS order so "next-gen formats"
-  // (WebP / AVIF) leads when it's relevant.
+  // PRIORITY 1: image-format observation. The single biggest lever. Pick
+  // the most actionable image-format audit (in the priority order set by
+  // IMAGE_AUDIT_IDS) and surface ONE bullet for it.
   for (const id of IMAGE_AUDIT_IDS) {
     const audit = technicalImprovements.find((t) => t.id === id);
     if (!audit) continue;
     notes.push(buildImageNote(audit));
+    break; // only the most impactful one — three-bullet cap
   }
 
+  // PRIORITY 2: combined load-stats summary across both devices.
+  const parts: string[] = [];
   if (desktop) {
-    notes.push(
-      `Desktop Lighthouse score: ${desktop.performanceScore}/100.`,
-    );
-    if (desktop.lcpMs != null) {
-      notes.push(
-        `Largest Contentful Paint (desktop): ${(desktop.lcpMs / 1000).toFixed(2)}s${
-          desktop.lcpMs > 2500 ? " — slower than Google's 2.5s target." : "."
-        }`,
-      );
-    }
-    if (desktop.tbtMs != null && desktop.tbtMs > 200) {
-      notes.push(
-        `Total Blocking Time: ${Math.round(desktop.tbtMs)}ms — JavaScript is delaying interactivity.`,
-      );
-    }
-    if (desktop.cls != null && desktop.cls > 0.1) {
-      notes.push(
-        `Cumulative Layout Shift: ${desktop.cls.toFixed(2)} — content is jumping during load.`,
-      );
-    }
+    const lcp = desktop.lcpMs != null ? `, LCP ${(desktop.lcpMs / 1000).toFixed(2)}s` : "";
+    parts.push(`desktop ${desktop.performanceScore}/100${lcp}`);
   }
   if (mobile) {
-    notes.push(`Mobile Lighthouse score: ${mobile.performanceScore}/100.`);
-    if (mobile.lcpMs != null) {
-      notes.push(
-        `Largest Contentful Paint (mobile): ${(mobile.lcpMs / 1000).toFixed(2)}s.`,
-      );
-    }
+    const lcp = mobile.lcpMs != null ? `, LCP ${(mobile.lcpMs / 1000).toFixed(2)}s` : "";
+    parts.push(`mobile ${mobile.performanceScore}/100${lcp}`);
+  }
+  if (parts.length > 0) notes.push(`Lighthouse scores: ${parts.join(" — ")}.`);
+
+  // PRIORITY 3: single worst Core Web Vital miss. Mobile readings are
+  // weighted higher because most landing-page traffic is mobile.
+  type Miss = { weight: number; text: string };
+  const candidates: Miss[] = [];
+  if (mobile?.lcpMs != null && mobile.lcpMs > 4000) {
+    candidates.push({
+      weight: 4,
+      text: `Mobile LCP is ${(mobile.lcpMs / 1000).toFixed(2)}s — phones are waiting far too long for the main content to paint.`,
+    });
+  }
+  if (desktop?.tbtMs != null && desktop.tbtMs > 200) {
+    candidates.push({
+      weight: 3,
+      text: `Total Blocking Time is ${Math.round(desktop.tbtMs)}ms — JavaScript is delaying interactivity.`,
+    });
+  }
+  if (desktop?.cls != null && desktop.cls > 0.1) {
+    candidates.push({
+      weight: 2,
+      text: `Cumulative Layout Shift is ${desktop.cls.toFixed(2)} — content is jumping during load.`,
+    });
+  }
+  if (desktop?.lcpMs != null && desktop.lcpMs > 2500) {
+    candidates.push({
+      weight: 1,
+      text: `Desktop LCP is ${(desktop.lcpMs / 1000).toFixed(2)}s, slower than Google's 2.5s target.`,
+    });
+  }
+  if (candidates.length > 0) {
+    candidates.sort((a, b) => b.weight - a.weight);
+    notes.push(candidates[0].text);
   }
 
   const headline =
@@ -274,10 +288,11 @@ function buildSpeedCheck(
       : score >= 75
       ? "Load speed is solid but has room to improve."
       : score >= 50
-      ? "Load speed is mediocre — visitors will feel the lag."
+      ? "Load speed is mediocre, visitors will feel the lag."
       : "Page is slow enough to hurt conversions.";
 
-  return { score, headline, notes };
+  // Hard cap at 3 to match the rule applied to the Claude-authored checks.
+  return { score, headline, notes: notes.slice(0, 3) };
 }
 
 function stripDataUrlPrefix(s: string | null): string | null {

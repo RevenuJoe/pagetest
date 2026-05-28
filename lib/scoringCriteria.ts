@@ -49,35 +49,67 @@ Scored deterministically from Google PageSpeed Insights (Lighthouse desktop + mo
 
 The score is the mean of the desktop and mobile performance scores.
 
-PRIORITY OBSERVATION (always called out first in the speed notes):
-- Image formats. Are images on the page served in next-gen formats (WebP, AVIF)? Many sites still ship JPEG/PNG when WebP would be a fraction of the size and load far faster. We surface Lighthouse's "Serve images in next-gen formats", "Efficiently encode images", and "Properly size images" audits at the top of the speed notes when they're failing, with the savings number Lighthouse provides.
+The notes for Speed are AUTO-GENERATED on the server (not authored by Claude) and capped at THREE bullets. They are prioritised as follows:
 
-Additional notes include Largest Contentful Paint, Cumulative Layout Shift, and Total Blocking Time when they cross Google's recommended thresholds.`;
+PRIORITY 1 — Image formats (always called out first when relevant).
+The single biggest, most actionable speed lever for most pages. If Lighthouse's "Serve images in next-gen formats" audit fails (i.e. the page is shipping JPEG / PNG when WebP or AVIF would be a fraction of the size), this is the lead note with the exact savings Lighthouse provides. Also surfaced: "Efficiently encode images" and "Properly size images" audits when failing. The recommendation is explicit: convert JPEG/PNG to WebP or AVIF.
+
+PRIORITY 2 — Headline load stats (always shown).
+A single combined note covering: desktop performance score / 100, mobile performance score / 100, desktop LCP in seconds, mobile LCP in seconds. This is the at-a-glance load summary so the reader sees both devices side by side.
+
+PRIORITY 3 — The single worst Core Web Vital miss (only if applicable).
+One bullet picking the most damaging Core Web Vital that crossed Google's threshold: CLS > 0.1 ("content is jumping during load"), or TBT > 200ms ("JavaScript is delaying interactivity"), or mobile LCP > 4s ("page is slow to paint on phones"). Only the single worst is mentioned to stay within the three-bullet cap.`;
 
 /**
  * CONTENT — copy quality and value proposition. Update with more criteria
  * any time we sharpen the rubric.
  */
 export const CRITERIA_CONTENT = `2. content
-Is the copy clear, valuable, and well-targeted? Is the value proposition obvious in the first 100 words?
+Is the copy clear, valuable, well-targeted, and human?
 
-Look for:
-- A specific, benefit-led promise (what the visitor GETS), not a generic feature list.
-- Plain language. Avoid jargon, "synergistic", "robust", "next-generation", "AI-powered" without explanation.
-- Tight word counts above the fold. One short paragraph or 2-4 bullets is ideal. Walls of text are a negative signal.
-- Concrete proof points: numbers, dates, named customers, integrations, specifics over adjectives.`;
+CHECKLIST (work through these and surface the most impactful misses):
+
+1. Em dashes / AI-flavoured prose.
+Scan the body text for em dashes (—). They read as AI-generated. If you find them, flag it directly. Also call out any other AI tells you spot: filler phrases ("In today's fast-paced world…"), unnecessary hedging, vague superlatives ("seamless", "robust", "next-generation", "AI-powered" without explanation).
+
+2. Value proposition in the first 100 words.
+A specific, benefit-led promise (what the visitor GETS), not a generic feature list. Plain language.
+
+3. Coverage check — the page must demonstrably contain content across these five categories. Call out any that are missing:
+   - Problem. Does the page actually NAME the problem it solves for the customer? Not just features, but the pain it addresses.
+   - Social proof. Case studies, customer quotes, recognisable logos, review stars / ratings. Without these the page reads as unverified.
+   - FAQ. A question-and-answer section, typically near the bottom. Captures objections before they kill the conversion.
+   - Product. Clear explanations of what the product actually DOES, not just outcomes.
+   - Stats. Concrete numbers anywhere on the page (e.g. "Saves 3 hours per week", "Used by 4,200 teams"). Specifics beat adjectives.
+
+4. Concrete proof. Numbers, dates, named customers, integrations, specifics over adjectives.
+
+If the page misses Problem / Social proof / FAQ / Product / Stats, those misses ARE the most important notes to surface.`;
 
 /**
  * DIGESTIBILITY — visual hierarchy, scannability, navigation.
  */
 export const CRITERIA_DIGESTIBILITY = `3. digestibility
-Is information chunked into scannable sections with clear hierarchy, navigation, and whitespace?
+Is information chunked into scannable sections with clear hierarchy and short, easy-to-read copy?
 
-Look for:
-- Clear visual hierarchy: one dominant H1, sensible H2/H3 structure, generous whitespace.
-- Sections that each have a single clear purpose.
-- Skim-friendly: a busy reader could understand the page in 10 seconds by reading just headings and looking at images.
-- Working navigation (footer + header).`;
+CHECKLIST:
+
+1. Clear visual section headers.
+Each major section on the page should have a visible header (H2 / H3-style title) that names what the section is about. A reader scrolling should always know what they're looking at from the heading alone. Call out any sections that run without a header.
+
+2. Paragraph length.
+The average paragraph should contain NO MORE THAN 50 WORDS. Anything longer is hard to digest. If paragraphs are bloated, flag it and recommend splitting them or converting to bullet points. Conversely, if the page already uses tight paragraphs and bullet points well, call that out as a positive.
+
+3. Bullet points / bite-size formatting.
+Bullet points are the strongest format for scannable detail. If the page leans on long prose where bullets would work, flag it and recommend converting. If the page already uses bullets well, that's a positive.
+
+4. Sections per viewport.
+No more than three paragraphs in a single section / viewport. If a section reads like a wall of text it's failing this dimension regardless of how good the writing is.
+
+5. Skim test.
+Could a busy reader understand the page in 10 seconds by reading just headings and looking at images? If not, the hierarchy is failing.
+
+6. Navigation. Working header + footer navigation, sensible structure.`;
 
 /**
  * CRO — the most important dimension and the strictest checklist.
@@ -152,7 +184,7 @@ Be generous when the page genuinely demonstrates the criteria. A page with stron
 export const OUTPUT_FORMAT = `For each check return:
 - score: integer 0 to 100
 - headline: ONE sentence (max ~16 words) summarising the verdict
-- notes: 2 to 4 bullet-style observations, each a concrete, specific recommendation or fact about THIS page. Reference the actual content you observed. Never generic advice.
+- notes: AT MOST 3 bullet-style observations. Pick the 3 most impactful things for THIS page. Each is a concrete, specific recommendation or fact you actually observed. Never generic advice. Three is a hard cap.
 
 ALSO return a "keyTakeaways" array. RULES:
 - EXACTLY 5 takeaways. No more, no fewer. Pick the FIVE biggest issues across the whole page.
