@@ -1,23 +1,28 @@
 /**
  * Claude-powered analysis of a page.
  *
- * One multimodal call: we hand Claude the page's structural summary, body
- * text, and two screenshots (desktop above-the-fold + mobile above-the-fold),
- * and ask for scores on the four "judgment" checks:
+ * Each Claude-scored dimension (content, digestibility, cro, aboveTheFold,
+ * mobile) gets its OWN parallel Anthropic call with a focused per-dimension
+ * system prompt. A 6th parallel call composes the Key Takeaways.
  *
- *   - content          — copy quality, clarity, value proposition
- *   - digestibility    — visual hierarchy, layout, scannability, navigation
- *   - cro              — CTAs, forms, friction, conversion design
- *   - aboveTheFold     — what the user sees in the first viewport
- *   - mobile           — how the layout holds up at phone width
+ * Why split? A single mega-prompt covering all five dimensions tended to
+ * cause attention drift — the model would gloss over rules tucked deep in
+ * the system message. Per-dimension calls each see only the criteria
+ * relevant to their job and stick to them much more closely. Wall-clock
+ * stays similar because the six calls run in parallel.
  *
- * The "speed" score is set elsewhere from PSI's Lighthouse number.
+ * The "speed" score is computed deterministically from PSI on the server,
+ * not by Claude.
  */
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { PageStructure } from "./fetchPage";
 import type { CheckKey, CheckResult, KeyTakeaway } from "./types";
-import { buildSystemPrompt } from "./scoringCriteria";
+import {
+  buildDimensionPrompt,
+  buildTakeawaysPrompt,
+  type ClaudeDimension,
+} from "./scoringCriteria";
 
 const MODEL = "claude-sonnet-4-5";
 
@@ -27,16 +32,13 @@ export interface ClaudeInput {
   metaDescription: string | null;
   bodyText: string;
   structure: PageStructure;
-  /** Base64-only JPEG of the desktop above-the-fold viewport (first paint).
-   *  Used specifically for the aboveTheFold dimension. */
+  /** Base64 JPEG of the desktop above-the-fold viewport. */
   desktopScreenshotB64: string | null;
-  /** Base64-only JPEG of the mobile above-the-fold viewport (first paint). */
+  /** Base64 JPEG of the mobile above-the-fold viewport. */
   mobileScreenshotB64: string | null;
-  /** Base64-only JPEG of the FULL desktop page (scrolled). Gives Claude the
-   *  full picture so it can see forms, FAQs, footer CTAs, social proof
-   *  logos, and anything else below the fold. */
+  /** Base64 JPEG of the FULL desktop page (scrolled). */
   desktopFullPageB64: string | null;
-  /** Base64-only JPEG of the FULL mobile page (scrolled). */
+  /** Base64 JPEG of the FULL mobile page (scrolled). */
   mobileFullPageB64: string | null;
 }
 
@@ -47,13 +49,18 @@ export type ClaudeChecks = Pick<
 
 export interface ClaudeOutput {
   checks: ClaudeChecks;
-  /** Top 5 categorised, page-specific takeaways to lift the score. */
+  /** Top 5 categorised, page-specific takeaways. */
   keyTakeaways: KeyTakeaway[];
 }
 
-// All scoring criteria live in ./scoringCriteria.ts as the single source of
-// truth. Edit that file to change how Claude scores landing pages.
-const SYSTEM_PROMPT = buildSystemPrompt();
+const VALID_CATEGORIES: ReadonlyArray<CheckKey> = [
+  "speed",
+  "content",
+  "digestibility",
+  "cro",
+  "aboveTheFold",
+  "mobile",
+];
 
 export async function analyzeWithClaude(
   input: ClaudeInput,
@@ -66,89 +73,138 @@ export async function analyzeWithClaude(
   }
   const client = new Anthropic({ apiKey });
 
-  const userBlocks: Anthropic.MessageParam["content"] = [];
+  // Fan out: 5 dimension calls + 1 takeaways call, ALL in parallel via
+  // a single Promise.all — wall-clock stays close to one call.
+  const [content, digestibility, cro, aboveTheFold, mobile, keyTakeaways] =
+    await Promise.all([
+      callDimension(client, input, "content"),
+      callDimension(client, input, "digestibility"),
+      callDimension(client, input, "cro"),
+      callDimension(client, input, "aboveTheFold"),
+      callDimension(client, input, "mobile"),
+      callTakeaways(client, input),
+    ]);
 
-  userBlocks.push({
-    type: "text",
-    text: buildPromptText(input),
-  });
+  return {
+    checks: { content, digestibility, cro, aboveTheFold, mobile },
+    keyTakeaways,
+  };
+}
 
-  // Above-the-fold screenshots — used specifically for the aboveTheFold
-  // dimension. Sent first so Claude evaluates them in that context.
-  if (input.desktopScreenshotB64) {
-    userBlocks.push({
-      type: "text",
-      text: "Desktop ABOVE-THE-FOLD screenshot (what visitors see before any scroll):",
-    });
-    userBlocks.push({
-      type: "image",
-      source: {
-        type: "base64",
-        media_type: "image/jpeg",
-        data: input.desktopScreenshotB64,
-      },
-    });
-  }
-  if (input.mobileScreenshotB64) {
-    userBlocks.push({
-      type: "text",
-      text: "Mobile ABOVE-THE-FOLD screenshot (what visitors see before any scroll):",
-    });
-    userBlocks.push({
-      type: "image",
-      source: {
-        type: "base64",
-        media_type: "image/jpeg",
-        data: input.mobileScreenshotB64,
-      },
-    });
-  }
-
-  // Full-page screenshots — give Claude the WHOLE page so it can see
-  // forms below the fold, FAQ sections, social-proof logos, footer CTAs.
-  if (input.desktopFullPageB64) {
-    userBlocks.push({
-      type: "text",
-      text: "Desktop FULL-PAGE screenshot (entire page scrolled). Use this to evaluate content, digestibility, CRO. The page may include forms, FAQs, social proof logos, footer CTAs that you must take into account:",
-    });
-    userBlocks.push({
-      type: "image",
-      source: {
-        type: "base64",
-        media_type: "image/jpeg",
-        data: input.desktopFullPageB64,
-      },
-    });
-  }
-  if (input.mobileFullPageB64) {
-    userBlocks.push({
-      type: "text",
-      text: "Mobile FULL-PAGE screenshot (entire page scrolled):",
-    });
-    userBlocks.push({
-      type: "image",
-      source: {
-        type: "base64",
-        media_type: "image/jpeg",
-        data: input.mobileFullPageB64,
-      },
-    });
-  }
-
+/**
+ * One per-dimension Claude call. Sends a focused system prompt + the
+ * shared page context (structure, body text, screenshots) and asks for
+ * a single { score, headline, notes } JSON object.
+ */
+async function callDimension(
+  client: Anthropic,
+  input: ClaudeInput,
+  dim: ClaudeDimension,
+): Promise<CheckResult> {
+  const system = buildDimensionPrompt(dim);
+  const userBlocks = buildUserBlocks(input, dim);
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 2500,
-    system: SYSTEM_PROMPT,
+    max_tokens: 800,
+    system,
     messages: [{ role: "user", content: userBlocks }],
   });
-
   const text = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("\n")
     .trim();
+  return parseDimension(text);
+}
 
-  return parseOutput(text);
+/**
+ * The dedicated Key Takeaways call. Same inputs as the dimension calls
+ * but its system prompt asks for 5 categorised one-liners across the
+ * whole page, not a score.
+ */
+async function callTakeaways(
+  client: Anthropic,
+  input: ClaudeInput,
+): Promise<KeyTakeaway[]> {
+  const system = buildTakeawaysPrompt();
+  const userBlocks = buildUserBlocks(input);
+  const response = await client.messages.create({
+    model: MODEL,
+    max_tokens: 800,
+    system,
+    messages: [{ role: "user", content: userBlocks }],
+  });
+  const text = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+  return parseTakeaways(text);
+}
+
+/**
+ * Shared user-message builder. Includes URL + structure + body text and
+ * the four screenshots, but TRIMS to what's relevant per dimension to
+ * keep token usage sensible:
+ *
+ *   - aboveTheFold: only the above-the-fold screenshots
+ *   - mobile:       only the mobile screenshots (above-the-fold + full)
+ *   - others:       all four screenshots
+ *   - takeaways:    all four screenshots
+ */
+function buildUserBlocks(
+  input: ClaudeInput,
+  dim?: ClaudeDimension,
+): Anthropic.MessageParam["content"] {
+  const blocks: Anthropic.MessageParam["content"] = [];
+  blocks.push({ type: "text", text: buildPromptText(input) });
+
+  const wantAboveFold = dim !== "mobile"; // mobile call doesn't need desktop above-the-fold
+  const wantFullPage = dim !== "aboveTheFold"; // above-the-fold doesn't need full-page
+  const wantDesktop = dim !== "mobile";
+  const wantMobile = true;
+
+  if (wantAboveFold && wantDesktop && input.desktopScreenshotB64) {
+    blocks.push({
+      type: "text",
+      text: "Desktop ABOVE-THE-FOLD screenshot (what visitors see before any scroll):",
+    });
+    blocks.push({
+      type: "image",
+      source: { type: "base64", media_type: "image/jpeg", data: input.desktopScreenshotB64 },
+    });
+  }
+  if (wantAboveFold && wantMobile && input.mobileScreenshotB64) {
+    blocks.push({
+      type: "text",
+      text: "Mobile ABOVE-THE-FOLD screenshot (what visitors see before any scroll):",
+    });
+    blocks.push({
+      type: "image",
+      source: { type: "base64", media_type: "image/jpeg", data: input.mobileScreenshotB64 },
+    });
+  }
+  if (wantFullPage && wantDesktop && input.desktopFullPageB64) {
+    blocks.push({
+      type: "text",
+      text: "Desktop FULL-PAGE screenshot (entire page scrolled). Use this to see content below the fold — forms at the bottom, FAQ sections, social proof logo strips, footer CTAs all count.",
+    });
+    blocks.push({
+      type: "image",
+      source: { type: "base64", media_type: "image/jpeg", data: input.desktopFullPageB64 },
+    });
+  }
+  if (wantFullPage && wantMobile && input.mobileFullPageB64) {
+    blocks.push({
+      type: "text",
+      text: "Mobile FULL-PAGE screenshot (entire page scrolled):",
+    });
+    blocks.push({
+      type: "image",
+      source: { type: "base64", media_type: "image/jpeg", data: input.mobileFullPageB64 },
+    });
+  }
+  return blocks;
 }
 
 function buildPromptText(input: ClaudeInput): string {
@@ -170,96 +226,70 @@ function buildPromptText(input: ClaudeInput): string {
     "",
     "Body text of the FULL page (top to bottom, may be lightly truncated):",
     "---",
-    // Bumped well past the previous 12K cap so Claude sees the FAQ
-    // section, the footer CTA copy, social-proof captions, etc. Claude's
-    // context window easily fits this.
     input.bodyText.slice(0, 60_000),
     "---",
     "",
-    "You have FOUR images attached: desktop above-the-fold, mobile above-the-fold, desktop full-page, and mobile full-page. Use the full-page screenshots to evaluate everything below the fold — forms at the bottom of the page, FAQ sections, customer-logo strips, and footer CTAs all count and must be considered. Score the page on content, digestibility, cro, aboveTheFold, mobile. Return JSON only.",
+    "Use the body text AND the attached screenshots together to verify everything. Bottom-of-page forms, FAQ sections, social-proof logo strips, footer CTAs all count.",
   ].join("\n");
 }
 
-function parseOutput(raw: string): ClaudeOutput {
-  // Be forgiving: strip code fences if Claude returns them despite instructions.
+function parseDimension(raw: string): CheckResult {
+  const parsed = parseJsonObject(raw);
+  return {
+    score: clampScore(parsed.score),
+    headline: typeof parsed.headline === "string" ? parsed.headline : "(no summary)",
+    notes: Array.isArray(parsed.notes)
+      ? parsed.notes
+          .filter((x: unknown): x is string => typeof x === "string")
+          .slice(0, 3)
+      : [],
+  };
+}
+
+function parseTakeaways(raw: string): KeyTakeaway[] {
+  const parsed = parseJsonObject(raw);
+  const rawTakeaways = (parsed as Record<string, unknown>).keyTakeaways;
+  if (!Array.isArray(rawTakeaways)) return [];
+  return rawTakeaways
+    .map((it: unknown): KeyTakeaway | null => {
+      if (it && typeof it === "object") {
+        const obj = it as Record<string, unknown>;
+        const cat = typeof obj.category === "string" ? obj.category : "";
+        const text = typeof obj.text === "string" ? obj.text.trim() : "";
+        if (!text) return null;
+        const category = VALID_CATEGORIES.includes(cat as CheckKey)
+          ? (cat as CheckKey)
+          : ("content" as CheckKey);
+        return { category, text };
+      }
+      if (typeof it === "string" && it.trim().length > 0) {
+        return { category: "content" as CheckKey, text: it.trim() };
+      }
+      return null;
+    })
+    .filter((x): x is KeyTakeaway => x !== null)
+    .slice(0, 5);
+}
+
+function parseJsonObject(raw: string): Record<string, unknown> {
   let cleaned = raw.trim();
   if (cleaned.startsWith("```")) {
     cleaned = cleaned.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "");
   }
-  // Snip down to the outermost JSON object if there's stray prose.
   const first = cleaned.indexOf("{");
   const last = cleaned.lastIndexOf("}");
   if (first >= 0 && last > first) {
     cleaned = cleaned.slice(first, last + 1);
   }
-
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(cleaned);
-  } catch (e) {
-    throw new Error(
-      `Could not parse Claude response as JSON. Raw: ${raw.slice(0, 500)}`,
-    );
-  }
-
-  const requiredKeys: (keyof ClaudeChecks)[] = [
-    "content",
-    "digestibility",
-    "cro",
-    "aboveTheFold",
-    "mobile",
-  ];
-  const checks = {} as ClaudeChecks;
-  for (const k of requiredKeys) {
-    const v = (parsed as Record<string, unknown>)[k];
-    if (!v || typeof v !== "object") {
-      throw new Error(`Claude response missing "${k}" check`);
+    const parsed = JSON.parse(cleaned);
+    if (parsed && typeof parsed === "object") {
+      return parsed as Record<string, unknown>;
     }
-    const obj = v as Record<string, unknown>;
-    checks[k] = {
-      score: clampScore(obj.score),
-      headline:
-        typeof obj.headline === "string" ? obj.headline : "(no summary)",
-      notes: Array.isArray(obj.notes)
-        ? obj.notes.filter((x): x is string => typeof x === "string")
-        : [],
-    };
+    return {};
+  } catch {
+    throw new Error(`Could not parse Claude response as JSON. Raw: ${raw.slice(0, 500)}`);
   }
-
-  const rawTakeaways = (parsed as Record<string, unknown>).keyTakeaways;
-  const validCategories: ReadonlyArray<CheckKey> = [
-    "speed",
-    "content",
-    "digestibility",
-    "cro",
-    "aboveTheFold",
-    "mobile",
-  ];
-  const keyTakeaways: KeyTakeaway[] = Array.isArray(rawTakeaways)
-    ? (rawTakeaways
-        .map((it) => {
-          // New shape: { category, text }. Strings get bucketed under "content"
-          // as a safe fallback for any model output that ignores the schema.
-          if (it && typeof it === "object") {
-            const obj = it as Record<string, unknown>;
-            const cat = typeof obj.category === "string" ? obj.category : "";
-            const text = typeof obj.text === "string" ? obj.text.trim() : "";
-            if (!text) return null;
-            const category = (validCategories.includes(cat as CheckKey)
-              ? (cat as CheckKey)
-              : "content");
-            return { category, text };
-          }
-          if (typeof it === "string" && it.trim().length > 0) {
-            return { category: "content" as CheckKey, text: it.trim() };
-          }
-          return null;
-        })
-        .filter((x): x is KeyTakeaway => x !== null)
-        .slice(0, 5))
-    : [];
-
-  return { checks, keyTakeaways };
 }
 
 function clampScore(v: unknown): number {

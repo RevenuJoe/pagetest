@@ -751,6 +751,10 @@ function PsiCategoryComparison({
   desktop?: PsiBreakdown;
   mobile?: PsiBreakdown;
 }) {
+  // 4 categories laid out side-by-side, each with TWO vertical bars
+  // (Desktop / Mobile) so divergence reads at a glance. Bar height
+  // tracks the score as a percentage of 100.
+  const BAR_HEIGHT = 140; // px — the chart's max bar height
   return (
     <div className="rounded-card border border-beige-line bg-bg/40 px-5 py-4">
       <div
@@ -759,23 +763,79 @@ function PsiCategoryComparison({
       >
         Lighthouse Categories — Desktop vs Mobile
       </div>
-      <ul className="mt-4 m-0 flex flex-col gap-3 list-none p-0">
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {PSI_CATEGORIES.map((cat) => {
           const d = catScore(desktop, cat.key);
           const m = catScore(mobile, cat.key);
           return (
-            <li key={cat.key} className="flex items-center gap-4">
-              <div className="w-[110px] flex-shrink-0 text-[12px] font-semibold text-ink">
+            <div
+              key={cat.key}
+              className="flex flex-col items-center rounded-card border border-beige-line bg-card px-3 pb-3 pt-3"
+            >
+              <div
+                className="text-center text-[11px] font-bold uppercase text-ink"
+                style={{ letterSpacing: "0.06em" }}
+              >
                 {cat.label}
               </div>
-              <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <ScoreBar label="Desktop" score={d} />
-                <ScoreBar label="Mobile" score={m} />
+              <div
+                className="mt-3 flex w-full items-end justify-center gap-3"
+                style={{ height: BAR_HEIGHT + 24 /* room for value labels */ }}
+              >
+                <VerticalBar
+                  label="Desktop"
+                  score={d}
+                  maxHeight={BAR_HEIGHT}
+                />
+                <VerticalBar
+                  label="Mobile"
+                  score={m}
+                  maxHeight={BAR_HEIGHT}
+                />
               </div>
-            </li>
+            </div>
           );
         })}
-      </ul>
+      </div>
+    </div>
+  );
+}
+
+/** One vertical bar inside the category-comparison chart. */
+function VerticalBar({
+  label,
+  score,
+  maxHeight,
+}: {
+  label: string;
+  score: number | null;
+  maxHeight: number;
+}) {
+  const value = score ?? 0;
+  const color = score == null ? "#c4c0b6" : scoreColor(score);
+  const h = Math.max(2, Math.min(100, value)) * (maxHeight / 100);
+  return (
+    <div className="flex w-full max-w-[44px] flex-col items-center justify-end">
+      <div
+        className="text-[13px] font-bold tabular-nums leading-none"
+        style={{ color }}
+      >
+        {score == null ? "—" : score}
+      </div>
+      <div
+        className="mt-1.5 w-full rounded-t-md transition-all"
+        style={{
+          height: `${h}px`,
+          background: color,
+          minHeight: "2px",
+        }}
+      />
+      <div
+        className="mt-1.5 text-[9px] font-bold uppercase text-ink-soft"
+        style={{ letterSpacing: "0.08em" }}
+      >
+        {label}
+      </div>
     </div>
   );
 }

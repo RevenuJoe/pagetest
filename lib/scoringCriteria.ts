@@ -220,9 +220,102 @@ export const STYLE = `WRITING STYLE RULES (apply to every string you return):
 // ---------------------------------------------------------------------------
 
 /**
- * Assemble the full system prompt from the parts above. This is what Claude
- * receives on every analyse request. To tweak scoring, edit the CRITERIA_*
- * constants above; this function only handles composition.
+ * One Claude-scored dimension. Speed is computed deterministically on the
+ * server and is not a Claude call.
+ */
+export type ClaudeDimension =
+  | "content"
+  | "digestibility"
+  | "cro"
+  | "aboveTheFold"
+  | "mobile";
+
+const DIMENSION_CRITERIA: Record<ClaudeDimension, string> = {
+  content: CRITERIA_CONTENT,
+  digestibility: CRITERIA_DIGESTIBILITY,
+  cro: CRITERIA_CRO,
+  aboveTheFold: CRITERIA_ABOVE_THE_FOLD,
+  mobile: CRITERIA_MOBILE,
+};
+
+const DIMENSION_OUTPUT_RULE = `Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
+
+{ "score": <int 0 to 100>, "headline": "<one sentence, max 16 words>", "notes": ["<string>", "<string>", "<string>"] }
+
+Notes: AT MOST 3 bullet-style observations. Pick the 3 most impactful things for THIS page. Each is a concrete, specific recommendation or fact you actually observed. Never generic advice. Three is a hard cap.`;
+
+/**
+ * Per-dimension system prompt. Each Claude call uses ONE of these so the
+ * model isn't juggling the criteria for five dimensions at once. Drift is
+ * markedly lower with a focused prompt.
+ */
+export function buildDimensionPrompt(dim: ClaudeDimension): string {
+  return [
+    INTRO,
+    "",
+    INPUTS,
+    "",
+    `You are scoring ONLY the "${dim}" dimension. The other dimensions will be scored by separate calls — stay focused on the criteria below and do not score anything else.`,
+    "",
+    "================================================================",
+    DIMENSION_CRITERIA[dim],
+    "================================================================",
+    RUBRIC,
+    "",
+    DIMENSION_OUTPUT_RULE,
+    "",
+    STYLE,
+  ].join("\n");
+}
+
+const TAKEAWAYS_RULES = `You are choosing the 5 highest-impact, page-specific recommendations the team should action across the WHOLE page.
+
+RULES:
+- EXACTLY 5 takeaways. Pick the FIVE biggest issues across the page.
+- Each takeaway is an object: { "category": <one of "speed" | "content" | "digestibility" | "cro" | "aboveTheFold" | "mobile">, "text": "<recommendation>" }.
+- "category" tags which scoring dimension this primarily helps. Choose the single best fit.
+- "text" is ONE short sentence, MAX 14 WORDS. It must fit on a single line on a desktop screen.
+- Highest-impact items first.
+
+Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
+
+{ "keyTakeaways": [ { "category": "<key>", "text": "<string>" }, ... ] }`;
+
+/**
+ * System prompt for the dedicated key-takeaways call. Includes ALL the
+ * dimension criteria as the mental model, but the model isn't scoring —
+ * it's just composing the five biggest recommendations.
+ */
+export function buildTakeawaysPrompt(): string {
+  return [
+    INTRO,
+    "",
+    INPUTS,
+    "",
+    "You are NOT scoring the page. You are picking the 5 highest-impact recommendations to action. Use the criteria below as your mental model.",
+    "",
+    "================================================================",
+    CRITERIA_CONTENT,
+    "================================================================",
+    CRITERIA_DIGESTIBILITY,
+    "================================================================",
+    CRITERIA_CRO,
+    "================================================================",
+    CRITERIA_ABOVE_THE_FOLD,
+    "================================================================",
+    CRITERIA_MOBILE,
+    "================================================================",
+    TAKEAWAYS_RULES,
+    "",
+    STYLE,
+  ].join("\n");
+}
+
+/**
+ * LEGACY single-shot prompt — still used by the standalone pagetest.html.
+ * The Next.js deploy now uses six parallel focused calls instead. To
+ * tweak scoring, edit the CRITERIA_* constants above; this function only
+ * handles composition.
  */
 export function buildSystemPrompt(): string {
   return [
