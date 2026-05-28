@@ -11,26 +11,25 @@ import { useActiveRun, useSavedReports } from "@/lib/storeHooks";
 import type { AnalyzeResponse } from "@/lib/types";
 
 const LOADING_STEPS = [
-  "Booting Lighthouse on Google's servers…",
-  "Measuring Largest Contentful Paint…",
-  "Capturing desktop above-the-fold…",
-  "Running the mobile audit…",
+  "Booting up Lighthouse on the Google's servers…",
+  "Running speed checks on mobile and desktop…",
+  "Screenshotting above the fold loads…",
+  "Comparing to best practices…",
   "Reading the page content…",
-  "Asking Claude to grade the page…",
+  "Claude is grading page against Revenu criteria…",
   "Compiling your report…",
 ];
 
 // Once we land on the final "compiling" step we cycle through these every
 // few seconds so the message doesn't sit static while the analysis
-// finishes. "Compiling your report…" is interleaved between the engaging
-// callouts so it always feels like that's the underlying state.
+// finishes.
 const COMPILING_ROTATION = [
-  "Compiling your report…",
-  "Not too long now, it's worth the wait.",
-  "Putting together your report…",
-  "Still compiling your report…",
-  "It's nearly ready.",
-  "It takes time because it's actually a good report.",
+  "Not too long now, it's worth the wait...",
+  "It's nearly ready...",
+  "I promise it's basically done",
+  "Last tweaks",
+  "Wow this is strange, sorry",
+  "It's nearly ready...",
 ];
 
 export default function HomePage() {
@@ -400,6 +399,18 @@ function Home() {
             <span className="flex h-16 w-16 items-center justify-center rounded-full bg-accent-soft text-accent-dark">
               <AnimatedTick />
             </span>
+            {/* Thumbs-up fox — same illustration style as the hero,
+                here giving an approving thumbs-up. Kept compact (110px)
+                so the celebration card stays visually balanced with the
+                green tick and the headline. Saved as WebP (~12 KB) so
+                it loads instantly even on the first run. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/fox-thumbs-up.webp"
+              alt=""
+              aria-hidden
+              className="mt-4 h-[110px] w-auto select-none"
+            />
             <p className="mt-4 text-[18px] font-bold tracking-tight text-ink">
               Your report is ready.
             </p>

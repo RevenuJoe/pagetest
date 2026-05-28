@@ -25,23 +25,23 @@ import { useActiveRun, useSavedReports } from "@/lib/storeHooks";
 import type { AnalyzeResponse } from "@/lib/types";
 
 const LOADING_STEPS = [
-  "Booting Lighthouse on Google's servers…",
-  "Measuring Largest Contentful Paint…",
-  "Capturing desktop above-the-fold…",
-  "Running the mobile audit…",
+  "Booting up Lighthouse on the Google's servers…",
+  "Running speed checks on mobile and desktop…",
+  "Screenshotting above the fold loads…",
+  "Comparing to best practices…",
   "Reading the page content…",
-  "Asking Claude to grade the page…",
+  "Claude is grading page against Revenu criteria…",
   "Compiling your report…",
 ];
 
 // Engaging cycle for the final "Compiling" step (used during reruns).
 const COMPILING_ROTATION = [
-  "Compiling your report…",
-  "Not too long now, it's worth the wait.",
-  "Putting together your report…",
-  "Still compiling your report…",
-  "It's nearly ready.",
-  "It takes time because it's actually a good report.",
+  "Not too long now, it's worth the wait...",
+  "It's nearly ready...",
+  "I promise it's basically done",
+  "Last tweaks",
+  "Wow this is strange, sorry",
+  "It's nearly ready...",
 ];
 
 export default function ReportPage() {
