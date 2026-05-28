@@ -309,7 +309,29 @@ export function mergeImprovements(
       (imp.score ?? 1) < (existing.score ?? 1) ? imp : existing;
     merged.set(imp.id, { ...better, source: "both" });
   }
-  return [...merged.values()]
+  // Image-format audits are ALWAYS pinned to position 1 when Lighthouse
+  // flags them. Joe's rule: WebP / AVIF / efficient encoding is the single
+  // most actionable speed lever, so it leads the technical improvements.
+  const IMAGE_PRIORITY = new Set([
+    "modern-image-formats",
+    "uses-optimized-images",
+    "uses-responsive-images",
+  ]);
+  const all = [...merged.values()];
+  const imageAudits = all
+    .filter((a) => IMAGE_PRIORITY.has(a.id))
+    .sort((a, b) => {
+      // Order within image audits: next-gen formats first, then efficient
+      // encoding, then responsive images.
+      const order = [
+        "modern-image-formats",
+        "uses-optimized-images",
+        "uses-responsive-images",
+      ];
+      return order.indexOf(a.id) - order.indexOf(b.id);
+    });
+  const others = all
+    .filter((a) => !IMAGE_PRIORITY.has(a.id))
     .sort((a, b) => {
       const aSavings = a.overallSavingsMs ?? 0;
       const bSavings = b.overallSavingsMs ?? 0;
@@ -318,8 +340,8 @@ export function mergeImprovements(
       const bScore = b.score ?? 1;
       if (aScore !== bScore) return aScore - bScore;
       return a.title.localeCompare(b.title);
-    })
-    // Cap at 25 so even on a clean page we comfortably surface 10+ when
-    // Lighthouse finds plenty of opportunities + diagnostics.
-    .slice(0, 25);
+    });
+  // Cap at 10 — the section reads as a focused punch list, not an
+  // exhaustive Lighthouse dump.
+  return [...imageAudits, ...others].slice(0, 10);
 }

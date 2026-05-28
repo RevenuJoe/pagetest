@@ -214,7 +214,7 @@ function buildImageNote(audit: TechnicalImprovement): string {
 
 function buildSpeedCheck(
   desktop: { performanceScore: number; lcpMs: number | null; fcpMs: number | null; speedIndexMs: number | null; tbtMs: number | null; cls: number | null } | null,
-  mobile: { performanceScore: number; lcpMs: number | null; tbtMs?: number | null; cls?: number | null } | null,
+  mobile: { performanceScore: number; lcpMs: number | null; speedIndexMs?: number | null; tbtMs?: number | null; cls?: number | null } | null,
   technicalImprovements: TechnicalImprovement[] = [],
 ): CheckResult {
   if (!desktop && !mobile) {
@@ -244,17 +244,29 @@ function buildSpeedCheck(
     break; // only the most impactful one — three-bullet cap
   }
 
-  // PRIORITY 2: combined load-stats summary across both devices.
+  // PRIORITY 2: combined load-stats summary across both devices, now
+  // also including Speed Index (Joe explicitly asked for SI to surface
+  // in the Speed card alongside the headline score and LCP).
+  const fmt = (ms: number | null | undefined) =>
+    ms == null ? null : `${(ms / 1000).toFixed(2)}s`;
   const parts: string[] = [];
   if (desktop) {
-    const lcp = desktop.lcpMs != null ? `, LCP ${(desktop.lcpMs / 1000).toFixed(2)}s` : "";
-    parts.push(`desktop ${desktop.performanceScore}/100${lcp}`);
+    const lcp = fmt(desktop.lcpMs);
+    const si = fmt(desktop.speedIndexMs);
+    const extras = [lcp && `LCP ${lcp}`, si && `SI ${si}`].filter(Boolean).join(", ");
+    parts.push(
+      `desktop ${desktop.performanceScore}/100${extras ? ` (${extras})` : ""}`,
+    );
   }
   if (mobile) {
-    const lcp = mobile.lcpMs != null ? `, LCP ${(mobile.lcpMs / 1000).toFixed(2)}s` : "";
-    parts.push(`mobile ${mobile.performanceScore}/100${lcp}`);
+    const lcp = fmt(mobile.lcpMs);
+    const si = fmt(mobile.speedIndexMs);
+    const extras = [lcp && `LCP ${lcp}`, si && `SI ${si}`].filter(Boolean).join(", ");
+    parts.push(
+      `mobile ${mobile.performanceScore}/100${extras ? ` (${extras})` : ""}`,
+    );
   }
-  if (parts.length > 0) notes.push(`Lighthouse scores: ${parts.join(" — ")}.`);
+  if (parts.length > 0) notes.push(`Lighthouse: ${parts.join(" — ")}.`);
 
   // PRIORITY 3: single worst Core Web Vital miss. Mobile readings are
   // weighted higher because most landing-page traffic is mobile.

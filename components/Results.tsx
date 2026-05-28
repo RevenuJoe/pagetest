@@ -729,11 +729,11 @@ function PageSpeedInsightsBlock({ data }: { data: AnalyzeResponse }) {
           Practices / SEO. Bar chart compares desktop vs mobile. */}
       <PsiCategoryComparison desktop={desktop} mobile={mobile} />
 
-      {/* Per-strategy breakdown: category-score chips + Core Web Vitals
-          row. Stacks vertically on narrow screens. */}
+      {/* Per-strategy breakdown: 6 chips per device — Performance,
+          Accessibility, Best Practices, SEO, Speed Index, Page Weight. */}
       <div className="grid gap-5 md:grid-cols-2">
-        {desktop && <PsiStrategyCard label="Desktop" data={desktop} />}
-        {mobile && <PsiStrategyCard label="Mobile" data={mobile} />}
+        {desktop && <PsiStrategyCard label="Desktop" device="desktop" data={desktop} />}
+        {mobile && <PsiStrategyCard label="Mobile" device="mobile" data={mobile} />}
       </div>
 
       {/* Bullet summary — what stood out across categories. */}
@@ -802,10 +802,10 @@ function ScoreBar({ label, score }: { label: string; score: number | null }) {
   const color = score == null ? "#c4c0b6" : scoreColor(score);
   return (
     <div className="flex items-center gap-3">
-      <div className="w-14 text-[10px] font-bold uppercase text-ink-soft" style={{ letterSpacing: "0.1em" }}>
+      <div className="w-16 text-[11px] font-bold uppercase text-ink-soft" style={{ letterSpacing: "0.1em" }}>
         {label}
       </div>
-      <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-beige-line">
+      <div className="relative h-4 flex-1 overflow-hidden rounded-full bg-beige-line">
         <div
           className="absolute inset-y-0 left-0 rounded-full transition-all"
           style={{
@@ -815,7 +815,7 @@ function ScoreBar({ label, score }: { label: string; score: number | null }) {
         />
       </div>
       <div
-        className="w-10 text-right text-[13px] font-bold tabular-nums"
+        className="w-10 text-right text-[14px] font-bold tabular-nums"
         style={{ color }}
       >
         {score == null ? "—" : score}
@@ -827,22 +827,27 @@ function ScoreBar({ label, score }: { label: string; score: number | null }) {
 function PsiStrategyCard({
   label,
   data,
+  device,
 }: {
   label: string;
   data: PsiBreakdown;
+  device: "desktop" | "mobile";
 }) {
+  // Six chips per strategy: the four Lighthouse categories plus Speed
+  // Index and Page Weight. The other PSI metrics (LCP, CLS, TBT, FCP,
+  // TTI, Server, DOM size) were dropped per Joe's spec to keep this
+  // section focused.
   return (
     <div className="rounded-card border border-beige-line bg-bg/40 px-5 py-4">
       <div
-        className="text-[11px] font-bold uppercase text-ink-soft"
+        className="flex items-center gap-2 text-[12px] font-bold uppercase text-ink-soft"
         style={{ letterSpacing: "0.18em" }}
       >
+        <DeviceIcon device={device} />
         {label}
       </div>
 
-      {/* Four category-score chips — re-uses the same icon-box style as
-          the Overview mini-grid. */}
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {PSI_CATEGORIES.map((cat) => (
           <PsiCategoryChip
             key={cat.key}
@@ -851,55 +856,91 @@ function PsiStrategyCard({
             icon={CATEGORY_ICONS[cat.key]}
           />
         ))}
+        <PsiValueChip
+          label="Speed Index"
+          value={fmtTime(data.speedIndexMs)}
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+              <circle cx="12" cy="13" r="8" />
+              <path d="M12 9v4l3 2" />
+              <path d="M9 2h6" />
+            </svg>
+          }
+          good={data.speedIndexMs != null && data.speedIndexMs <= 3400}
+          warn={data.speedIndexMs != null && data.speedIndexMs > 5800}
+        />
+        <PsiValueChip
+          label="Page Weight"
+          value={fmtBytes(data.totalByteWeight)}
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+              <path d="M6 2h12l2 4-8 16L4 6z" />
+              <path d="M9 6l3 4 3-4" />
+            </svg>
+          }
+          good={data.totalByteWeight != null && data.totalByteWeight <= 1.5 * 1024 * 1024}
+          warn={data.totalByteWeight != null && data.totalByteWeight > 3 * 1024 * 1024}
+        />
       </div>
+    </div>
+  );
+}
 
-      {/* Core Web Vitals + extra timing metrics. */}
-      <div
-        className="mt-5 text-[10px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.16em" }}
-      >
-        Core Web Vitals
-      </div>
-      <div className="mt-2 grid grid-cols-3 gap-2">
-        <MetricChip
-          label="LCP"
-          value={fmtTime(data.lcpMs)}
-          good={data.lcpMs != null && data.lcpMs <= 2500}
-          warn={data.lcpMs != null && data.lcpMs > 4000}
-        />
-        <MetricChip
-          label="CLS"
-          value={data.cls != null ? data.cls.toFixed(2) : "—"}
-          good={data.cls != null && data.cls <= 0.1}
-          warn={data.cls != null && data.cls > 0.25}
-        />
-        <MetricChip
-          label="TBT"
-          value={fmtTime(data.tbtMs)}
-          good={data.tbtMs != null && data.tbtMs <= 200}
-          warn={data.tbtMs != null && data.tbtMs > 600}
-        />
-      </div>
+function DeviceIcon({ device }: { device: "desktop" | "mobile" }) {
+  if (device === "desktop") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <rect x="2" y="4" width="20" height="13" rx="2" />
+        <path d="M8 21h8M12 17v4" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+      <rect x="7" y="2" width="10" height="20" rx="2" />
+      <path d="M11 18h2" />
+    </svg>
+  );
+}
 
+/**
+ * A Speed Index / Page Weight chip in the same visual style as the
+ * Lighthouse category chips, but showing a value (e.g. "2.4 s", "1.8 MB")
+ * tinted green when in Google's "good" band and red when "poor".
+ */
+function PsiValueChip({
+  label,
+  value,
+  icon,
+  good,
+  warn,
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  good?: boolean;
+  warn?: boolean;
+}) {
+  const color = warn ? "#C44536" : good ? "#2F7D6F" : "#76A09C";
+  return (
+    <div className="flex flex-col items-center gap-1 rounded-card border border-beige-line bg-card px-3 py-3">
       <div
-        className="mt-4 text-[10px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.16em" }}
+        className="flex h-7 w-7 items-center justify-center rounded-lg"
+        style={{ background: `${color}1a`, color }}
       >
-        Other metrics
+        {icon}
       </div>
-      <div className="mt-2 grid grid-cols-3 gap-2">
-        <MetricChip label="FCP" value={fmtTime(data.fcpMs)} />
-        <MetricChip label="Speed Index" value={fmtTime(data.speedIndexMs)} />
-        <MetricChip label="TTI" value={fmtTime(data.ttiMs)} />
-        <MetricChip
-          label="Server"
-          value={fmtTime(data.serverResponseMs)}
-        />
-        <MetricChip label="Page weight" value={fmtBytes(data.totalByteWeight)} />
-        <MetricChip
-          label="DOM size"
-          value={data.domSize != null ? data.domSize.toString() : "—"}
-        />
+      <div
+        className="text-[16px] font-bold tabular-nums leading-none tracking-tight"
+        style={{ color }}
+      >
+        {value}
+      </div>
+      <div
+        className="text-center text-[10px] font-bold uppercase text-ink-soft"
+        style={{ letterSpacing: "0.08em" }}
+      >
+        {label}
       </div>
     </div>
   );
@@ -1175,12 +1216,20 @@ function ScreenshotCard({
 }
 
 /**
- * 3-4 sentence narrative for the Overview's Summary panel. Composed from
- * the overall score plus the strongest and weakest dimensions so each
- * report reads specific to the page being analysed.
+ * 3-4 sentence narrative for the Overview's Summary panel.
+ *
+ * Tone shifts with how many dimensions are doing well so the reader gets
+ * an honest, balanced read instead of a blanket negative verdict whenever
+ * one or two cards are red.
+ *
+ *   ≥ 4 cards in the green band (≥ 70):  optimistic. Lead with wins, then
+ *                                         the one or two areas to lift.
+ *   3 weak cards (< 60):                  balanced. "Half of the page is
+ *                                         working, half needs attention."
+ *   ≥ 4 weak cards (< 60):                urgent. "Most of the page needs
+ *                                         improvement, starting with X."
  */
 function overallSummary(data: AnalyzeResponse): string {
-  const score = data.overall;
   const order: CheckKey[] = [
     "speed",
     "content",
@@ -1194,34 +1243,65 @@ function overallSummary(data: AnalyzeResponse): string {
     score: data.checks[k].score,
     label: CHECK_META[k].title,
   }));
-  const sortedHigh = [...entries].sort((a, b) => b.score - a.score);
-  const sortedLow = [...entries].sort((a, b) => a.score - b.score);
-  const top = sortedHigh[0];
-  const bottom = sortedLow[0];
 
-  const opener =
-    score >= 90
-      ? "This page is firing on every dimension we test."
-      : score >= 75
-      ? "Strong overall, with a handful of targeted opportunities to push it into best-in-class territory."
-      : score >= 60
-      ? "Solid baseline, but real conversion is being left on the table."
-      : score >= 40
-      ? "Meaningful weaknesses are showing up across multiple dimensions."
-      : "This page has significant problems holding back performance and conversions.";
+  // Tier the six dimensions: green (≥70), amber (40–69), red (<40).
+  const green = entries.filter((e) => e.score >= 70);
+  const weak = entries.filter((e) => e.score < 60);
+  const strong = entries.filter((e) => e.score >= 75);
 
-  const strength =
-    top.score >= 80
-      ? `${top.label} leads the pack at ${top.score}/100 and is genuinely working for you.`
-      : `${top.label} is the strongest area at ${top.score}/100, though it still has room to grow.`;
+  const list = (arr: { label: string }[]) =>
+    arr.length === 0
+      ? ""
+      : arr.length === 1
+      ? arr[0].label
+      : arr.length === 2
+      ? `${arr[0].label} and ${arr[1].label}`
+      : `${arr.slice(0, -1).map((e) => e.label).join(", ")}, and ${arr[arr.length - 1].label}`;
 
-  const weakness =
-    bottom.score < 60
-      ? `The lowest score is ${bottom.label} at ${bottom.score}/100 — that's where the biggest lift will come from.`
-      : `The lowest score is ${bottom.label} at ${bottom.score}/100, which makes it the easiest win to chase.`;
+  // ≥ 4 strong → optimistic
+  if (green.length >= 4 && weak.length <= 2) {
+    const wins = strong.length > 0 ? strong : green;
+    const lead = `You're already scoring really well on ${list(wins.slice(0, 3))}.`;
+    if (weak.length === 0) {
+      return `${lead} Every dimension is holding up. The cards below pick out small tweaks to push everything into best-in-class territory.`;
+    }
+    if (weak.length === 1) {
+      return `${lead} The one area to focus on is ${weak[0].label} (${weak[0].score}/100). The cards below show the specific page-level fix that will move the needle.`;
+    }
+    return `${lead} Two areas need attention: ${list(weak)}. The cards below show the specific changes to make there.`;
+  }
 
-  const action =
-    "The cards below break down each dimension with specific, page-level recommendations.";
+  // ≥ 4 weak → urgent
+  if (weak.length >= 4) {
+    const lead = `Four or more dimensions are scoring below 60: ${list(weak.slice(0, 4))}.`;
+    const positive =
+      green.length > 0
+        ? ` ${list(green)} ${green.length === 1 ? "is" : "are"} holding up, so the base is salvageable.`
+        : "";
+    return `${lead}${positive} Treat the cards below as a prioritised punch list — start at the top.`;
+  }
 
-  return `${opener} ${strength} ${weakness} ${action}`;
+  // ~3 weak → balanced "half and half"
+  if (weak.length === 3) {
+    const positive =
+      green.length >= 2
+        ? `You're doing well on ${list(green.slice(0, 3))}.`
+        : strong.length > 0
+        ? `${list(strong)} ${strong.length === 1 ? "is" : "are"} holding up.`
+        : "There's a baseline to build from.";
+    return `${positive} Three areas need real attention: ${list(weak)}. The cards below show exactly what to change in each.`;
+  }
+
+  // Default — 1–2 weak, 2–3 green
+  const lead =
+    green.length > 0
+      ? `You're scoring well on ${list(green.slice(0, 3))}.`
+      : "There are no standout strengths on this page yet.";
+  if (weak.length === 0) {
+    return `${lead} Nothing in the red, the cards below pick out small tweaks to keep momentum.`;
+  }
+  if (weak.length === 1) {
+    return `${lead} The one area to lift is ${weak[0].label} (${weak[0].score}/100). The cards below show the page-specific fix.`;
+  }
+  return `${lead} The two areas to lift are ${list(weak)}. The cards below break down what to change in each.`;
 }

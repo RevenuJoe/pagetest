@@ -85,6 +85,7 @@ A specific, benefit-led promise (what the visitor GETS), not a generic feature l
    - FAQ. A question-and-answer section, typically near the bottom. Captures objections before they kill the conversion.
    - Product. Clear explanations of what the product actually DOES, not just outcomes.
    - Stats. Concrete numbers anywhere on the page (e.g. "Saves 3 hours per week", "Used by 4,200 teams"). Specifics beat adjectives.
+   - Comparisons. A "you vs the competitor" table OR a "you vs the old way" framing. Naming the alternative the visitor is choosing against (a competitor by name, a manual workflow, a spreadsheet) helps the reader pick a side and is one of the strongest content patterns. Flag the absence of any comparison framing.
 
 4. Concrete proof. Numbers, dates, named customers, integrations, specifics over adjectives.
 
@@ -128,6 +129,7 @@ Look for:
 - A clear conversion widget above the fold (form, multi-step question, calculator, or a prominent primary CTA) AND another at the bottom of the page (e.g. a final form or final CTA section). Having only one or having neither loses major points.
 - MULTI-STEP FORMS THAT OPEN WITH A QUESTION are one of the strongest conversion widgets and should be scored HIGHER than a plain email field. Examples: "What is your annual revenue?", "How many orders do you get per month?", "What's your biggest channel?". The question pulls people in, then the form asks for personal info later.
 - Form quality: short forms (1-3 fields above the fold) outperform long forms. CTA button copy that promises a specific outcome ("Get my free audit") outperforms generic copy ("Submit", "Send", "Learn more").
+- PHONE NUMBER FIELDS. If a form is asking for a phone number it is almost certainly reducing the conversion rate by demanding too much info up front. Strongly recommend removing the phone field and routing the user directly to a calendar booking link instead (e.g. Calendly), so they self-serve the phone exchange after committing. Flag this as a major CRO issue whenever you see it.
 - Sticky CTAs, exit-intent forms, or chat widgets are bonuses.
 
 When making recommendations:
