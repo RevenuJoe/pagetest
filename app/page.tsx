@@ -165,7 +165,7 @@ function Home() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="relative min-h-screen overflow-x-hidden">
       {/* Page-specific JSON-LD: WebPage + FAQPage. Helps Google and AI search
           parsers understand the page's intent and surface answers directly. */}
       <script
@@ -233,7 +233,7 @@ function Home() {
       />
       <Header />
 
-      <main className="mx-auto max-w-[1180px] px-6 sm:px-14">
+      <main className="relative z-10 mx-auto max-w-[1180px] px-6 sm:px-14">
         {/* Idle hero: visible only when phase === 'idle'. Fades + slides up
             out of the way when a run starts. `pointer-events-none` while
             hidden so the centred progress card never gets covered. */}
@@ -421,15 +421,16 @@ function Home() {
           </section>
         )}
 
-        {phase === "idle" && (
-          <div className="relative">
-            <FeaturesMarqueeSection />
-            <FoxIllustration />
-          </div>
-        )}
+        {phase === "idle" && <FeaturesMarqueeSection />}
       </main>
 
-      <footer className="mt-[72px] border-t border-beige-line bg-bg py-9 text-center text-[14px] text-ink-soft">
+      {/* Fox illustration sits OUTSIDE main so it can layer beneath the
+          hero, form, and marquee. Anchored to the bottom-right of the
+          page, just above the footer, so the desk surface aligns with
+          the scrolling cards. Hidden on small screens. */}
+      {phase === "idle" && <FoxIllustration />}
+
+      <footer className="relative z-10 mt-[72px] border-t border-beige-line bg-bg py-9 text-center text-[14px] text-ink-soft">
         <div className="mx-auto max-w-[1180px] px-6 sm:px-14">
           <p className="m-0">© Revenu</p>
         </div>
@@ -485,7 +486,7 @@ function HeroPills() {
       ),
     },
     {
-      label: "We'll check its speed with Google Page Insights",
+      label: "Check speed with Google Lighthouse",
       svg: (
         <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3" aria-hidden>
           <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
@@ -613,10 +614,14 @@ function FeaturesMarqueeSection() {
 
 /**
  * The fox illustration — REVENU mascot at a desk, sitting at the bottom-
- * right of the page. Anchored to the bottom-right of the viewport and
- * sized so the desk surface roughly aligns with the marquee strip. The
- * marquee scrolls BEHIND the fox; the fox sits on top so the cards on
- * the right side pass behind it.
+ * right of the page. Positioned at the OUTER level so it can sit BEHIND
+ * the main content (z-0 vs main's z-10). The hero, form, and marquee all
+ * paint on top of it. The fox shows through the gaps between scrolling
+ * marquee cards and is fully visible to the right of the form, just like
+ * the Figma frame.
+ *
+ * Anchored to the viewport's bottom-right, with the desk surface sitting
+ * roughly at the marquee row. Hidden on small screens.
  */
 function FoxIllustration() {
   return (
@@ -625,15 +630,15 @@ function FoxIllustration() {
       src="/fox.webp"
       alt=""
       aria-hidden
-      className="pointer-events-none absolute z-20 hidden select-none lg:block"
+      className="pointer-events-none absolute z-0 hidden select-none lg:block"
       style={{
-        // Position relative to the wrapper div in idle layout. Bottom-aligned
-        // so the desk meets the marquee row; right-aligned so it hugs the
-        // viewport's right edge (and extends slightly past it like the
-        // Figma frame).
-        right: "-2vw",
-        bottom: "-40px",
-        height: "min(50vw, 430px)",
+        // Bottom-aligned with the footer's top (footer ≈ 93px tall:
+        // border + py-9 + 14px line). Right edge tucked slightly past
+        // the viewport, matching the Figma frame where the fox bleeds
+        // off the right.
+        right: "-40px",
+        bottom: "93px",
+        height: "min(46vw, 430px)",
         width: "auto",
       }}
     />
