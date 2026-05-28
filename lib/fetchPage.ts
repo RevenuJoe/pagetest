@@ -51,6 +51,20 @@ export interface PageStructure {
   /** True when at least one <input> on the page has type="email" or a name /
    *  id / placeholder containing "email". */
   hasEmailField: boolean;
+  /** Visible text of every link found inside a <nav> element. Used to
+   *  prevent "slim the navigation" hallucinations — Claude can count the
+   *  exact number of nav items instead of guessing. */
+  navLinks: string[];
+  /** Visible text of every <button> on the page, plus <a> elements that
+   *  look CTA-like (have role="button", a class containing "btn"/"button",
+   *  or text matching common CTA patterns like "Get a Demo"). Lets Claude
+   *  verify a CTA exists before recommending one be added. */
+  ctaTexts: string[];
+  /** Every heading on the page (H1 / H2 / H3) in document order. The first
+   *  and last entries tell Claude what's at the top and bottom of the
+   *  page, which prevents "add a bottom CTA" hallucinations when the
+   *  page already ends with a "Get started" section. */
+  headings: string[];
 }
 
 export interface FormFieldSummary {
@@ -184,6 +198,9 @@ function extractStructure(html: string): PageStructure {
   ).length;
   const bodyText = extractBodyText(html);
   const formFields = extractFormFields(html);
+  const navLinks = extractNavLinks(html);
+  const ctaTexts = extractCtaTexts(html);
+  const headings = extractHeadings(html);
 
   // Derive blunt yes/no signals for the most-hallucinated fields. Claude
   // gets these as ground truth so it can't claim "the form asks for a
@@ -218,7 +235,96 @@ function extractStructure(html: string): PageStructure {
     formFields,
     hasPhoneField: formFields.some(looksLikePhone),
     hasEmailField: formFields.some(looksLikeEmail),
+    navLinks,
+    ctaTexts,
+    headings,
   };
+}
+
+/** Strip HTML tags, decode entities, collapse whitespace. Used when we
+ *  need the visible text of a single element (heading, link, button). */
+function cleanInlineText(s: string): string {
+  return decodeEntities(stripTags(s)).replace(/\s+/g, " ").trim();
+}
+
+/** Every <a> link found inside a <nav>. Dedupes by text. */
+function extractNavLinks(html: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  // Match every <nav>...</nav> block (non-greedy, multi-line).
+  for (const navMatch of html.matchAll(/<nav\b[^>]*>([\s\S]*?)<\/nav>/gi)) {
+    const navInner = navMatch[1] ?? "";
+    for (const linkMatch of navInner.matchAll(
+      /<a\b[^>]*\bhref\s*=\s*["'][^"']*["'][^>]*>([\s\S]*?)<\/a>/gi,
+    )) {
+      const text = cleanInlineText(linkMatch[1] ?? "");
+      if (!text || text.length > 60) continue;
+      const key = text.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(text);
+      if (out.length >= 30) return out;
+    }
+  }
+  return out;
+}
+
+/** Visible text of every CTA-like element on the page:
+ *   - <button> elements
+ *   - <input type="submit|button"> values
+ *   - <a> elements that look CTA-like (role=button, "btn"/"button" class,
+ *     or text matching common CTA patterns)
+ *  Deduped by text. */
+function extractCtaTexts(html: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (raw: string): void => {
+    const text = cleanInlineText(raw);
+    if (!text || text.length > 60) return;
+    const key = text.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(text);
+  };
+
+  for (const m of html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/gi)) {
+    add(m[1] ?? "");
+  }
+  for (const m of html.matchAll(
+    /<input\b[^>]*\btype\s*=\s*["'](?:submit|button)["'][^>]*\bvalue\s*=\s*["']([^"']+)["']/gi,
+  )) {
+    add(m[1] ?? "");
+  }
+  // CTA-like anchors. We pick anchors that either have a role=button,
+  // a class containing "btn" or "button", OR text matching common CTA
+  // patterns (Book, Demo, Get, Start, Try, Sign up, Schedule, Contact,
+  // Buy, Download, Subscribe, etc.).
+  const CTA_TEXT = /\b(book|demo|get\s+(?:a\s+)?(?:demo|started|in\s+touch)|start|try|sign\s*up|schedule|contact|buy|download|subscribe|join|request|talk\s+to)\b/i;
+  for (const m of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+    const attrs = m[1] ?? "";
+    const text = cleanInlineText(m[2] ?? "");
+    if (!text) continue;
+    const isButtonish =
+      /\brole\s*=\s*["']button["']/i.test(attrs) ||
+      /\bclass\s*=\s*["'][^"']*\b(?:btn|button|cta)\b/i.test(attrs) ||
+      CTA_TEXT.test(text);
+    if (!isButtonish) continue;
+    add(text);
+    if (out.length >= 40) return out;
+  }
+  return out;
+}
+
+/** Every heading on the page (H1/H2/H3) in document order. */
+function extractHeadings(html: string): string[] {
+  const out: string[] = [];
+  for (const m of html.matchAll(/<h[1-3]\b[^>]*>([\s\S]*?)<\/h[1-3]>/gi)) {
+    const text = cleanInlineText(m[1] ?? "");
+    if (!text || text.length > 200) continue;
+    out.push(text);
+    if (out.length >= 80) return out;
+  }
+  return out;
 }
 
 /**

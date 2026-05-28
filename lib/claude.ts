@@ -242,13 +242,33 @@ function buildPromptText(input: ClaudeInput): string {
     `- <nav>: ${s.hasNav}, <footer>: ${s.hasFooter}`,
     `- Word count: ${s.wordCount}`,
     "",
-    "GROUND TRUTH — facts parsed directly from the page HTML. Treat these as authoritative. Do NOT contradict them. Do NOT claim the page has elements that aren't listed here.",
+    "GROUND TRUTH — facts parsed directly from the page HTML. Treat these as authoritative. Do NOT contradict them. Do NOT claim the page has elements that aren't listed here, and do NOT recommend adding elements that ARE listed here.",
     "",
     `- Form contains a phone-number field: ${s.hasPhoneField ? "YES" : "NO"}`,
     `- Form contains an email field: ${s.hasEmailField ? "YES" : "NO"}`,
-    `- Total fillable form fields: ${s.formFields.length}`,
+    `- Total fillable form fields on the page: ${s.formFields.length}`,
+    `- Total <form> elements on the page: ${s.formCount}`,
     "- Form fields on the page (tag + attributes):",
     formFieldsBlock,
+    "",
+    `- Number of <nav> elements on the page: ${s.hasNav ? "1 or more" : "0"}`,
+    `- Number of links inside <nav>: ${s.navLinks.length}`,
+    s.navLinks.length > 0
+      ? `- Nav link labels (verbatim): ${s.navLinks.map((l) => `"${l}"`).join(", ")}`
+      : "- Nav link labels: (none)",
+    "",
+    `- Number of CTA-like buttons/links found: ${s.ctaTexts.length}`,
+    s.ctaTexts.length > 0
+      ? `- CTA labels (verbatim, up to 20 shown): ${s.ctaTexts.slice(0, 20).map((t) => `"${t}"`).join(", ")}`
+      : "- CTA labels: (none)",
+    "",
+    `- Total headings (H1/H2/H3) on the page: ${s.headings.length}`,
+    s.headings.length > 0
+      ? `- First heading on the page: "${s.headings[0]}"`
+      : "",
+    s.headings.length > 1
+      ? `- Last heading on the page: "${s.headings[s.headings.length - 1]}"`
+      : "",
     "",
     "Body text of the FULL page (top to bottom, may be lightly truncated):",
     "---",
