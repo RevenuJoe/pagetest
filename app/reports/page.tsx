@@ -139,7 +139,7 @@ function ReportRow({
   }
 
   return (
-    <li className="relative flex items-start gap-5 rounded-card border border-beige-line bg-card px-6 pt-8 pb-7 shadow-card">
+    <li className="relative flex items-start gap-5 rounded-card border border-beige-line bg-card px-6 py-5 shadow-card">
       {/* SCORE column — label on top, circle beneath. Circle is ~10% smaller
           than before so it sits visually a touch lower next to the Name row,
           and the extra card padding gives the whole row more breathing
