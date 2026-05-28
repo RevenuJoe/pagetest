@@ -165,7 +165,7 @@ function Home() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden">
+    <div className="relative flex min-h-screen flex-col overflow-x-hidden">
       {/* Page-specific JSON-LD: WebPage + FAQPage. Helps Google and AI search
           parsers understand the page's intent and surface answers directly. */}
       <script
@@ -233,7 +233,7 @@ function Home() {
       />
       <Header />
 
-      <main className="relative z-10 mx-auto max-w-[1180px] px-6 sm:px-14">
+      <main className="relative z-10 mx-auto flex w-full max-w-[1180px] flex-1 flex-col px-6 sm:px-14">
         {/* Idle hero: visible only when phase === 'idle'. Fades + slides up
             out of the way when a run starts. `pointer-events-none` while
             hidden so the centred progress card never gets covered. */}
@@ -421,7 +421,13 @@ function Home() {
           </section>
         )}
 
-        {phase === "idle" && <FeaturesMarqueeSection />}
+        {/* mt-auto pushes the marquee to the bottom of main so the footer
+            settles at the bottom of the viewport on a Mac laptop. */}
+        {phase === "idle" && (
+          <div className="mt-auto">
+            <FeaturesMarqueeSection />
+          </div>
+        )}
       </main>
 
       {/* Fox illustration sits OUTSIDE main so it can layer beneath the
@@ -430,7 +436,7 @@ function Home() {
           the scrolling cards. Hidden on small screens. */}
       {phase === "idle" && <FoxIllustration />}
 
-      <footer className="relative z-10 mt-[72px] border-t border-beige-line bg-bg py-9 text-center text-[14px] text-ink-soft">
+      <footer className="relative z-10 border-t border-beige-line bg-bg py-9 text-center text-[14px] text-ink-soft">
         <div className="mx-auto max-w-[1180px] px-6 sm:px-14">
           <p className="m-0">© Revenu</p>
         </div>
@@ -557,7 +563,7 @@ function FeaturesMarqueeSection() {
   // Two copies of the items so the track can scroll -50% seamlessly.
   const track = [...items, ...items];
   return (
-    <section className="relative mt-16 mb-4 overflow-hidden">
+    <section className="relative mb-6 overflow-hidden">
       {/* Full-bleed marquee container. Negative margins push past the
           main container's padding so the cards scroll all the way to the
           viewport edges. */}
@@ -632,13 +638,14 @@ function FoxIllustration() {
       aria-hidden
       className="pointer-events-none absolute z-0 hidden select-none lg:block"
       style={{
-        // Bottom-aligned with the footer's top (footer ≈ 93px tall:
-        // border + py-9 + 14px line). Right edge tucked slightly past
-        // the viewport, matching the Figma frame where the fox bleeds
-        // off the right.
+        // Footer is `border-t + py-9 (72px) + ~21px line` ≈ 94px tall and
+        // pinned to the viewport bottom by the flex layout. Anchor the
+        // fox's bottom edge exactly at the footer's top edge so the full
+        // image is visible and never cropped. Right edge bleeds slightly
+        // off-viewport to match the Figma frame.
         right: "-40px",
-        bottom: "93px",
-        height: "min(46vw, 430px)",
+        bottom: "94px",
+        height: "min(48vw, 460px)",
         width: "auto",
       }}
     />
