@@ -567,13 +567,17 @@ function FeaturesMarqueeSection() {
   // Two copies of the items so the track can scroll -50% seamlessly.
   const track = [...items, ...items];
   return (
-    <section className="relative mb-6 overflow-hidden">
-      {/* Full-VIEWPORT-bleed marquee container. `mx-[calc(50%-50vw)]`
-          stretches the element from screen-left to screen-right regardless
-          of how narrow its parent's max-width is (main is capped at
-          1180px). Cards now enter at the actual viewport's right edge and
-          exit at the viewport's left edge. */}
-      <div className="relative" style={{ marginLeft: "calc(50% - 50vw)", marginRight: "calc(50% - 50vw)" }}>
+    <section className="relative mb-6">
+      {/* Full-VIEWPORT-bleed marquee container. `marginLeft / marginRight:
+          calc(50% - 50vw)` stretches the element from screen-left to
+          screen-right regardless of how narrow its parent's max-width is
+          (main is capped at 1180px). `overflow-hidden` MUST live here
+          (not on the parent section) so the clip happens at the
+          viewport edges, not at the inner 1180px container edge. */}
+      <div
+        className="relative overflow-hidden"
+        style={{ marginLeft: "calc(50% - 50vw)", marginRight: "calc(50% - 50vw)" }}
+      >
         <div
           className="flex gap-2"
           style={{
