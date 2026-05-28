@@ -130,12 +130,9 @@ function Home() {
     return () => clearInterval(id);
   }, [isLoading, stepIndex]);
 
-  // When the report finishes its slide-in, scroll it into view.
-  useEffect(() => {
-    if (phase === "showing" && focusResult && resultsRef.current) {
-      resultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [phase, focusResult]);
+  // The report just animates in below the hero space — we deliberately
+  // do NOT scrollIntoView. The user controls the scroll; if they want to
+  // see more they can scroll themselves.
 
   // Surface analysisStore errors as the local error banner.
   useEffect(() => {

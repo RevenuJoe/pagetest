@@ -232,10 +232,11 @@ export async function runPageSpeed(
     // PSI runs Lighthouse on Google's infrastructure. The desktop strategy
     // is consistently slower than mobile because Lighthouse renders the
     // full page-emulation viewport (~1350px wide) and waits for all
-    // network activity to settle. 60s sometimes truncated the desktop
-    // run and we'd lose it from the report; 78s gives it enough headroom
-    // while still leaving budget under Vercel's 90s maxDuration.
-    signal: AbortSignal.timeout(78_000),
+    // network activity to settle. We give each strategy 150s so a slow
+    // run is patiently waited out rather than aborted — desktop dropping
+    // out was the main reason reports came back mobile-only. The route's
+    // maxDuration (180s) provides the outer ceiling.
+    signal: AbortSignal.timeout(150_000),
   });
 
   if (!res.ok) {

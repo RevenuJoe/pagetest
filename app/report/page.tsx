@@ -93,13 +93,10 @@ function ReportView() {
     return () => window.clearInterval(id);
   }, [isLoading, stepIndex]);
 
-  // Scroll the report into view when it lands.
+  // No automatic scroll when the report lands — the user controls
+  // scrolling. The animation runs in place wherever the page currently
+  // sits.
   const resultsRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (focusResult && resultsRef.current) {
-      resultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [focusResult]);
 
   function rerun() {
     if (!queryUrl) return;

@@ -121,28 +121,11 @@ export default function Results({
 
     function step(i: number) {
       if (cancelled) return;
-      if (i >= sections.length) {
-        // All in. Wait a beat, then glide back up to the Overview.
-        timers.push(
-          setTimeout(() => {
-            if (cancelled) return;
-            refs.current[0]?.scrollIntoView({
-              behavior: "smooth",
-              block: "start",
-            });
-          }, 700),
-        );
-        return;
-      }
+      if (i >= sections.length) return;
+      // Just reveal — never hijack the scroll. The user controls scrolling
+      // themselves; if they want to scroll down to see the next section as
+      // it animates in, they can.
       setRevealedIndex(i);
-      // Don't auto-scroll on the first section — its container already
-      // positioned us at the top of the report.
-      if (i > 0) {
-        refs.current[i]?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }
       timers.push(setTimeout(() => step(i + 1), 550));
     }
 

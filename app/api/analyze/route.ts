@@ -29,8 +29,11 @@ import type {
 } from "@/lib/types";
 import type { PageSpeedResult } from "@/lib/pagespeed";
 
-// Lighthouse can take 30+ seconds. Vercel's default is 10s — we need more.
-export const maxDuration = 90;
+// Lighthouse can take 30–60s per strategy, and we run desktop + mobile
+// in parallel plus the Claude call. Push the route budget out to 180s
+// (Vercel Pro allows up to 300s) so the desktop PSI run never gets cut
+// off — losing desktop is the main reason reports came back mobile-only.
+export const maxDuration = 180;
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
