@@ -16,7 +16,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { PageStructure } from "./fetchPage";
-import type { CheckKey, CheckResult } from "./types";
+import type { CheckKey, CheckResult, KeyTakeaway } from "./types";
 import { buildSystemPrompt } from "./scoringCriteria";
 
 const MODEL = "claude-sonnet-4-5";
@@ -40,8 +40,8 @@ export type ClaudeChecks = Pick<
 
 export interface ClaudeOutput {
   checks: ClaudeChecks;
-  /** 5–8 prioritized, page-specific takeaways to lift the score. */
-  keyTakeaways: string[];
+  /** Top 5 categorised, page-specific takeaways to lift the score. */
+  keyTakeaways: KeyTakeaway[];
 }
 
 // All scoring criteria live in ./scoringCriteria.ts as the single source of
@@ -184,8 +184,36 @@ function parseOutput(raw: string): ClaudeOutput {
   }
 
   const rawTakeaways = (parsed as Record<string, unknown>).keyTakeaways;
-  const keyTakeaways = Array.isArray(rawTakeaways)
-    ? rawTakeaways.filter((x): x is string => typeof x === "string")
+  const validCategories: ReadonlyArray<CheckKey> = [
+    "speed",
+    "content",
+    "digestibility",
+    "cro",
+    "aboveTheFold",
+    "mobile",
+  ];
+  const keyTakeaways: KeyTakeaway[] = Array.isArray(rawTakeaways)
+    ? (rawTakeaways
+        .map((it) => {
+          // New shape: { category, text }. Strings get bucketed under "content"
+          // as a safe fallback for any model output that ignores the schema.
+          if (it && typeof it === "object") {
+            const obj = it as Record<string, unknown>;
+            const cat = typeof obj.category === "string" ? obj.category : "";
+            const text = typeof obj.text === "string" ? obj.text.trim() : "";
+            if (!text) return null;
+            const category = (validCategories.includes(cat as CheckKey)
+              ? (cat as CheckKey)
+              : "content");
+            return { category, text };
+          }
+          if (typeof it === "string" && it.trim().length > 0) {
+            return { category: "content" as CheckKey, text: it.trim() };
+          }
+          return null;
+        })
+        .filter((x): x is KeyTakeaway => x !== null)
+        .slice(0, 5))
     : [];
 
   return { checks, keyTakeaways };

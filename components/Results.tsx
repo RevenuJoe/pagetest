@@ -127,14 +127,20 @@ function CopyButton({ getText }: { getText: () => string }) {
 }
 
 function formatTakeawaysForClipboard(data: AnalyzeResponse): string {
-  const items = data.keyTakeaways ?? [];
+  const items = (data.keyTakeaways ?? []).slice(0, 5);
   if (items.length === 0) return "";
   const header =
     `Key Takeaways — ${displayName(data)}\n` +
     `${data.url}\n` +
     `${new Date(data.analyzedAt).toLocaleString()}\n` +
     `\n`;
-  const body = items.map((t, i) => `${i + 1}. ${t}`).join("\n");
+  const body = items
+    .map((it, i) => {
+      const text = typeof it === "string" ? it : it.text;
+      const tag = typeof it === "string" ? "" : `${CHECK_META[it.category].title}: `;
+      return `${i + 1}. ${tag}${text}`;
+    })
+    .join("\n");
   return header + body + "\n";
 }
 
@@ -336,7 +342,7 @@ function BreakdownBlock({ data }: { data: AnalyzeResponse }) {
 }
 
 function KeyTakeawaysBlock({ data }: { data: AnalyzeResponse }) {
-  const items = data.keyTakeaways ?? [];
+  const items = (data.keyTakeaways ?? []).slice(0, 5);
   if (items.length === 0) {
     return (
       <p className="text-sm font-medium text-ink-soft">
@@ -345,20 +351,32 @@ function KeyTakeawaysBlock({ data }: { data: AnalyzeResponse }) {
     );
   }
   return (
-    <ol className="m-0 flex flex-col gap-3 p-0 list-none">
-      {items.map((text, i) => (
-        <li
-          key={i}
-          className="flex items-start gap-3 rounded-card border border-beige-line bg-bg/40 px-4 py-3"
-        >
-          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-accent text-[12px] font-bold text-white tabular-nums">
-            {i + 1}
-          </span>
-          <span className="text-sm font-medium leading-[1.6] text-ink">
-            {text}
-          </span>
-        </li>
-      ))}
+    <ol className="m-0 flex flex-col gap-2 p-0 list-none">
+      {items.map((item, i) => {
+        // Backward compat: older saved reports have plain string takeaways.
+        const text = typeof item === "string" ? item : item.text;
+        const category =
+          typeof item === "string" ? undefined : item.category;
+        const tag = category ? CHECK_META[category].title : null;
+        return (
+          <li
+            key={i}
+            className="flex items-center gap-3 rounded-card border border-beige-line bg-bg/40 px-4 py-2.5"
+          >
+            <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-bold text-white tabular-nums">
+              {i + 1}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-tight text-ink">
+              {tag && (
+                <span className="font-bold text-ink">
+                  {tag}:
+                </span>
+              )}{" "}
+              {text}
+            </span>
+          </li>
+        );
+      })}
     </ol>
   );
 }

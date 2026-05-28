@@ -6,6 +6,16 @@ export type CheckKey =
   | "aboveTheFold"
   | "mobile";
 
+/**
+ * A categorised key takeaway. The category names which scoring dimension
+ * this recommendation primarily helps (speed, cro, etc.) so we can render
+ * the dimension label in bold next to the suggestion.
+ */
+export interface KeyTakeaway {
+  category: CheckKey;
+  text: string;
+}
+
 export interface CheckResult {
   /** 0–100 score. */
   score: number;
@@ -66,8 +76,11 @@ export interface AnalyzeResponse {
   /** Overall score = average of the six checks, rounded to int. */
   overall: number;
   checks: Record<CheckKey, CheckResult>;
-  /** 5–8 prioritized, page-specific recommendations from Claude. */
-  keyTakeaways: string[];
+  /** Top 5 prioritised recommendations from Claude. Newer reports return
+   *  categorised objects (e.g. { category: "speed", text: "..." }); older
+   *  reports saved in localStorage may still have plain strings, so the
+   *  renderer accepts both. */
+  keyTakeaways: Array<KeyTakeaway | string>;
   /** Lighthouse audit suggestions (opportunities + diagnostics) merged
    *  across desktop and mobile runs, sorted by impact. */
   technicalImprovements?: TechnicalImprovement[];

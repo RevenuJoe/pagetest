@@ -154,7 +154,12 @@ export const OUTPUT_FORMAT = `For each check return:
 - headline: ONE sentence (max ~16 words) summarising the verdict
 - notes: 2 to 4 bullet-style observations, each a concrete, specific recommendation or fact about THIS page. Reference the actual content you observed. Never generic advice.
 
-ALSO return a "keyTakeaways" array: 5 to 8 prioritised, page-specific recommendations the team should action to lift this page's overall score. List the highest-impact items first. Each takeaway is ONE sentence, no more than ~22 words. Be concrete about WHAT to do, not just what's wrong (e.g. "Add a benefit-led subheadline under the H1 explaining what visitors get if they sign up", not "improve the headline").
+ALSO return a "keyTakeaways" array. RULES:
+- EXACTLY 5 takeaways. No more, no fewer. Pick the FIVE biggest issues across the whole page.
+- Each takeaway is an object: { "category": <one of "speed" | "content" | "digestibility" | "cro" | "aboveTheFold" | "mobile">, "text": "<recommendation>" }.
+- "category" tags which scoring dimension this recommendation primarily helps. Choose the single best fit.
+- "text" is ONE short sentence, MAX 14 WORDS. It must fit on a single line on a desktop screen. Be concrete about WHAT to do (e.g. "Add a benefit-led subheadline under the H1" not "improve the headline").
+- List the highest-impact items first.
 
 Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
 
@@ -164,7 +169,7 @@ Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
   "cro": { "score": <int>, "headline": "<string>", "notes": ["<string>", ...] },
   "aboveTheFold": { "score": <int>, "headline": "<string>", "notes": ["<string>", ...] },
   "mobile": { "score": <int>, "headline": "<string>", "notes": ["<string>", ...] },
-  "keyTakeaways": ["<string>", "<string>", ...]
+  "keyTakeaways": [ { "category": "<key>", "text": "<string>" }, ... ]
 }`;
 
 export const STYLE = `WRITING STYLE RULES (apply to every string you return):

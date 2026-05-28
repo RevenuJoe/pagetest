@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Header from "@/components/Header";
 import Section from "@/components/Section";
 import { OverviewBlock } from "@/components/Results";
-import { IconRerun, IconTrash } from "@/components/Icons";
+import { IconRerun, IconTrash, IconPencil } from "@/components/Icons";
 import { useRunningUrls, useSavedReports } from "@/lib/storeHooks";
 import { analysisStore } from "@/lib/analysisStore";
 import { savedStore } from "@/lib/savedStore";
@@ -21,6 +21,8 @@ export default function ReportsPage() {
   // we open the branded confirmation modal — only after the user confirms
   // do we actually remove the report from savedStore.
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  // URL of the report being renamed. When set, the rename modal opens.
+  const [renamingUrl, setRenamingUrl] = useState<string | null>(null);
 
   function openReport(r: AnalyzeResponse) {
     // /report is the dedicated viewer for saved reports — same canonical
@@ -39,9 +41,17 @@ export default function ReportsPage() {
     setConfirmingDelete(null);
   }
 
+  function saveRename(newName: string) {
+    if (renamingUrl) savedStore.rename(renamingUrl, newName);
+    setRenamingUrl(null);
+  }
+
   // Pre-compute the report being confirmed so the modal can display its name.
   const confirmingReport = confirmingDelete
     ? reports.find((r) => r.url === confirmingDelete)
+    : undefined;
+  const renamingReport = renamingUrl
+    ? reports.find((r) => r.url === renamingUrl)
     : undefined;
 
   return (
@@ -91,6 +101,7 @@ export default function ReportsPage() {
                   onOpen={() => openReport(r)}
                   onRerun={() => rerunReport(r)}
                   onDelete={() => setConfirmingDelete(r.url)}
+                  onEdit={() => setRenamingUrl(r.url)}
                 />
               ))}
             </ul>
@@ -109,6 +120,14 @@ export default function ReportsPage() {
           name={confirmingReport ? displayName(confirmingReport) : undefined}
           onCancel={() => setConfirmingDelete(null)}
           onConfirm={confirmDelete}
+        />
+      )}
+
+      {renamingUrl && (
+        <RenameModal
+          initial={renamingReport ? displayName(renamingReport) : ""}
+          onCancel={() => setRenamingUrl(null)}
+          onSave={saveRename}
         />
       )}
     </div>
@@ -201,12 +220,14 @@ function ReportRow({
   onOpen,
   onRerun,
   onDelete,
+  onEdit,
 }: {
   report: AnalyzeResponse;
   running: boolean;
   onOpen: () => void;
   onRerun: () => void;
   onDelete: () => void;
+  onEdit: () => void;
 }) {
   return (
     <li className="relative">
@@ -218,19 +239,22 @@ function ReportRow({
             running={running}
             onOpen={onOpen}
             onRerun={onRerun}
+            onEdit={onEdit}
           />
         }
       >
         <OverviewBlock data={report} />
       </Section>
 
-      {/* Trash icon — hangs outside the card on the right, no background. */}
+      {/* Trash icon — hangs outside the card on the right. top:14px places
+          its centre against the section header's centre (header ≈ 56px, so
+          half is 28px; the button itself is 28px tall, hence 14px). */}
       <button
         type="button"
         onClick={onDelete}
         aria-label="Delete this saved report"
         title="Delete"
-        className="absolute right-[-32px] top-[33px] flex h-7 w-7 items-center justify-center bg-transparent text-ink-soft transition hover:text-bad"
+        className="absolute right-[-32px] top-[14px] flex h-7 w-7 items-center justify-center bg-transparent text-ink-soft transition hover:text-bad"
       >
         <IconTrash />
       </button>
@@ -247,10 +271,12 @@ function HeaderActions({
   running,
   onOpen,
   onRerun,
+  onEdit,
 }: {
   running: boolean;
   onOpen: () => void;
   onRerun: () => void;
+  onEdit: () => void;
 }) {
   function stop(handler: () => void) {
     return (e: React.MouseEvent) => {
@@ -261,6 +287,15 @@ function HeaderActions({
   }
   return (
     <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={stop(onEdit)}
+        aria-label="Rename this report"
+        title="Rename"
+        className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft transition hover:bg-bg hover:text-accent"
+      >
+        <IconPencil className="h-[14px] w-[14px]" />
+      </button>
       <button
         type="button"
         onClick={stop(onOpen)}
@@ -277,6 +312,92 @@ function HeaderActions({
         <IconRerun />
         {running ? "Running…" : "Rerun"}
       </button>
+    </div>
+  );
+}
+
+/**
+ * Branded modal for renaming a saved report. Mirrors the confirm-delete
+ * modal styling (cream card, dim backdrop, Cancel + Save buttons).
+ */
+function RenameModal({
+  initial,
+  onCancel,
+  onSave,
+}: {
+  initial: string;
+  onCancel: () => void;
+  onSave: (name: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onCancel();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = value.trim();
+    if (trimmed.length > 0) onSave(trimmed);
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="rename-title"
+      className="fixed inset-0 z-50 flex items-center justify-center px-6"
+    >
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onCancel}
+        className="absolute inset-0 bg-ink/30 backdrop-blur-[2px]"
+      />
+      <form
+        onSubmit={submit}
+        className="relative w-full max-w-[440px] rounded-[20px] border border-beige-line bg-card p-7 shadow-cardHover"
+      >
+        <h2 id="rename-title" className="m-0 text-[18px] font-bold tracking-tight text-ink">
+          Rename report
+        </h2>
+        <p className="mt-2 text-[14px] font-medium leading-[1.6] text-ink-soft">
+          Choose a name you&apos;ll recognise on the Saved Reports list.
+        </p>
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="mt-5 w-full rounded-[10px] border border-beige-line bg-card px-3.5 py-2.5 text-[14px] font-semibold tracking-tight text-ink outline-none focus:border-accent focus:ring-4 focus:ring-accent-soft"
+          aria-label="New report name"
+        />
+        <div className="mt-6 flex items-center justify-end gap-2.5">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-full border border-beige-line bg-card px-5 py-2 text-[13px] font-semibold text-ink-soft transition hover:border-ink hover:text-ink"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={value.trim().length === 0}
+            className="rounded-full bg-accent px-5 py-2 text-[13px] font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Save
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
