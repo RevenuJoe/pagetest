@@ -200,9 +200,20 @@ const IMAGE_AUDIT_IDS = [
 /**
  * Turn a Lighthouse image-format audit into a Speed-section note. We surface
  * the savings number Lighthouse gives us (ms or KB) so the message lands as
- * "here's how much faster the page would load if you fix this".
+ * "here's how much faster the page would load if you fix this". When
+ * Lighthouse rates the audit "passing" but still lists items (= the page
+ * uses PNG/JPEG), we fall back to an image-count note so the user still
+ * sees the finding.
  */
 function buildImageNote(audit: TechnicalImprovement): string {
+  // Count distinct non-modern image URLs from the items list. Lighthouse
+  // returns rows like { url: "https://…/foo.png", wastedBytes: … }.
+  const items = audit.items ?? [];
+  const rasterCount = items.filter((row) => {
+    const url = typeof row.url === "string" ? row.url.toLowerCase() : "";
+    return /\.(png|jpe?g|gif|bmp|tiff?)(\?|$)/.test(url);
+  }).length;
+
   const savings =
     audit.overallSavingsMs && audit.overallSavingsMs > 0
       ? ` (potential savings of ${(audit.overallSavingsMs / 1000).toFixed(1)}s)`
@@ -210,6 +221,8 @@ function buildImageNote(audit: TechnicalImprovement): string {
       ? ` (potential savings of ${Math.round(audit.overallSavingsBytes / 1024)} KB)`
       : audit.displayValue
       ? ` (${audit.displayValue})`
+      : rasterCount > 0
+      ? ` (${rasterCount} image${rasterCount === 1 ? "" : "s"} on the page)`
       : "";
   // Prefix the most actionable audit ("next-gen formats") with a clear
   // recommendation so the reader knows exactly what to do.

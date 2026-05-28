@@ -123,6 +123,16 @@ function extractImprovements(
   // in the load-opportunities or diagnostics groups is in scope. Passing
   // audits with a displayValue are also kept as informational rows so
   // we comfortably reach 10 surfaced items on healthy pages.
+  //
+  // SPECIAL CASE: the three image-format audits are ALWAYS kept if they
+  // have any items, even when Lighthouse marks them passing. Joe's rule:
+  // any PNG/JPEG on the page is a finding, regardless of Lighthouse's
+  // verdict on whether the savings are "worth" flagging.
+  const IMAGE_FORMAT_AUDITS = new Set([
+    "modern-image-formats",
+    "uses-optimized-images",
+    "uses-responsive-images",
+  ]);
   const out: TechnicalImprovement[] = [];
   for (const ref of refs) {
     if (!ref.id) continue;
@@ -132,12 +142,17 @@ function extractImprovements(
     const audit = audits[ref.id];
     if (!audit) continue;
     const score = audit.score ?? null;
-    // Skip only if score is 1 AND there's nothing informational to show.
-    if (score !== null && score >= 1 && !audit.displayValue && !audit.details?.overallSavingsMs && !audit.details?.overallSavingsBytes) {
-      continue;
-    }
-    if (score === null && !audit.displayValue && !audit.details?.overallSavingsMs && !audit.details?.overallSavingsBytes) {
-      continue;
+    const isImageAudit = IMAGE_FORMAT_AUDITS.has(ref.id);
+    const hasItems = (audit.details?.items?.length ?? 0) > 0;
+    // For image audits: keep if there are ANY items, regardless of score.
+    // Otherwise: skip when score is 1 and nothing informational to show.
+    if (!isImageAudit || !hasItems) {
+      if (score !== null && score >= 1 && !audit.displayValue && !audit.details?.overallSavingsMs && !audit.details?.overallSavingsBytes) {
+        continue;
+      }
+      if (score === null && !audit.displayValue && !audit.details?.overallSavingsMs && !audit.details?.overallSavingsBytes) {
+        continue;
+      }
     }
 
     out.push({
