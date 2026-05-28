@@ -2,21 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { cloneElement, isValidElement, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Header from "@/components/Header";
-import {
-  CHECK_META,
-  IconRerun,
-  IconPencil,
-  IconTrash,
-  Spinner,
-} from "@/components/Icons";
+import Section from "@/components/Section";
+import { OverviewBlock } from "@/components/Results";
+import { IconRerun, IconTrash } from "@/components/Icons";
 import { useRunningUrls, useSavedReports } from "@/lib/storeHooks";
 import { analysisStore } from "@/lib/analysisStore";
 import { savedStore } from "@/lib/savedStore";
-import { scoreColor } from "@/lib/scoreColor";
 import { deriveReportName, displayName } from "@/lib/nameUtil";
-import type { AnalyzeResponse, CheckKey } from "@/lib/types";
+import type { AnalyzeResponse } from "@/lib/types";
 
 export default function ReportsPage() {
   const reports = useSavedReports();
@@ -37,10 +32,6 @@ export default function ReportsPage() {
   function rerunReport(r: AnalyzeResponse) {
     if (running.has(r.url)) return;
     analysisStore.start(r.url, { preserveName: r.name ?? deriveReportName(r.url) });
-  }
-
-  function renameReport(url: string, name: string) {
-    savedStore.rename(url, name);
   }
 
   function confirmDelete() {
@@ -71,9 +62,9 @@ export default function ReportsPage() {
             </Link>
           </div>
           <p className="mt-2 max-w-[640px] text-[14px] font-medium leading-[1.6] text-ink-soft">
-            Every page test you run is auto-saved here. Click a report to open
-            it, rerun to refresh the scores, or rename it to something more
-            memorable.
+            Every page test you run is auto-saved here. Click a card to
+            expand the report preview, hit Open to view the full report, or
+            Rerun to refresh the scores.
           </p>
         </section>
 
@@ -99,7 +90,6 @@ export default function ReportsPage() {
                   running={running.has(r.url)}
                   onOpen={() => openReport(r)}
                   onRerun={() => rerunReport(r)}
-                  onRename={(name) => renameReport(r.url, name)}
                   onDelete={() => setConfirmingDelete(r.url)}
                 />
               ))}
@@ -198,249 +188,95 @@ function ConfirmDeleteModal({
   );
 }
 
+/**
+ * One saved-report card. It IS the Overview section from the report view —
+ * same collapsible Section component, same OverviewBlock content. The
+ * section title is the report's display name. Header carries Open and
+ * Rerun buttons that don't toggle the section. Trash icon hangs outside
+ * the card's right edge.
+ */
 function ReportRow({
   report,
   running,
   onOpen,
   onRerun,
-  onRename,
   onDelete,
 }: {
   report: AnalyzeResponse;
   running: boolean;
   onOpen: () => void;
   onRerun: () => void;
-  onRename: (newName: string) => void;
   onDelete: () => void;
 }) {
-  const color = scoreColor(report.overall);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(displayName(report));
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editing]);
-
-  useEffect(() => {
-    if (!editing) setDraft(displayName(report));
-  }, [report.name, report.url, editing]);
-
-  function commit() {
-    const trimmed = draft.trim();
-    if (trimmed && trimmed !== (report.name ?? "")) onRename(trimmed);
-    setEditing(false);
-  }
-
-  const order: CheckKey[] = [
-    "speed",
-    "content",
-    "digestibility",
-    "cro",
-    "aboveTheFold",
-    "mobile",
-  ];
-
   return (
-    <li className="relative rounded-card border border-beige-line bg-card shadow-card overflow-visible">
-      {/* TOP ROW: score | metadata | actions | (trash outside) */}
-      <div className="relative flex items-start gap-7 px-7 pt-[20px] pb-5">
-      {/* SCORE column — small uppercase label sits well above the circle
-          for a bit more breathing room. */}
-      <div className="flex flex-shrink-0 flex-col items-center gap-3 mt-1">
-        <div
-          className="text-[11px] font-bold uppercase text-ink-soft"
-          style={{ letterSpacing: "0.18em" }}
-        >
-          Score
-        </div>
-        <div
-          className="flex items-center justify-center rounded-full font-bold tabular-nums tracking-tight"
-          style={{
-            background: `${color}1a`,
-            color,
-            fontSize: 20,
-            width: 52,
-            height: 52,
-          }}
-        >
-          {report.overall}
-        </div>
-      </div>
+    <li className="relative">
+      <Section
+        title={displayName(report)}
+        defaultOpen={false}
+        headerAction={
+          <HeaderActions
+            running={running}
+            onOpen={onOpen}
+            onRerun={onRerun}
+          />
+        }
+      >
+        <OverviewBlock data={report} />
+      </Section>
 
-      {/* Metadata column — three rows, each with the label stacked above
-          its value. Matches the Overview MetaRow styling Joe asked for. */}
-      <div className="flex min-w-0 flex-1 flex-col gap-4 mt-[2px]">
-        <LabelledRow label="Name">
-          {editing ? (
-            <input
-              ref={inputRef}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={commit}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  commit();
-                } else if (e.key === "Escape") {
-                  e.preventDefault();
-                  setDraft(displayName(report));
-                  setEditing(false);
-                }
-              }}
-              className="w-full rounded-md border border-accent bg-card px-2 py-0.5 text-[12px] font-semibold tracking-tight text-ink outline-none focus:ring-4 focus:ring-accent-soft"
-            />
-          ) : (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onOpen}
-                className="min-w-0 max-w-full truncate text-left text-[12px] font-semibold tracking-tight text-ink hover:text-accent"
-                title={report.url}
-              >
-                {displayName(report)}
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                aria-label="Rename this report"
-                title="Rename"
-                className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-ink-soft transition hover:bg-bg hover:text-accent"
-              >
-                <IconPencil className="h-[14px] w-[14px]" />
-              </button>
-            </div>
-          )}
-        </LabelledRow>
-
-        <LabelledRow label="URL">
-          <a
-            href={report.url}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="block min-w-0 truncate text-[12px] font-semibold tracking-tight text-ink hover:text-accent"
-            title={report.url}
-          >
-            {report.url}
-          </a>
-        </LabelledRow>
-
-        <LabelledRow label="Time of Report">
-          <span className="text-[12px] font-semibold tracking-tight text-ink">
-            {new Date(report.analyzedAt).toLocaleString()}
-          </span>
-          {running && (
-            <span className="ml-2 inline-flex items-center gap-1 text-[12px] font-semibold text-accent">
-              <Spinner className="h-3 w-3" />
-              Rerunning…
-            </span>
-          )}
-        </LabelledRow>
-      </div>
-
-      {/* Actions column — Open + Rerun stacked, button content centred. */}
-      <div className="flex flex-shrink-0 flex-col items-stretch justify-center gap-1.5">
-        <button
-          type="button"
-          onClick={onOpen}
-          className="w-24 rounded-full border border-beige-line bg-card px-3.5 py-1.5 text-center text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent"
-        >
-          Open
-        </button>
-        <button
-          type="button"
-          onClick={onRerun}
-          disabled={running}
-          className="inline-flex w-24 items-center justify-center gap-1.5 rounded-full bg-accent px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <IconRerun />
-          {running ? "Running…" : "Rerun"}
-        </button>
-      </div>
-
-      {/* Trash icon — sits OUTSIDE the top row's right edge. Absolutely
-          positioned against the top-row wrapper so its vertical centre
-          stays aligned with the score circle, not the (taller) full card. */}
+      {/* Trash icon — hangs outside the card on the right, no background. */}
       <button
         type="button"
         onClick={onDelete}
         aria-label="Delete this saved report"
         title="Delete"
-        className="absolute right-[-32px] top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center bg-transparent text-ink-soft transition hover:text-bad"
+        className="absolute right-[-32px] top-[33px] flex h-7 w-7 items-center justify-center bg-transparent text-ink-soft transition hover:text-bad"
       >
         <IconTrash />
       </button>
-      </div>
-
-      {/* BOTTOM STRIP: all six dimension scores across the full width.
-          Gaps halved compared to the previous build to pack the chips in. */}
-      <div className="border-t border-beige-line px-7 py-3">
-        <div className="grid grid-cols-3 gap-x-1.5 gap-y-1 sm:grid-cols-6">
-          {order.map((k) => {
-            const c = report.checks[k];
-            const sc = scoreColor(c.score);
-            return (
-              <div key={k} className="flex items-center gap-2 min-w-0">
-                <div
-                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md"
-                  style={{ background: `${sc}1a`, color: sc }}
-                >
-                  {isValidElement(CHECK_META[k].icon)
-                    ? cloneElement(
-                        CHECK_META[k].icon as React.ReactElement<{ className?: string }>,
-                        { className: "h-3.5 w-3.5" },
-                      )
-                    : CHECK_META[k].icon}
-                </div>
-                <div className="min-w-0">
-                  <div
-                    className="text-[14px] font-bold leading-none tabular-nums"
-                    style={{ color: sc }}
-                  >
-                    {c.score}
-                  </div>
-                  <div
-                    className="mt-0.5 truncate text-[9px] font-bold uppercase text-ink-soft"
-                    style={{ letterSpacing: "0.08em" }}
-                  >
-                    {CHECK_META[k].title}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
     </li>
   );
 }
 
 /**
- * One labelled metadata row inside a saved-report card.
- *
- * The label is small caps in the muted ink-soft colour. The value owns its
- * own styling (passed as children) so the three rows visually share the
- * same font, weight and colour even though their content is different.
+ * Buttons rendered inside a saved-report Section header. Clicks call the
+ * handlers without toggling the surrounding <details> — preventDefault +
+ * stopPropagation on the button click is what blocks the native toggle.
  */
-function LabelledRow({
-  label,
-  children,
+function HeaderActions({
+  running,
+  onOpen,
+  onRerun,
 }: {
-  label: string;
-  children: React.ReactNode;
+  running: boolean;
+  onOpen: () => void;
+  onRerun: () => void;
 }) {
+  function stop(handler: () => void) {
+    return (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handler();
+    };
+  }
   return (
-    <div className="flex items-baseline gap-2 min-w-0">
-      <span
-        className="flex-shrink-0 text-[11px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.14em" }}
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={stop(onOpen)}
+        className="rounded-full border border-beige-line bg-card px-4 py-1.5 text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent"
       >
-        {label}:
-      </span>
-      <div className="min-w-0 flex-1 truncate">{children}</div>
+        Open
+      </button>
+      <button
+        type="button"
+        onClick={stop(onRerun)}
+        disabled={running}
+        className="inline-flex items-center justify-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <IconRerun />
+        {running ? "Running…" : "Rerun"}
+      </button>
     </div>
   );
 }

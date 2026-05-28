@@ -40,10 +40,10 @@ export default function Results({
 }) {
   return (
     <div className="space-y-5">
-      {/* Only "The Overview" is open by default; every other section is
-          collapsed so the user lands on a tight summary and clicks to
-          expand the rest. */}
-      <Section title="The Overview" defaultOpen>
+      {/* The Overview section's title is the report name itself. Only this
+          section is open by default; every other section is collapsed so
+          the user lands on a tight summary and clicks to expand the rest. */}
+      <Section title={displayName(data)} defaultOpen>
         <OverviewBlock data={data} onRerun={onRerun} rerunning={rerunning ?? false} />
       </Section>
       <Section title="Breakdown" defaultOpen={false}>
@@ -187,12 +187,12 @@ function formatItemsForClipboard(it: TechnicalImprovement): string {
   return lines.join("\n");
 }
 
-function OverviewBlock({
+export function OverviewBlock({
   data,
 }: {
   data: AnalyzeResponse;
   onRerun?: () => void;
-  rerunning: boolean;
+  rerunning?: boolean;
 }) {
   const order: CheckKey[] = [
     "speed",
@@ -212,22 +212,19 @@ function OverviewBlock({
           <ScoreRing score={data.overall} size={160} label="OVERALL" />
         </div>
         <div className="min-w-0 w-full">
-          <MetaRow label="Report name" value={displayName(data)} />
-          <div className="mt-6">
-            <MetaRow
-              label="URL"
-              value={
-                <a
-                  href={data.url}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className="break-all hover:text-accent"
-                >
-                  {data.url}
-                </a>
-              }
-            />
-          </div>
+          <MetaRow
+            label="URL"
+            value={
+              <a
+                href={data.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="break-all hover:text-accent"
+              >
+                {data.url}
+              </a>
+            }
+          />
           <div className="mt-6">
             <MetaRow
               label="Analysed"
