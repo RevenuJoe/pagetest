@@ -10,7 +10,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { cloneElement, isValidElement, useState } from "react";
 import type {
   AnalyzeResponse,
   CheckKey,
@@ -259,7 +259,17 @@ function OverviewBlock({
                 className="flex h-7 w-7 items-center justify-center rounded-lg"
                 style={{ background: `${color}1a`, color }}
               >
-                <span className="h-3.5 w-3.5">{CHECK_META[k].icon}</span>
+                {/* CHECK_META icons are pre-instantiated with a default size
+                    that doesn't fit cleanly inside h-7 w-7. Clone to force
+                    h-4 w-4 so the SVG itself is the flex item being
+                    centred (not a too-small wrapper that lets the SVG
+                    overflow off-axis). */}
+                {isValidElement(CHECK_META[k].icon)
+                  ? cloneElement(
+                      CHECK_META[k].icon as React.ReactElement<{ className?: string }>,
+                      { className: "h-4 w-4" },
+                    )
+                  : CHECK_META[k].icon}
               </div>
               <div
                 className="text-[22px] font-bold tabular-nums leading-none tracking-tight"
