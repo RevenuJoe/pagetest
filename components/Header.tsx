@@ -34,18 +34,19 @@ export default function Header({ active = false }: { active?: boolean }) {
                 : "Your saved reports"
             }
             title="Your saved reports"
-            className={`relative flex h-9 w-9 items-center justify-center rounded-full border transition ${
+            className={`relative flex h-10 w-10 items-center justify-center rounded-full transition ${
               active
-                ? "border-accent bg-accent text-white"
-                : "border-beige-line bg-card text-ink-soft hover:text-ink"
+                ? "bg-accent text-white"
+                : "text-ink hover:bg-[#dfdcd4]"
             }`}
+            style={!active ? { background: "#e3e0d8" } : undefined}
           >
-            <IconReport />
+            <IconReport className="h-[18px] w-[18px]" />
             {count > 0 && (
               <span
                 aria-hidden
-                className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-bg"
-                style={{ background: "#22c55e" }}
+                className="absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full"
+                style={{ background: "#76A09C", boxShadow: "0 0 0 2px #F8F1E8" }}
               />
             )}
           </Link>
