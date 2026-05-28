@@ -55,12 +55,14 @@ export default function Header({ active = false }: { active?: boolean }) {
                 : "Your saved reports"
             }
             title="Your saved reports"
+            // Match the green chip styling used on Section header icons.
+            // Inactive = soft-green chip (bg-accent-soft + accent-dark icon).
+            // Active = solid green (when actually on /reports).
             className={`relative flex h-10 w-10 items-center justify-center rounded-full transition ${
               active
                 ? "bg-accent text-white"
-                : "text-ink hover:bg-[#dfdcd4]"
+                : "bg-accent-soft text-accent-dark hover:bg-accent hover:text-white"
             }`}
-            style={!active ? { background: "#e3e0d8" } : undefined}
           >
             <IconReport className="h-[18px] w-[18px]" />
             {count > 0 && (

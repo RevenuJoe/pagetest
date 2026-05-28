@@ -66,7 +66,7 @@ export default function ReportsPage() {
             </h1>
             <Link
               href="/"
-              className="text-[13px] font-semibold text-ink-soft hover:text-ink"
+              className="whitespace-nowrap text-[13px] font-semibold text-ink-soft hover:text-ink"
             >
               ← Run a new analysis
             </Link>
@@ -241,17 +241,17 @@ function ReportRow({
         <OverviewBlock data={report} />
       </Section>
 
-      {/* Trash icon — hangs outside the card on the right. The Section
-          summary uses `py-5` (20px each side) and its tallest child is the
-          ~26px Rerun pill, so the summary is ≈ 66px tall and its centre
-          sits at 33px. To centre this 28px-tall button there: top = 33 −
-          14 = 19px. */}
+      {/* Trash icon. On desktop (sm+) it hangs OUTSIDE the card to the
+          right so the card's internal layout stays clean. On mobile we
+          pull it INSIDE the card (right-3) so it doesn't overflow the
+          viewport. The Section summary uses py-5 (20px each side) and
+          its tallest child is ~26px, so the centre sits at top:19px. */}
       <button
         type="button"
         onClick={onDelete}
         aria-label="Delete this saved report"
         title="Delete"
-        className="absolute right-[-32px] top-[19px] flex h-7 w-7 items-center justify-center bg-transparent text-ink-soft transition hover:text-bad"
+        className="absolute right-3 top-[19px] z-10 flex h-7 w-7 items-center justify-center bg-transparent text-ink-soft transition hover:text-bad sm:right-[-32px]"
       >
         <IconTrash />
       </button>
@@ -284,30 +284,50 @@ function HeaderActions({
   }
   return (
     <div className="flex items-center gap-2">
+      {/* Rename pencil — hidden on mobile to give the title more room.
+          Users can still rename by opening the report and editing there. */}
       <button
         type="button"
         onClick={stop(onEdit)}
         aria-label="Rename this report"
         title="Rename"
-        className="flex h-7 w-7 items-center justify-center rounded-full text-ink-soft transition hover:bg-bg hover:text-accent"
+        className="hidden h-7 w-7 items-center justify-center rounded-full text-ink-soft transition hover:bg-bg hover:text-accent sm:flex"
       >
         <IconPencil className="h-[14px] w-[14px]" />
       </button>
+      {/* Open button. On mobile we compress to an arrow-only icon; on
+          sm+ we show the "Open" pill so the action is obvious. */}
       <button
         type="button"
         onClick={stop(onOpen)}
-        className="rounded-full border border-beige-line bg-card px-4 py-1.5 text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent"
+        aria-label="Open this report"
+        title="Open"
+        className="hidden rounded-full border border-beige-line bg-card px-4 py-1.5 text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent sm:inline-block"
       >
         Open
       </button>
       <button
         type="button"
+        onClick={stop(onOpen)}
+        aria-label="Open this report"
+        title="Open"
+        className="flex h-7 w-7 items-center justify-center rounded-full border border-beige-line bg-card text-ink-soft transition hover:border-accent hover:text-accent sm:hidden"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden>
+          <path d="M5 12h14M13 6l6 6-6 6" />
+        </svg>
+      </button>
+      <button
+        type="button"
         onClick={stop(onRerun)}
         disabled={running}
-        className="inline-flex items-center justify-center gap-1.5 rounded-full bg-accent px-4 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
+        aria-label={running ? "Running…" : "Rerun this report"}
+        title={running ? "Running…" : "Rerun"}
+        className="inline-flex items-center justify-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-dark disabled:cursor-not-allowed disabled:opacity-60 sm:px-4"
       >
         <IconRerun />
-        {running ? "Running…" : "Rerun"}
+        {/* Hide the "Rerun" label on mobile; the icon alone is enough. */}
+        <span className="hidden sm:inline">{running ? "Running…" : "Rerun"}</span>
       </button>
     </div>
   );

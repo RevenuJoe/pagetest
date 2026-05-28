@@ -33,23 +33,26 @@ export default function Section({
         className="flex cursor-pointer list-none items-center justify-between px-7 py-5"
         style={{ outline: "none" }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           {/* Soft-green accent chip around the section icon. Matches the
               icon-chip styling on the home page's three hero pills and
               the scrolling feature cards (Digestibility, CRO, etc.). */}
           {icon && (
-            <span className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-accent-soft text-accent-dark">
+            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-[7px] bg-accent-soft text-accent-dark">
               {icon}
             </span>
           )}
+          {/* Title truncates on overflow so long page titles don't wrap
+              to multiple lines and squeeze the header actions off-screen
+              on mobile. */}
           <h2
-            className="m-0 text-[12px] font-bold uppercase text-ink-soft"
+            className="m-0 min-w-0 truncate text-[12px] font-bold uppercase text-ink-soft"
             style={{ letterSpacing: "0.18em" }}
           >
             {title}
           </h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-shrink-0 items-center gap-2">
           {headerAction}
           <svg
             viewBox="0 0 24 24"

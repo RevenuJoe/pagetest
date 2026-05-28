@@ -166,7 +166,7 @@ function ReportView() {
           <div className="flex items-center justify-between gap-4">
             <Link
               href="/reports"
-              className="text-[13px] font-semibold text-ink-soft hover:text-ink"
+              className="whitespace-nowrap text-[13px] font-semibold text-ink-soft hover:text-ink"
             >
               ← Back to saved reports
             </Link>
@@ -174,7 +174,7 @@ function ReportView() {
               <button
                 type="button"
                 onClick={rerun}
-                className="rounded-full border border-beige-line bg-card px-4 py-1.5 text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent"
+                className="whitespace-nowrap rounded-full border border-beige-line bg-card px-4 py-1.5 text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent"
               >
                 Rerun this report
               </button>
