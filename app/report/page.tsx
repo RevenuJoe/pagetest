@@ -34,6 +34,16 @@ const LOADING_STEPS = [
   "Compiling your report…",
 ];
 
+// Engaging cycle for the final "Compiling" step (used during reruns).
+const COMPILING_ROTATION = [
+  "Compiling your report…",
+  "Not too long now, it's worth the wait.",
+  "Compiling your report…",
+  "Putting together the report still…",
+  "Compiling your report…",
+  "Not too long now, it's worth the wait.",
+];
+
 export default function ReportPage() {
   return (
     <Suspense fallback={<div className="min-h-screen" />}>
@@ -67,6 +77,21 @@ function ReportView() {
     }, 6000);
     return () => window.clearInterval(id);
   }, [isLoading]);
+
+  // Once stepIndex is parked on the final "Compiling" step, rotate
+  // engaging messages every ~3 seconds so it never feels stuck.
+  const [rotationIndex, setRotationIndex] = useState(0);
+  useEffect(() => {
+    const onLastStep = stepIndex === LOADING_STEPS.length - 1;
+    if (!isLoading || !onLastStep) {
+      setRotationIndex(0);
+      return;
+    }
+    const id = window.setInterval(() => {
+      setRotationIndex((i) => (i + 1) % COMPILING_ROTATION.length);
+    }, 3000);
+    return () => window.clearInterval(id);
+  }, [isLoading, stepIndex]);
 
   // Scroll the report into view when it lands.
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -148,7 +173,9 @@ function ReportView() {
               <div className="flex items-center gap-3">
                 <Spinner className="h-[18px] w-[18px] text-accent" />
                 <p className="text-sm font-semibold text-ink">
-                  {LOADING_STEPS[stepIndex]}
+                  {stepIndex === LOADING_STEPS.length - 1
+                    ? COMPILING_ROTATION[rotationIndex]
+                    : LOADING_STEPS[stepIndex]}
                 </p>
               </div>
               <div className="mt-3.5 h-1.5 w-full overflow-hidden rounded-full bg-beige-line">

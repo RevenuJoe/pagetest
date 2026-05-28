@@ -20,6 +20,19 @@ const LOADING_STEPS = [
   "Compiling your report…",
 ];
 
+// Once we land on the final "compiling" step we cycle through these every
+// few seconds so the message doesn't sit static while the analysis
+// finishes. "Compiling your report…" is interleaved between the engaging
+// callouts so it always feels like that's the underlying state.
+const COMPILING_ROTATION = [
+  "Compiling your report…",
+  "Not too long now, it's worth the wait.",
+  "Compiling your report…",
+  "Putting together the report still…",
+  "Compiling your report…",
+  "Not too long now, it's worth the wait.",
+];
+
 export default function HomePage() {
   return (
     <Suspense fallback={<div className="min-h-screen" />}>
@@ -100,6 +113,22 @@ function Home() {
     }, 6000);
     return () => clearInterval(id);
   }, [isLoading]);
+
+  // Once stepIndex has landed on the FINAL "Compiling your report…" step
+  // (the one that tends to linger), rotate through engaging messages
+  // every ~3 seconds so the user feels something is still happening.
+  const [rotationIndex, setRotationIndex] = useState(0);
+  useEffect(() => {
+    const onLastStep = stepIndex === LOADING_STEPS.length - 1;
+    if (!isLoading || !onLastStep) {
+      setRotationIndex(0);
+      return;
+    }
+    const id = setInterval(() => {
+      setRotationIndex((i) => (i + 1) % COMPILING_ROTATION.length);
+    }, 3000);
+    return () => clearInterval(id);
+  }, [isLoading, stepIndex]);
 
   // When the report finishes its slide-in, scroll it into view.
   useEffect(() => {
@@ -336,7 +365,9 @@ function Home() {
               <div className="flex items-center gap-3">
                 <Spinner className="h-[18px] w-[18px] text-accent" />
                 <p className="text-sm font-semibold text-ink">
-                  {LOADING_STEPS[stepIndex]}
+                  {stepIndex === LOADING_STEPS.length - 1
+                    ? COMPILING_ROTATION[rotationIndex]
+                    : LOADING_STEPS[stepIndex]}
                 </p>
               </div>
               <div className="mt-3.5 h-1.5 w-full overflow-hidden rounded-full bg-beige-line">
