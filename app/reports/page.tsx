@@ -247,10 +247,10 @@ function ReportRow({
   return (
     <li className="relative rounded-card border border-beige-line bg-card shadow-card overflow-visible">
       {/* TOP ROW: score | metadata | actions | (trash outside) */}
-      <div className="relative flex items-start gap-7 px-7 pt-[18px] pb-5">
-      {/* SCORE column — proportions match the reference screenshot: small
-          uppercase label, ~52px circle below it. */}
-      <div className="flex flex-shrink-0 flex-col items-center gap-2 mt-1">
+      <div className="relative flex items-start gap-7 px-7 pt-[20px] pb-5">
+      {/* SCORE column — small uppercase label sits well above the circle
+          for a bit more breathing room. */}
+      <div className="flex flex-shrink-0 flex-col items-center gap-3 mt-1">
         <div
           className="text-[11px] font-bold uppercase text-ink-soft"
           style={{ letterSpacing: "0.18em" }}
@@ -291,14 +291,14 @@ function ReportRow({
                   setEditing(false);
                 }
               }}
-              className="w-full rounded-md border border-accent bg-card px-2 py-0.5 text-[15px] font-semibold tracking-tight text-ink outline-none focus:ring-4 focus:ring-accent-soft"
+              className="w-full rounded-md border border-accent bg-card px-2 py-0.5 text-[12px] font-semibold tracking-tight text-ink outline-none focus:ring-4 focus:ring-accent-soft"
             />
           ) : (
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onOpen}
-                className="min-w-0 max-w-full truncate text-left text-[15px] font-semibold tracking-tight text-ink hover:text-accent"
+                className="min-w-0 max-w-full truncate text-left text-[12px] font-semibold tracking-tight text-ink hover:text-accent"
                 title={report.url}
               >
                 {displayName(report)}
@@ -321,7 +321,7 @@ function ReportRow({
             href={report.url}
             target="_blank"
             rel="noreferrer noopener"
-            className="block min-w-0 truncate text-[15px] font-semibold tracking-tight text-ink hover:text-accent"
+            className="block min-w-0 truncate text-[12px] font-semibold tracking-tight text-ink hover:text-accent"
             title={report.url}
           >
             {report.url}
@@ -329,7 +329,7 @@ function ReportRow({
         </LabelledRow>
 
         <LabelledRow label="Time of Report">
-          <span className="text-[15px] font-semibold tracking-tight text-ink">
+          <span className="text-[12px] font-semibold tracking-tight text-ink">
             {new Date(report.analyzedAt).toLocaleString()}
           </span>
           {running && (
@@ -375,9 +375,10 @@ function ReportRow({
       </button>
       </div>
 
-      {/* BOTTOM STRIP: all six dimension scores across the full width. */}
+      {/* BOTTOM STRIP: all six dimension scores across the full width.
+          Gaps halved compared to the previous build to pack the chips in. */}
       <div className="border-t border-beige-line px-7 py-3">
-        <div className="grid grid-cols-3 gap-x-3 gap-y-2 sm:grid-cols-6">
+        <div className="grid grid-cols-3 gap-x-1.5 gap-y-1 sm:grid-cols-6">
           {order.map((k) => {
             const c = report.checks[k];
             const sc = scoreColor(c.score);
