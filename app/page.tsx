@@ -648,23 +648,21 @@ function FoxIllustration() {
       src="/fox.webp"
       alt=""
       aria-hidden
-      className="pointer-events-none absolute z-0 select-none"
+      // Height is set via Tailwind classes so the mobile bump is truly
+      // mobile-only. Mobile (< 768px): fixed 182px (30% larger than the
+      // previous 140px so the head reaches further up the page). Tablet
+      // and desktop: unchanged previous behaviour (clamp tops out at
+      // 380px on desktop).
+      className="pointer-events-none absolute z-0 h-[182px] select-none md:h-[clamp(140px,37vw,380px)]"
       style={{
         // The fox.webp is already cropped to its visible content (no
         // transparent padding), so the image's bottom edge IS the
         // bottom of the desk legs. Anchor `bottom: 94px` (the footer's
         // height — `border-t + py-9 + 14px line` ≈ 94px) so the desk
         // legs sit exactly on the footer's top edge on any viewport.
-        // clamp() scales the fox smoothly without distorting the aspect
-        // ratio (width:auto preserves it):
-        //   • 320–375px phone → 140px tall (sits cleanly in the bottom-
-        //     right without spilling off the side)
-        //   • 768px tablet → ~284px tall
-        //   • desktop → 380px (capped)
         // Right edge bleeds a touch off-viewport.
         right: "-20px",
         bottom: "94px",
-        height: "clamp(140px, 37vw, 380px)",
         width: "auto",
       }}
     />
