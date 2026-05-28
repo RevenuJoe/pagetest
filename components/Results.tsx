@@ -479,7 +479,11 @@ function BreakdownBlock({ data }: { data: AnalyzeResponse }) {
     if (!dragRef.current.active) return;
     const el = scrollerRef.current;
     if (!el) return;
-    const dx = e.clientX - dragRef.current.startX;
+    // Sensitivity multiplier: cursor movement amplified so the carousel
+    // tracks ahead of the cursor. 1:1 felt sluggish; ~1.6x lands in the
+    // sweet spot where the drag feels responsive without being twitchy.
+    const DRAG_SENSITIVITY = 1.6;
+    const dx = (e.clientX - dragRef.current.startX) * DRAG_SENSITIVITY;
     el.scrollLeft = dragRef.current.startScrollLeft - dx;
     e.preventDefault();
   }
