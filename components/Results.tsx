@@ -10,7 +10,7 @@
 
 "use client";
 
-import { cloneElement, isValidElement, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useRef, useState } from "react";
 import type {
   AnalyzeResponse,
   CheckKey,
@@ -39,41 +39,144 @@ export default function Results({
   onRerun?: () => void;
   rerunning?: boolean;
 }) {
+  // Each report section is described once here so we can drive the
+  // staggered reveal in a loop. Only "The Overview" (the first entry) is
+  // open by default; the rest are collapsed until the user clicks them.
+  const sections: Array<{
+    key: string;
+    node: React.ReactNode;
+  }> = [
+    {
+      key: "overview",
+      node: (
+        <Section title={displayName(data)} defaultOpen>
+          <OverviewBlock data={data} onRerun={onRerun} rerunning={rerunning ?? false} />
+        </Section>
+      ),
+    },
+    {
+      key: "breakdown",
+      node: (
+        <Section title="Breakdown" defaultOpen={false}>
+          <BreakdownBlock data={data} />
+        </Section>
+      ),
+    },
+    {
+      key: "takeaways",
+      node: (
+        <Section
+          title="Key Takeaways"
+          defaultOpen={false}
+          headerAction={
+            <CopyButton getText={() => formatTakeawaysForClipboard(data)} />
+          }
+        >
+          <KeyTakeawaysBlock data={data} />
+        </Section>
+      ),
+    },
+    {
+      key: "tech",
+      node: (
+        <Section
+          title="Technical Improvements"
+          defaultOpen={false}
+          headerAction={
+            <CopyButton getText={() => formatTechImprovementsForClipboard(data)} />
+          }
+        >
+          <TechnicalImprovementsBlock data={data} />
+        </Section>
+      ),
+    },
+    {
+      key: "psi",
+      node: (
+        <Section title="PageSpeed Insights" defaultOpen={false}>
+          <PageSpeedInsightsBlock data={data} />
+        </Section>
+      ),
+    },
+    {
+      key: "screenshots",
+      node: (
+        <Section title="Initial Load Screenshots" defaultOpen={false}>
+          <ScreenshotsBlock data={data} />
+        </Section>
+      ),
+    },
+  ];
+
+  // Sequential reveal: each section slides in from the left ~500ms after
+  // the previous one. Page scroll follows each new section in, then once
+  // the cascade is done the page scrolls back up to the Overview.
+  const [revealedIndex, setRevealedIndex] = useState(-1);
+  const refs = useRef<Array<HTMLDivElement | null>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    setRevealedIndex(-1);
+
+    function step(i: number) {
+      if (cancelled) return;
+      if (i >= sections.length) {
+        // All in. Wait a beat, then glide back up to the Overview.
+        timers.push(
+          setTimeout(() => {
+            if (cancelled) return;
+            refs.current[0]?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
+          }, 700),
+        );
+        return;
+      }
+      setRevealedIndex(i);
+      // Don't auto-scroll on the first section — its container already
+      // positioned us at the top of the report.
+      if (i > 0) {
+        refs.current[i]?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+      timers.push(setTimeout(() => step(i + 1), 550));
+    }
+
+    // Tiny initial delay so the first section's transition runs cleanly.
+    timers.push(setTimeout(() => step(0), 60));
+
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+    };
+    // Re-run the cascade whenever a new report mounts in this component.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.url, data.analyzedAt]);
+
   return (
     <div className="space-y-5">
-      {/* The Overview section's title is the report name itself. Only this
-          section is open by default; every other section is collapsed so
-          the user lands on a tight summary and clicks to expand the rest. */}
-      <Section title={displayName(data)} defaultOpen>
-        <OverviewBlock data={data} onRerun={onRerun} rerunning={rerunning ?? false} />
-      </Section>
-      <Section title="Breakdown" defaultOpen={false}>
-        <BreakdownBlock data={data} />
-      </Section>
-      <Section
-        title="Key Takeaways"
-        defaultOpen={false}
-        headerAction={
-          <CopyButton getText={() => formatTakeawaysForClipboard(data)} />
-        }
-      >
-        <KeyTakeawaysBlock data={data} />
-      </Section>
-      <Section
-        title="Technical Improvements"
-        defaultOpen={false}
-        headerAction={
-          <CopyButton getText={() => formatTechImprovementsForClipboard(data)} />
-        }
-      >
-        <TechnicalImprovementsBlock data={data} />
-      </Section>
-      <Section title="PageSpeed Insights" defaultOpen={false}>
-        <PageSpeedInsightsBlock data={data} />
-      </Section>
-      <Section title="Initial Load Screenshots" defaultOpen={false}>
-        <ScreenshotsBlock data={data} />
-      </Section>
+      {sections.map((s, i) => {
+        const visible = i <= revealedIndex;
+        return (
+          <div
+            key={s.key}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
+            style={{
+              opacity: visible ? 1 : 0,
+              transform: visible ? "translateX(0)" : "translateX(-40px)",
+              transition: "opacity 500ms ease-out, transform 500ms ease-out",
+            }}
+          >
+            {s.node}
+          </div>
+        );
+      })}
     </div>
   );
 }

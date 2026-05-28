@@ -376,11 +376,14 @@ function Home() {
           </section>
         )}
 
-        {/* Results: only when phase is 'showing'. Slides in from the left. */}
+        {/* Results: only when phase is 'showing'. The Results component
+            handles its own staggered section reveal — each section slides
+            in from the left in sequence with page scroll following along,
+            then a glide back up to the Overview at the end. */}
         {phase === "showing" && focusResult && (
           <section
             ref={resultsRef}
-            className="mt-12 scroll-mt-12 animate-[slideInLeft_500ms_ease-out]"
+            className="mt-12 scroll-mt-12"
           >
             <Results
               data={focusResult}
