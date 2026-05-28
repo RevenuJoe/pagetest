@@ -566,10 +566,12 @@ function FeaturesMarqueeSection() {
   const track = [...items, ...items];
   return (
     <section className="relative mb-6 overflow-hidden">
-      {/* Full-bleed marquee container. Negative margins push past the
-          main container's padding so the cards scroll all the way to the
-          viewport edges. */}
-      <div className="relative -mx-6 sm:-mx-14">
+      {/* Full-VIEWPORT-bleed marquee container. `mx-[calc(50%-50vw)]`
+          stretches the element from screen-left to screen-right regardless
+          of how narrow its parent's max-width is (main is capped at
+          1180px). Cards now enter at the actual viewport's right edge and
+          exit at the viewport's left edge. */}
+      <div className="relative" style={{ marginLeft: "calc(50% - 50vw)", marginRight: "calc(50% - 50vw)" }}>
         <div
           className="flex gap-2"
           style={{
