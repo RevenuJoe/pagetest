@@ -126,7 +126,7 @@ function Home() {
     }
     const id = setInterval(() => {
       setRotationIndex((i) => (i + 1) % COMPILING_ROTATION.length);
-    }, 3000);
+    }, 5000);
     return () => clearInterval(id);
   }, [isLoading, stepIndex]);
 

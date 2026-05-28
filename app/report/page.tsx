@@ -89,7 +89,7 @@ function ReportView() {
     }
     const id = window.setInterval(() => {
       setRotationIndex((i) => (i + 1) % COMPILING_ROTATION.length);
-    }, 3000);
+    }, 5000);
     return () => window.clearInterval(id);
   }, [isLoading, stepIndex]);
 
