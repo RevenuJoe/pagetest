@@ -426,9 +426,11 @@ function Home() {
         {/* my-auto centres the marquee block vertically inside main —
             equal flex-grow space above (between the trust line and the
             cards) and below (between the cards and the footer). Footer
-            stays pinned to the viewport bottom by the outer flex. */}
+            stays pinned to the viewport bottom by the outer flex. Small
+            top padding shifts the marquee a touch lower on both sizes
+            (≈ 24px on mobile, ≈ 3–4% of viewport on desktop). */}
         {phase === "idle" && (
-          <div className="my-auto">
+          <div className="my-auto pt-12 md:pt-[3.5vh]">
             <FeaturesMarqueeSection />
           </div>
         )}
@@ -653,12 +655,14 @@ function FoxIllustration() {
         // bottom of the desk legs. Anchor `bottom: 94px` (the footer's
         // height — `border-t + py-9 + 14px line` ≈ 94px) so the desk
         // legs sit exactly on the footer's top edge on any viewport.
-        // Right edge bleeds a touch off-viewport. clamp() scales the fox
-        // smoothly: ~150px tall on a 320px phone, growing to a 380px
-        // cap on desktop. Visible on all sizes.
+        // clamp() scales the fox smoothly:
+        //   • 320px phone → 280px tall  (head reaches near the trust line)
+        //   • 768px tablet → 380px (capped)
+        //   • desktop → 380px (capped)
+        // Right edge bleeds a touch off-viewport.
         right: "-20px",
         bottom: "94px",
-        height: "clamp(150px, 42vw, 380px)",
+        height: "clamp(280px, 75vw, 380px)",
         width: "auto",
       }}
     />
