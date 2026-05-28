@@ -16,6 +16,10 @@ export default function ReportsPage() {
   const reports = useSavedReports();
   const running = useRunningUrls();
   const router = useRouter();
+  // URL of the report the user has clicked the trash icon for. When set,
+  // we open the branded confirmation modal — only after the user confirms
+  // do we actually remove the report from savedStore.
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
   function openReport(r: AnalyzeResponse) {
     // /report is the dedicated viewer for saved reports — same canonical
@@ -29,13 +33,19 @@ export default function ReportsPage() {
     analysisStore.start(r.url, { preserveName: r.name ?? deriveReportName(r.url) });
   }
 
-  function deleteReport(url: string) {
-    savedStore.remove(url);
-  }
-
   function renameReport(url: string, name: string) {
     savedStore.rename(url, name);
   }
+
+  function confirmDelete() {
+    if (confirmingDelete) savedStore.remove(confirmingDelete);
+    setConfirmingDelete(null);
+  }
+
+  // Pre-compute the report being confirmed so the modal can display its name.
+  const confirmingReport = confirmingDelete
+    ? reports.find((r) => r.url === confirmingDelete)
+    : undefined;
 
   return (
     <div className="min-h-screen">
@@ -84,7 +94,7 @@ export default function ReportsPage() {
                   onOpen={() => openReport(r)}
                   onRerun={() => rerunReport(r)}
                   onRename={(name) => renameReport(r.url, name)}
-                  onDelete={() => deleteReport(r.url)}
+                  onDelete={() => setConfirmingDelete(r.url)}
                 />
               ))}
             </ul>
@@ -97,6 +107,87 @@ export default function ReportsPage() {
           <p className="m-0">© Revenu</p>
         </div>
       </footer>
+
+      {confirmingDelete && (
+        <ConfirmDeleteModal
+          name={confirmingReport ? displayName(confirmingReport) : undefined}
+          onCancel={() => setConfirmingDelete(null)}
+          onConfirm={confirmDelete}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Branded confirmation modal shown when the user clicks the trash icon on a
+ * saved report. Dimmed page underlay, cream card with rounded corners, a
+ * clear question, optional report name for context, and two actions —
+ * Cancel (outline) and Delete (filled red). Closes on backdrop click, Esc
+ * key, or either action.
+ */
+function ConfirmDeleteModal({
+  name,
+  onCancel,
+  onConfirm,
+}: {
+  name?: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onCancel();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-delete-title"
+      className="fixed inset-0 z-50 flex items-center justify-center px-6"
+    >
+      {/* Backdrop */}
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onCancel}
+        className="absolute inset-0 bg-ink/30 backdrop-blur-[2px]"
+      />
+      {/* Card */}
+      <div className="relative w-full max-w-[420px] rounded-[20px] border border-beige-line bg-card p-7 shadow-cardHover">
+        <h2
+          id="confirm-delete-title"
+          className="m-0 text-[18px] font-bold tracking-tight text-ink"
+        >
+          Delete this report?
+        </h2>
+        <p className="mt-2 text-[14px] font-medium leading-[1.6] text-ink-soft">
+          {name
+            ? `"${name}" will be removed from your saved reports. This cannot be undone.`
+            : "This report will be removed from your saved reports. This cannot be undone."}
+        </p>
+        <div className="mt-6 flex items-center justify-end gap-2.5">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-full border border-beige-line bg-card px-5 py-2 text-[13px] font-semibold text-ink-soft transition hover:border-ink hover:text-ink"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            autoFocus
+            className="rounded-full bg-bad px-5 py-2 text-[13px] font-semibold text-white transition hover:opacity-90"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
