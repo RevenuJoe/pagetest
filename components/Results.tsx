@@ -22,7 +22,6 @@ import ScoreCard from "@/components/ScoreCard";
 import Section from "@/components/Section";
 import {
   CHECK_META,
-  IconRerun,
   IconCopy,
   IconCheck,
   IconChevron,
@@ -42,7 +41,7 @@ export default function Results({
   return (
     <div className="space-y-5">
       <Section title="The Overview">
-        <OverviewBlock data={data} onRerun={onRerun} rerunning={rerunning} />
+        <OverviewBlock data={data} onRerun={onRerun} rerunning={rerunning ?? false} />
       </Section>
       <Section title="Breakdown">
         <BreakdownBlock data={data} />
@@ -185,8 +184,6 @@ function formatItemsForClipboard(it: TechnicalImprovement): string {
 
 function OverviewBlock({
   data,
-  onRerun,
-  rerunning,
 }: {
   data: AnalyzeResponse;
   onRerun?: () => void;
@@ -202,11 +199,16 @@ function OverviewBlock({
   ];
   return (
     <div>
-      <div className="flex flex-col items-center gap-8 md:flex-row md:items-center md:gap-10">
-        <ScoreRing score={data.overall} size={160} label="OVERALL" />
-        <div className="flex-1 min-w-0">
+      {/* Three-column layout: ring on the left, meta in the middle, summary
+          on the right. The Rerun button has been removed from this view to
+          match Joe's reference. */}
+      <div className="flex flex-col items-center gap-8 md:grid md:grid-cols-[auto_1fr_1fr] md:items-start md:gap-12">
+        <div className="flex justify-center">
+          <ScoreRing score={data.overall} size={160} label="OVERALL" />
+        </div>
+        <div className="min-w-0 w-full">
           <MetaRow label="Report name" value={displayName(data)} />
-          <div className="mt-3">
+          <div className="mt-6">
             <MetaRow
               label="URL"
               value={
@@ -221,32 +223,27 @@ function OverviewBlock({
               }
             />
           </div>
-          <div className="mt-3">
+          <div className="mt-6">
             <MetaRow
               label="Analysed"
               value={new Date(data.analyzedAt).toLocaleString()}
             />
           </div>
-          <p className="mt-4 max-w-[540px] text-sm font-medium leading-[1.65] text-ink">
-            {overallSummary(data.overall)}
+        </div>
+        <div className="min-w-0 w-full">
+          <div
+            className="text-[11px] font-bold uppercase text-ink-soft"
+            style={{ letterSpacing: "0.16em" }}
+          >
+            Summary
+          </div>
+          <p className="mt-3 text-[15px] font-medium leading-[1.65] text-ink">
+            {overallSummary(data)}
           </p>
         </div>
-        {onRerun && (
-          <div className="flex flex-shrink-0 items-center">
-            <button
-              type="button"
-              onClick={onRerun}
-              disabled={rerunning}
-              className="inline-flex items-center gap-1.5 rounded-full border border-beige-line bg-card px-4 py-2 text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <IconRerun />
-              {rerunning ? "Rerunning…" : "Rerun"}
-            </button>
-          </div>
-        )}
       </div>
 
-      <div className="mt-8 grid gap-2.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mt-10 grid gap-2.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
         {order.map((k) => {
           const c = data.checks[k];
           const color = scoreColor(c.score);
@@ -306,7 +303,7 @@ function MetaRow({
       >
         {label}
       </div>
-      <div className="mt-1 text-[16px] font-bold tracking-tight text-ink">
+      <div className="mt-3 text-[15px] font-semibold tracking-tight text-ink break-words">
         {value}
       </div>
     </div>
@@ -657,14 +654,54 @@ function ScreenshotCard({
   );
 }
 
-function overallSummary(score: number): string {
-  if (score >= 90)
-    return "This page is firing on every dimension we test. Look for fine-tuning rather than fixes.";
-  if (score >= 75)
-    return "A strong, well-built page. A few targeted improvements would push it into best-in-class territory.";
-  if (score >= 60)
-    return "Solid baseline but real conversion is being left on the table. The cards below show what to fix first.";
-  if (score >= 40)
-    return "There are meaningful weaknesses across multiple dimensions. Prioritise the lowest-scoring cards.";
-  return "This page has significant problems holding back performance and conversions. Treat the recommendations below as urgent.";
+/**
+ * 3-4 sentence narrative for the Overview's Summary panel. Composed from
+ * the overall score plus the strongest and weakest dimensions so each
+ * report reads specific to the page being analysed.
+ */
+function overallSummary(data: AnalyzeResponse): string {
+  const score = data.overall;
+  const order: CheckKey[] = [
+    "speed",
+    "content",
+    "digestibility",
+    "cro",
+    "aboveTheFold",
+    "mobile",
+  ];
+  const entries = order.map((k) => ({
+    key: k,
+    score: data.checks[k].score,
+    label: CHECK_META[k].title,
+  }));
+  const sortedHigh = [...entries].sort((a, b) => b.score - a.score);
+  const sortedLow = [...entries].sort((a, b) => a.score - b.score);
+  const top = sortedHigh[0];
+  const bottom = sortedLow[0];
+
+  const opener =
+    score >= 90
+      ? "This page is firing on every dimension we test."
+      : score >= 75
+      ? "Strong overall, with a handful of targeted opportunities to push it into best-in-class territory."
+      : score >= 60
+      ? "Solid baseline, but real conversion is being left on the table."
+      : score >= 40
+      ? "Meaningful weaknesses are showing up across multiple dimensions."
+      : "This page has significant problems holding back performance and conversions.";
+
+  const strength =
+    top.score >= 80
+      ? `${top.label} leads the pack at ${top.score}/100 and is genuinely working for you.`
+      : `${top.label} is the strongest area at ${top.score}/100, though it still has room to grow.`;
+
+  const weakness =
+    bottom.score < 60
+      ? `The lowest score is ${bottom.label} at ${bottom.score}/100 — that's where the biggest lift will come from.`
+      : `The lowest score is ${bottom.label} at ${bottom.score}/100, which makes it the easiest win to chase.`;
+
+  const action =
+    "The cards below break down each dimension with specific, page-level recommendations.";
+
+  return `${opener} ${strength} ${weakness} ${action}`;
 }
