@@ -254,9 +254,9 @@ function ReportRow({
         </div>
       </div>
 
-      {/* Metadata column — three rows stacked tightly. Label small caps,
-          value 15px semibold. */}
-      <div className="flex min-w-0 flex-1 flex-col gap-2 mt-[2px]">
+      {/* Metadata column — three rows, each with the label stacked above
+          its value. Matches the Overview MetaRow styling Joe asked for. */}
+      <div className="flex min-w-0 flex-1 flex-col gap-4 mt-[2px]">
         <LabelledRow label="Name">
           {editing ? (
             <input
@@ -304,7 +304,7 @@ function ReportRow({
             href={report.url}
             target="_blank"
             rel="noreferrer noopener"
-            className="block min-w-0 truncate text-[15px] font-semibold tracking-tight text-ink hover:text-accent"
+            className="block min-w-0 break-all text-[15px] font-semibold tracking-tight text-ink hover:text-accent"
             title={report.url}
           >
             {report.url}
@@ -375,14 +375,16 @@ function LabelledRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-baseline gap-2 min-w-0">
-      <span
-        className="flex-shrink-0 text-[11px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.14em" }}
+    <div className="min-w-0">
+      <div
+        className="text-[11px] font-bold uppercase text-ink-soft"
+        style={{ letterSpacing: "0.16em" }}
       >
-        {label}:
-      </span>
-      <div className="min-w-0 flex-1 truncate">{children}</div>
+        {label}
+      </div>
+      <div className="mt-3 min-w-0 text-[15px] font-semibold tracking-tight text-ink break-words">
+        {children}
+      </div>
     </div>
   );
 }
