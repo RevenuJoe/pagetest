@@ -246,15 +246,17 @@ function ReportRow({
         <OverviewBlock data={report} />
       </Section>
 
-      {/* Trash icon — hangs outside the card on the right. top:14px places
-          its centre against the section header's centre (header ≈ 56px, so
-          half is 28px; the button itself is 28px tall, hence 14px). */}
+      {/* Trash icon — hangs outside the card on the right. The Section
+          summary uses `py-5` (20px each side) and its tallest child is the
+          ~26px Rerun pill, so the summary is ≈ 66px tall and its centre
+          sits at 33px. To centre this 28px-tall button there: top = 33 −
+          14 = 19px. */}
       <button
         type="button"
         onClick={onDelete}
         aria-label="Delete this saved report"
         title="Delete"
-        className="absolute right-[-32px] top-[14px] flex h-7 w-7 items-center justify-center bg-transparent text-ink-soft transition hover:text-bad"
+        className="absolute right-[-32px] top-[19px] flex h-7 w-7 items-center justify-center bg-transparent text-ink-soft transition hover:text-bad"
       >
         <IconTrash />
       </button>
