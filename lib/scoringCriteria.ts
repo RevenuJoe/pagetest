@@ -156,11 +156,12 @@ Look for:
     • Page opens with a question but the answer is a free-text input → recommend converting the answer to a dropdown / preset options. Do NOT say "convert to a multi-step form" — the multi-step is already in place.
     • Page only has an email field → recommend introducing a question-led step BEFORE the email capture, with preset answers from day one.
     • Page opens with a question via preset answers but never captures an email → recommend adding an email capture step AFTER the question.
-- Form quality: short forms (1-3 fields above the fold) outperform long forms. CTA button copy that promises a specific outcome ("Get my free audit") outperforms generic copy ("Submit", "Send", "Learn more").
-- Sticky CTAs, exit-intent forms, or chat widgets are bonuses.
+    • Page opens up with just buttons → recommend adding a conversion widget above the fold as a very important improvement.
+- Form types:
+    • The form at the BOTTOM of the page should be quite big and capture all the fields you'd need for a good lead.
+    • The form at the TOP of the page should NOT be a large form with 4 or more questions. If multiple fields are needed, it should open with just one question and add fields step-by-step, OR it should be a one-field form. A big form with 4+ fields above the fold scares users away and increases bounce rate.
 
 When making recommendations:
-- (See "THE IDEAL HERO FORM" above for the question+dropdown logic — do not duplicate or contradict it.)
 - If the page has only one CTA, suggest adding a clear secondary CTA alongside it (e.g. add "Get started for free" next to the existing "Book a demo").
 - If specific sections have no CTA, name those sections and suggest adding one.
 - If CTA copy is generic, suggest specific replacement copy that promises an outcome.`;
