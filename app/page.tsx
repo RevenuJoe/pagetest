@@ -426,11 +426,14 @@ function Home() {
         {/* my-auto centres the marquee block vertically inside main —
             equal flex-grow space above (between the trust line and the
             cards) and below (between the cards and the footer). Footer
-            stays pinned to the viewport bottom by the outer flex. Small
-            top padding shifts the marquee a touch lower on both sizes
-            (≈ 24px on mobile, ≈ 3–4% of viewport on desktop). */}
+            stays pinned to the viewport bottom by the outer flex.
+            Padding-top biases the marquee a touch lower:
+              • Mobile: pt-[6vh] shifts the cards down by ~3% of viewport
+                (my-auto distributes half the added padding, so 6vh added
+                = 3vh real shift).
+              • Desktop: pt-[3.5vh] (smaller, unchanged). */}
         {phase === "idle" && (
-          <div className="my-auto pt-12 md:pt-[3.5vh]">
+          <div className="my-auto pt-[6vh] md:pt-[3.5vh]">
             <FeaturesMarqueeSection />
           </div>
         )}
@@ -649,11 +652,10 @@ function FoxIllustration() {
       alt=""
       aria-hidden
       // Height is set via Tailwind classes so the mobile bump is truly
-      // mobile-only. Mobile (< 768px): fixed 182px (30% larger than the
-      // previous 140px so the head reaches further up the page). Tablet
-      // and desktop: unchanged previous behaviour (clamp tops out at
-      // 380px on desktop).
-      className="pointer-events-none absolute z-0 h-[182px] select-none md:h-[clamp(140px,37vw,380px)]"
+      // mobile-only. Mobile (< 768px): fixed 200px (10% larger than
+      // 182px so the head reaches a touch further up the page). Tablet
+      // and desktop: unchanged (clamp tops out at 380px on desktop).
+      className="pointer-events-none absolute z-0 h-[200px] select-none md:h-[clamp(140px,37vw,380px)]"
       style={{
         // The fox.webp is already cropped to its visible content (no
         // transparent padding), so the image's bottom edge IS the
