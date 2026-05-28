@@ -322,7 +322,12 @@ function Home() {
               className="mx-auto mb-[72px] h-px max-w-[760px]"
               style={{ background: "rgba(28,31,29,0.08)" }}
             />
-            <FeaturesGrid />
+            {/* Constrain the features grid to 70% of the container width so
+                the six boxes read narrower than the hero, matching Joe's
+                reference. Centered. */}
+            <div className="mx-auto" style={{ maxWidth: "70%" }}>
+              <FeaturesGrid />
+            </div>
           </section>
         )}
       </main>
