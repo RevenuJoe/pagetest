@@ -448,7 +448,7 @@ function Home() {
           the scrolling cards. Hidden on small screens. */}
       {phase === "idle" && <FoxIllustration />}
 
-      <footer className="relative z-10 border-t border-beige-line bg-bg py-9 text-center text-[14px] text-ink-soft">
+      <footer className="relative z-10 mt-5 border-t border-beige-line bg-bg py-9 text-center text-[14px] text-ink-soft">
         <div className="mx-auto max-w-[1180px] px-6 sm:px-14">
           <p className="m-0">© Revenu</p>
         </div>

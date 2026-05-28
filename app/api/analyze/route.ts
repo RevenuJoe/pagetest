@@ -120,7 +120,19 @@ export async function POST(req: NextRequest) {
       mobile?.technicalImprovements ?? [],
     );
 
-    const speedCheck = buildSpeedCheck(desktop, mobile, technicalImprovements);
+    // Scan the raw rendered HTML for PNG/JPEG/GIF/BMP/TIFF image references.
+    // This catches images Lighthouse rates the modern-image-formats audit
+    // as "passing" on but which would still benefit from WebP/AVIF. The
+    // count is used as a fallback signal in the Speed bullets when the
+    // Lighthouse audit returned empty items.
+    const nonModernImageCount = countNonModernImages(page.value.html);
+
+    const speedCheck = buildSpeedCheck(
+      desktop,
+      mobile,
+      technicalImprovements,
+      nonModernImageCount,
+    );
 
     // Pull screenshots from PSI (already base64-encoded JPEGs, prefixed).
     // Send Claude BOTH the above-the-fold viewport AND the full-page
@@ -223,6 +235,63 @@ const IMAGE_AUDIT_IDS = [
 ];
 
 /**
+ * Count distinct PNG/JPEG/GIF/BMP/TIFF image references in the raw HTML.
+ *
+ * Lighthouse's modern-image-formats audit only flags images where it
+ * computes a worthwhile byte-savings, so small icons/logos in raster format
+ * slip through with a "passing" score and empty items list. We can't
+ * accept that — Joe's scoring rule says any non-modern image format should
+ * be flagged.
+ *
+ * Scans:
+ *   1. <img src="..."> attribute values.
+ *   2. <source srcset="..."> for picture/img candidates.
+ *   3. CSS url(...) references in inline styles and <style> blocks.
+ *
+ * Dedupes by URL so the same image referenced multiple times only counts
+ * once. Strips query strings so cache-busted URLs aren't double-counted.
+ */
+function countNonModernImages(html: string): number {
+  if (!html) return 0;
+  const RASTER_EXTENSION = /\.(png|jpe?g|gif|bmp|tiff?)(\?|$|"|'|\))/i;
+  const found = new Set<string>();
+
+  const collect = (value: string | undefined | null): void => {
+    if (!value) return;
+    // srcset is comma-separated "url 1x, url 2x" — split and check each.
+    const candidates = value.split(/,\s*/).map((c) => c.trim().split(/\s+/)[0]);
+    for (const url of candidates) {
+      if (!url) continue;
+      if (RASTER_EXTENSION.test(url)) {
+        // Normalise: strip query string + lowercase so the dedupe is stable.
+        const normalised = url.split("?")[0].toLowerCase();
+        found.add(normalised);
+      }
+    }
+  };
+
+  // <img src="..."> and <img srcset="...">
+  for (const m of html.matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi)) {
+    collect(m[1]);
+  }
+  for (const m of html.matchAll(/<img\b[^>]*\bsrcset=["']([^"']+)["'][^>]*>/gi)) {
+    collect(m[1]);
+  }
+  // <source srcset="..."> inside <picture>
+  for (const m of html.matchAll(
+    /<source\b[^>]*\bsrcset=["']([^"']+)["'][^>]*>/gi,
+  )) {
+    collect(m[1]);
+  }
+  // CSS url(...) references in inline styles and <style> blocks
+  for (const m of html.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)) {
+    collect(m[1]);
+  }
+
+  return found.size;
+}
+
+/**
  * Turn a Lighthouse image-format audit into a Speed-section note. We surface
  * the savings number Lighthouse gives us (ms or KB) so the message lands as
  * "here's how much faster the page would load if you fix this". When
@@ -266,6 +335,7 @@ function buildSpeedCheck(
   desktop: { performanceScore: number; lcpMs: number | null; fcpMs: number | null; speedIndexMs: number | null; tbtMs: number | null; cls: number | null } | null,
   mobile: { performanceScore: number; lcpMs: number | null; speedIndexMs?: number | null; tbtMs?: number | null; cls?: number | null } | null,
   technicalImprovements: TechnicalImprovement[] = [],
+  nonModernImageCount = 0,
 ): CheckResult {
   if (!desktop && !mobile) {
     return {
@@ -305,15 +375,24 @@ function buildSpeedCheck(
     notes.push(`Desktop speed index: ${secs(desktop.speedIndexMs)}.`);
   }
 
-  // Bullet 5: image-format observation. Pulled from technicalImprovements,
-  // which now keeps the image audits whenever PSI lists any items, even
-  // when Lighthouse rates them passing. If PSI somehow returned nothing
-  // for all three image audits, this bullet is silently skipped.
+  // Bullet 5: image-format observation. Try Lighthouse first — it gives
+  // us the most precise message (with savings numbers). If Lighthouse
+  // didn't surface ANY of the three image audits (because it considered
+  // them all passing), fall back to our own HTML scan: if we found ANY
+  // PNG/JPEG/GIF references on the page, we still surface a bullet
+  // because Joe's rule is that any non-modern format is a finding.
+  let imageBulletAdded = false;
   for (const id of IMAGE_AUDIT_IDS) {
     const audit = technicalImprovements.find((t) => t.id === id);
     if (!audit) continue;
     notes.push(buildImageNote(audit));
+    imageBulletAdded = true;
     break;
+  }
+  if (!imageBulletAdded && nonModernImageCount > 0) {
+    notes.push(
+      `Images aren't served in next-gen formats: convert JPEG/PNG to WebP or AVIF for much smaller files (${nonModernImageCount} non-modern image${nonModernImageCount === 1 ? "" : "s"} found on the page).`,
+    );
   }
 
   // Bullet 6: one additional speed observation. Pick from the most
