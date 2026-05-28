@@ -300,10 +300,11 @@ export function OverviewBlock({
   ];
   return (
     <div>
-      {/* Three-column layout: ring on the left, meta in the middle, summary
-          on the right. The Rerun button has been removed from this view to
-          match Joe's reference. */}
-      <div className="flex flex-col items-center gap-8 md:grid md:grid-cols-[auto_1fr_1fr] md:items-start md:gap-12">
+      {/* Four-column layout on desktop: ring | URL+Analysed | Summary |
+          small desktop above-the-fold thumbnail. Stacks vertically on
+          mobile. The thumbnail is intentionally compact (~200px wide)
+          so it adds a visual anchor without dominating the row. */}
+      <div className="flex flex-col items-center gap-8 md:grid md:grid-cols-[auto_1fr_1fr_auto] md:items-start md:gap-10">
         <div className="flex justify-center">
           <ScoreRing score={data.overall} size={160} label="OVERALL" />
         </div>
@@ -339,6 +340,18 @@ export function OverviewBlock({
             {overallSummary(data)}
           </p>
         </div>
+        {data.desktopScreenshot && (
+          <div className="w-[200px] flex-shrink-0">
+            <div className="overflow-hidden rounded-card border border-beige-line bg-card">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={data.desktopScreenshot}
+                alt="Desktop above-the-fold preview"
+                className="block w-full h-auto"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="mt-10 grid gap-2.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
