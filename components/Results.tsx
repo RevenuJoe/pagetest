@@ -55,7 +55,14 @@ export default function Results({
     {
       key: "overview",
       node: (
-        <Section title={displayName(data)} icon={<IconReport className="h-[18px] w-[18px]" />} defaultOpen>
+        <Section
+          title={displayName(data)}
+          icon={<IconReport className="h-[18px] w-[18px]" />}
+          defaultOpen
+          headerAction={
+            <CopyButton getText={() => formatOverviewForClipboard(data)} />
+          }
+        >
           <OverviewBlock data={data} onRerun={onRerun} rerunning={rerunning ?? false} />
         </Section>
       ),
@@ -63,7 +70,14 @@ export default function Results({
     {
       key: "breakdown",
       node: (
-        <Section title="Breakdown" icon={<IconLayers />} defaultOpen={false}>
+        <Section
+          title="Breakdown"
+          icon={<IconLayers />}
+          defaultOpen={false}
+          headerAction={
+            <CopyButton getText={() => formatBreakdownForClipboard(data)} />
+          }
+        >
           <BreakdownBlock data={data} />
         </Section>
       ),
@@ -101,7 +115,14 @@ export default function Results({
     {
       key: "psi",
       node: (
-        <Section title="PageSpeed Insights" icon={<IconGauge />} defaultOpen={false}>
+        <Section
+          title="PageSpeed Insights"
+          icon={<IconGauge />}
+          defaultOpen={false}
+          headerAction={
+            <CopyButton getText={() => formatPsiForClipboard(data)} />
+          }
+        >
           <PageSpeedInsightsBlock data={data} />
         </Section>
       ),
@@ -222,6 +243,108 @@ function CopyButton({ getText }: { getText: () => string }) {
       {copied ? <IconCheck className="h-4 w-4 text-accent" /> : <IconCopy />}
     </button>
   );
+}
+
+/** Standard report header — name, URL, analysed date — used by every
+ *  copy-to-clipboard function so the recipient knows what they're
+ *  looking at without scrolling. */
+function clipboardHeader(data: AnalyzeResponse, sectionTitle: string): string {
+  return (
+    `${sectionTitle} — ${displayName(data)}\n` +
+    `${data.url}\n` +
+    `${new Date(data.analyzedAt).toLocaleString()}\n` +
+    `\n`
+  );
+}
+
+/** Overview section clipboard format: overall score, narrative summary,
+ *  and a clean list of the six dimension scores. */
+function formatOverviewForClipboard(data: AnalyzeResponse): string {
+  const order: CheckKey[] = [
+    "speed",
+    "content",
+    "digestibility",
+    "cro",
+    "aboveTheFold",
+    "mobile",
+  ];
+  const summary = overallSummary(data).trim();
+  const dims = order
+    .map((k) => {
+      const c = data.checks[k];
+      return `- ${CHECK_META[k].title}: ${c.score}/100`;
+    })
+    .join("\n");
+  return (
+    clipboardHeader(data, "Overview") +
+    `Overall: ${data.overall}/100\n` +
+    `\n` +
+    `Summary:\n${summary}\n` +
+    `\n` +
+    `Dimension scores:\n${dims}\n`
+  );
+}
+
+/** Breakdown section clipboard format: each of the six dimension cards
+ *  with its score, headline, and bullet notes laid out like an outline. */
+function formatBreakdownForClipboard(data: AnalyzeResponse): string {
+  const order: CheckKey[] = [
+    "speed",
+    "content",
+    "digestibility",
+    "cro",
+    "aboveTheFold",
+    "mobile",
+  ];
+  const body = order
+    .map((k, i) => {
+      const c = data.checks[k] as CheckResult;
+      const title = `${i + 1}. ${CHECK_META[k].title} — ${c.score}/100`;
+      const headline = c.headline ? `\n   ${c.headline}` : "";
+      const notes = c.notes
+        .map((n) => `   - ${n}`)
+        .join("\n");
+      return title + headline + (notes ? `\n${notes}` : "");
+    })
+    .join("\n\n");
+  return clipboardHeader(data, "Breakdown") + body + "\n";
+}
+
+/** PageSpeed Insights section clipboard format: per-strategy category
+ *  scores + key timing metrics, followed by the auto-generated summary
+ *  bullets. */
+function formatPsiForClipboard(data: AnalyzeResponse): string {
+  const desktop = data.pageSpeedInsights?.desktop;
+  const mobile = data.pageSpeedInsights?.mobile;
+  if (!desktop && !mobile) return "";
+
+  const formatStrategy = (label: string, b: PsiBreakdown): string => {
+    const cats = PSI_CATEGORIES.map((cat) => {
+      const s = catScore(b, cat.key);
+      return `- ${cat.label}: ${s == null ? "—" : `${s}/100`}`;
+    }).join("\n");
+    const si =
+      b.speedIndexMs != null
+        ? `\n- Speed Index: ${(b.speedIndexMs / 1000).toFixed(2)}s`
+        : "";
+    const weight =
+      b.totalByteWeight != null
+        ? `\n- Page Weight: ${(b.totalByteWeight / 1024 / 1024).toFixed(2)} MB`
+        : "";
+    return `${label}:\n${cats}${si}${weight}`;
+  };
+
+  const blocks: string[] = [];
+  if (desktop) blocks.push(formatStrategy("Desktop", desktop));
+  if (mobile) blocks.push(formatStrategy("Mobile", mobile));
+
+  const summaryBullets = computePsiSummaryBullets(desktop, mobile);
+  const summary =
+    summaryBullets.length > 0
+      ? `\nSummary:\n${summaryBullets.map((b) => `- ${b}`).join("\n")}\n`
+      : "";
+
+  return clipboardHeader(data, "PageSpeed Insights") + blocks.join("\n\n") + summary;
 }
 
 function formatTakeawaysForClipboard(data: AnalyzeResponse): string {
@@ -1364,18 +1487,14 @@ function fmtBytes(b: number | null): string {
   return `${b} B`;
 }
 
-function PsiSummary({
-  desktop,
-  mobile,
-}: {
-  desktop?: PsiBreakdown;
-  mobile?: PsiBreakdown;
-}) {
+/** Auto-generated summary bullets used by BOTH the PSI section's UI and
+ *  the clipboard-copy format. Extracted so the two stay in sync. */
+function computePsiSummaryBullets(
+  desktop?: PsiBreakdown,
+  mobile?: PsiBreakdown,
+): string[] {
   const bullets: string[] = [];
 
-  // Build a list of the worst-score-by-category, then identify the SINGLE
-  // weakest. Only that one gets the "weakest category" call-out — multiple
-  // categories can't simultaneously be the weakest.
   const catWorst = PSI_CATEGORIES.map((cat) => ({
     cat,
     worst: Math.min(
@@ -1392,7 +1511,6 @@ function PsiSummary({
     );
   }
 
-  // Per-category divergence + perfect-score call-outs.
   for (const cat of PSI_CATEGORIES) {
     const d = catScore(desktop, cat.key);
     const m = catScore(mobile, cat.key);
@@ -1407,7 +1525,6 @@ function PsiSummary({
     }
   }
 
-  // Core Web Vital flags from whichever strategy we have.
   const pick = mobile ?? desktop;
   if (pick?.lcpMs != null && pick.lcpMs > 2500) {
     bullets.push(
@@ -1435,6 +1552,17 @@ function PsiSummary({
       "All four Lighthouse categories scored within healthy bands across desktop and mobile.",
     );
   }
+  return bullets;
+}
+
+function PsiSummary({
+  desktop,
+  mobile,
+}: {
+  desktop?: PsiBreakdown;
+  mobile?: PsiBreakdown;
+}) {
+  const bullets = computePsiSummaryBullets(desktop, mobile);
 
   return (
     <div className="rounded-card border border-beige-line bg-bg/40 px-5 py-4">
