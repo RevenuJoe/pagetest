@@ -140,11 +140,10 @@ function ReportRow({
 
   return (
     <li className="relative flex items-start gap-5 rounded-card border border-beige-line bg-card px-6 py-5 shadow-card">
-      {/* SCORE column — label on top, circle beneath. Circle is ~10% smaller
-          than before so it sits visually a touch lower next to the Name row,
-          and the extra card padding gives the whole row more breathing
-          room. */}
-      <div className="flex flex-shrink-0 flex-col items-center gap-1.5">
+      {/* SCORE column — label on top, circle beneath. Pushed down by ~4px
+          (about 20% more top padding above SCORE) and circle a touch
+          smaller so the whole column sits lower next to the Name row. */}
+      <div className="flex flex-shrink-0 flex-col items-center gap-1.5 mt-1">
         <div
           className="text-[10px] font-bold uppercase text-ink-soft"
           style={{ letterSpacing: "0.16em" }}
@@ -156,9 +155,9 @@ function ReportRow({
           style={{
             background: `${color}1a`,
             color,
-            fontSize: 20,
-            width: 50,
-            height: 50,
+            fontSize: 18,
+            width: 44,
+            height: 44,
           }}
         >
           {report.overall}

@@ -171,7 +171,7 @@ function Home() {
       />
       <Header />
 
-      <main className="mx-auto max-w-[1180px] px-6 pb-24 sm:px-14">
+      <main className="mx-auto max-w-[1180px] px-6 sm:px-14">
         <section className="pt-14 md:pt-20">
           <div className="text-center">
             <h1 className="text-[clamp(32px,4.7vw,54px)] font-bold leading-[1.04] tracking-tight text-ink">
@@ -187,7 +187,10 @@ function Home() {
             className="mx-auto mt-9 flex w-full max-w-[640px] flex-col items-stretch gap-2.5 sm:flex-row"
           >
             <div className="relative flex-1">
-              <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-ink-soft">
+              <span
+                className="pointer-events-none absolute inset-y-0 left-4 flex items-center"
+                style={{ color: "#98a0a4" }}
+              >
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -203,7 +206,7 @@ function Home() {
               <input
                 type="text"
                 inputMode="url"
-                placeholder="https://yoursite.com"
+                placeholder="Enter your landing page URL"
                 value={formUrl}
                 onChange={(e) => setFormUrl(e.target.value)}
                 disabled={isLoading}
@@ -240,21 +243,29 @@ function Home() {
             </button>
           </form>
 
-          {/* Trust line under the form: subtle, two-up. */}
+          {/* Trust line under the form: subtle, two-up. Each item has its
+              own icon — envelope-with-slash for "No email required" and a
+              gift/badge for "100% free". */}
           {!isLoading && (
             <div className="mt-5 flex items-center justify-center gap-7 text-[13px] font-medium text-ink-soft">
               <span className="inline-flex items-center gap-2">
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-soft text-accent-dark">
-                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3" aria-hidden>
-                    <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden>
+                    <path d="M4 6h16v12H4z" />
+                    <path d="M4 7l8 6 8-6" />
+                    <line x1="3" y1="3" x2="21" y2="21" />
                   </svg>
                 </span>
                 No email required
               </span>
               <span className="inline-flex items-center gap-2">
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-soft text-accent-dark">
-                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3" aria-hidden>
-                    <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden>
+                    <polyline points="20 12 20 22 4 22 4 12" />
+                    <rect x="2" y="7" width="20" height="5" />
+                    <line x1="12" y1="22" x2="12" y2="7" />
+                    <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" />
+                    <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
                   </svg>
                 </span>
                 100% free
@@ -316,7 +327,7 @@ function Home() {
         )}
       </main>
 
-      <footer className="mt-20 border-t border-beige-line bg-bg py-9 text-center text-[14px] text-ink-soft">
+      <footer className="mt-[72px] border-t border-beige-line bg-bg py-9 text-center text-[14px] text-ink-soft">
         <div className="mx-auto max-w-[1180px] px-6 sm:px-14">
           <p className="m-0">© Revenu</p>
         </div>
