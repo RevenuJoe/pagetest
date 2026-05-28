@@ -142,9 +142,79 @@ function concatBuffers(chunks: Uint8Array[]): Uint8Array {
   return out;
 }
 
+/**
+ * Best-available page title. Tries in order:
+ *   1. <title>...</title>
+ *   2. <meta property="og:title" content="...">
+ *   3. <meta name="twitter:title" content="...">
+ *
+ * Modern SPAs and client-rendered sites often ship with an empty or
+ * placeholder <title> in the initial HTML (the real title is set by JS
+ * after hydration). The og:title / twitter:title meta tags are usually
+ * SSR'd because social-media previews depend on them, so they're our
+ * best fallback for the actual page title.
+ *
+ * Strings that look like a placeholder ("App", "Loading", "Untitled",
+ * the URL itself, or the bare hostname) are rejected so we fall through
+ * to the next source instead of saving "App" as the report name.
+ */
 function extractTitle(html: string): string | null {
-  const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  return m ? decodeEntities(stripTags(m[1])).trim() : null;
+  const candidates: string[] = [];
+
+  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (titleMatch) candidates.push(decodeEntities(stripTags(titleMatch[1])).trim());
+
+  // og:title — property can come before OR after content; cover both orders.
+  const ogA = html.match(
+    /<meta[^>]+property=["']og:title["'][^>]*content=["']([^"']+)["']/i,
+  );
+  const ogB = html.match(
+    /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i,
+  );
+  if (ogA) candidates.push(decodeEntities(ogA[1]).trim());
+  if (ogB) candidates.push(decodeEntities(ogB[1]).trim());
+
+  // twitter:title — same dual-order handling.
+  const twA = html.match(
+    /<meta[^>]+name=["']twitter:title["'][^>]*content=["']([^"']+)["']/i,
+  );
+  const twB = html.match(
+    /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:title["']/i,
+  );
+  if (twA) candidates.push(decodeEntities(twA[1]).trim());
+  if (twB) candidates.push(decodeEntities(twB[1]).trim());
+
+  for (const c of candidates) {
+    if (isUsableTitle(c)) return c;
+  }
+  return null;
+}
+
+/** Reject SPA placeholder titles so we fall through to the next source. */
+function isUsableTitle(s: string): boolean {
+  if (!s) return false;
+  const lower = s.toLowerCase().trim();
+  if (lower.length === 0) return false;
+  // Common placeholder values shipped in the initial HTML of SPAs.
+  const placeholders = new Set([
+    "app",
+    "loading",
+    "loading…",
+    "loading...",
+    "untitled",
+    "document",
+    "react app",
+    "vite",
+    "vite + react",
+    "vite + vue",
+    "create react app",
+    "next.js",
+    "nuxt",
+    "sveltekit",
+    "home",
+  ]);
+  if (placeholders.has(lower)) return false;
+  return true;
 }
 
 function extractMetaDescription(html: string): string | null {
