@@ -61,7 +61,7 @@ export default function ReportsPage() {
       <main className="mx-auto max-w-[1180px] px-6 pb-24 sm:px-14">
         <section className="pt-14 md:pt-20">
           <div className="flex items-baseline justify-between gap-4">
-            <h1 className="text-[clamp(28px,4vw,44px)] font-bold leading-[1.04] tracking-tight text-ink">
+            <h1 className="text-[clamp(14px,2vw,22px)] font-bold leading-[1.04] tracking-tight text-ink">
               Your saved reports
             </h1>
             <Link
