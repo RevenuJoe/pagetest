@@ -258,7 +258,7 @@ function Home() {
 
           <form
             onSubmit={onSubmit}
-            className="mx-auto mt-9 flex w-full max-w-[768px] flex-col items-stretch gap-2.5 sm:flex-row"
+            className="mx-auto mt-9 flex w-full max-w-[704px] flex-col items-stretch gap-2.5 sm:flex-row"
           >
             <div className="relative flex-1">
               <span
@@ -422,18 +422,10 @@ function Home() {
         )}
 
         {phase === "idle" && (
-          <section className="mt-[72px]">
-            <div
-              className="mx-auto mb-[72px] h-px max-w-[760px]"
-              style={{ background: "rgba(28,31,29,0.08)" }}
-            />
-            {/* Constrain the features grid to 70% of the container width so
-                the six boxes read narrower than the hero, matching Joe's
-                reference. Centered. */}
-            <div className="mx-auto" style={{ maxWidth: "70%" }}>
-              <FeaturesGrid />
-            </div>
-          </section>
+          <div className="relative">
+            <FeaturesMarqueeSection />
+            <FoxIllustration />
+          </div>
         )}
       </main>
 
@@ -536,7 +528,23 @@ import {
   IconPhone,
 } from "@/components/Icons";
 
-function FeaturesGrid() {
+/**
+ * Idle-state feature section: a horizontally scrolling marquee of the six
+ * dimension cards with a fox illustration sitting at the bottom right.
+ *
+ * Implementation notes:
+ *   - The cards are duplicated TWICE inside a flex track. The track is
+ *     animated `translateX(0)` → `translateX(-50%)`, which is exactly the
+ *     width of one full set of cards. When the animation ends the next
+ *     set of cards is already in the previous position, so the loop
+ *     reads as seamless.
+ *   - The marquee container has `overflow: hidden` so the off-screen
+ *     cards don't paint outside the section.
+ *   - The fox sits ABSOLUTELY positioned at bottom-right with a higher
+ *     z-index than the marquee, so it appears in front. The cards scroll
+ *     past behind it.
+ */
+function FeaturesMarqueeSection() {
   const items = [
     { icon: <IconBolt />, title: "Speed", desc: "Real Lighthouse scores for desktop and mobile, including LCP, CLS and TBT." },
     { icon: <IconText />, title: "Content", desc: "How clear and compelling is the copy? Is the value proposition obvious?" },
@@ -545,28 +553,89 @@ function FeaturesGrid() {
     { icon: <IconEye />, title: "Above the fold", desc: "What every visitor sees in the first viewport before they scroll." },
     { icon: <IconPhone />, title: "Mobile layout", desc: "Real mobile render. Tap targets, font sizes, overflow, hidden CTAs." },
   ];
+  // Two copies of the items so the track can scroll -50% seamlessly.
+  const track = [...items, ...items];
   return (
-    // Boxes scaled ~20% smaller: tighter grid gap, less padding inside each
-    // card, smaller icon container, and slightly smaller copy.
-    <div className="grid gap-[22px] sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((it) => (
+    <section className="relative mt-16 mb-4 overflow-hidden">
+      {/* Full-bleed marquee container. Negative margins push past the
+          main container's padding so the cards scroll all the way to the
+          viewport edges. */}
+      <div className="relative -mx-6 sm:-mx-14">
         <div
-          key={it.title}
-          className="flex items-start gap-3 rounded-card border border-beige-line bg-card p-[13px]"
+          className="flex gap-2"
+          style={{
+            width: "max-content",
+            animation: "marquee 60s linear infinite",
+          }}
         >
-          <div className="flex h-[29px] w-[29px] flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-dark">
-            {cloneElement(it.icon as React.ReactElement<{ className?: string }>, { className: "h-[14px] w-[14px]" })}
-          </div>
-          <div className="min-w-0 flex-1">
-            <h3 className="text-[11.5px] font-bold tracking-tight text-ink">
-              {it.title}
-            </h3>
-            <p className="mt-1 text-[10.5px] font-medium leading-[1.55] text-ink-soft">
-              {it.desc}
-            </p>
-          </div>
+          {track.map((it, i) => (
+            <div
+              key={`${it.title}-${i}`}
+              className="flex flex-shrink-0 items-center bg-card border border-beige-line"
+              style={{
+                width: 293,
+                height: 80,
+                borderRadius: 16.6,
+                padding: 14.8,
+                gap: 12.9,
+              }}
+            >
+              <div
+                className="flex flex-shrink-0 items-center justify-center bg-accent-soft text-accent-dark"
+                style={{ width: 33.2, height: 33.2, borderRadius: 7.4 }}
+              >
+                {cloneElement(
+                  it.icon as React.ReactElement<{ className?: string }>,
+                  { className: "h-[16.6px] w-[16.6px]" },
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3
+                  className="text-ink font-bold"
+                  style={{ fontSize: 12, lineHeight: "18px", letterSpacing: "-0.3px" }}
+                >
+                  {it.title}
+                </h3>
+                <p
+                  className="text-ink-soft font-medium"
+                  style={{ fontSize: 10.15, lineHeight: "17.16px", marginTop: 2 }}
+                >
+                  {it.desc}
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The fox illustration — REVENU mascot at a desk, sitting at the bottom-
+ * right of the page. Anchored to the bottom-right of the viewport and
+ * sized so the desk surface roughly aligns with the marquee strip. The
+ * marquee scrolls BEHIND the fox; the fox sits on top so the cards on
+ * the right side pass behind it.
+ */
+function FoxIllustration() {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src="/fox.webp"
+      alt=""
+      aria-hidden
+      className="pointer-events-none absolute z-20 hidden select-none lg:block"
+      style={{
+        // Position relative to the wrapper div in idle layout. Bottom-aligned
+        // so the desk meets the marquee row; right-aligned so it hugs the
+        // viewport's right edge (and extends slightly past it like the
+        // Figma frame).
+        right: "-2vw",
+        bottom: "-40px",
+        height: "min(50vw, 430px)",
+        width: "auto",
+      }}
+    />
   );
 }

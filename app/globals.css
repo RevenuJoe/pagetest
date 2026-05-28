@@ -32,3 +32,12 @@ body {
   from { stroke-dashoffset: 24; }
   to   { stroke-dashoffset: 0; }
 }
+
+/* Marquee: infinite horizontal scroll for the idle home page's feature
+   cards. The track contains TWO copies of the cards, so translating from
+   0 to -50% is exactly one card-set's width — the next set lines up at
+   the start position and the loop reads as seamless. 60s per cycle. */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
