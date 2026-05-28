@@ -417,17 +417,181 @@ function BreakdownBlock({ data }: { data: AnalyzeResponse }) {
     "aboveTheFold",
     "mobile",
   ];
+
+  // Carousel state. We track whether arrows should be enabled and disable
+  // them at the edges so the user can't scroll past the first/last card.
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [atStart, setAtStart] = useState(true);
+  const [atEnd, setAtEnd] = useState(false);
+
+  // Update arrow state on scroll. Native scroll handles touch swipe and
+  // the snap-mandatory CSS keeps the cards aligned on release. We just
+  // need to know where we are so we can grey out arrows at the edges.
+  function recomputeEdges() {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setAtStart(el.scrollLeft <= 1);
+    setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 1);
+  }
+
+  // Recompute once on mount + whenever the container resizes (e.g. window
+  // resize). ResizeObserver fires whenever the carousel changes size, so
+  // moving from desktop to a narrower viewport correctly re-evaluates
+  // whether the "end" state should still be active.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    recomputeEdges();
+    const ro = new ResizeObserver(() => recomputeEdges());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Arrow click handler. Scrolls by one full visible page so the user
+  // always sees three fresh cards on lg+, two on sm, one on mobile.
+  function scrollByPage(dir: -1 | 1) {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * el.clientWidth, behavior: "smooth" });
+  }
+
+  // Mouse drag implementation. Touch already works natively via
+  // overflow-x-auto, but desktop users expect grab-and-drag. While
+  // dragging we disable scroll-snap so the position tracks the cursor
+  // exactly; on release the snap-type returns and CSS aligns to the
+  // nearest card.
+  const dragRef = useRef({ active: false, startX: 0, startScrollLeft: 0 });
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    // Only react to primary mouse / pen / touch.
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    dragRef.current = {
+      active: true,
+      startX: e.clientX,
+      startScrollLeft: el.scrollLeft,
+    };
+    el.setPointerCapture(e.pointerId);
+    el.style.scrollSnapType = "none";
+    el.style.cursor = "grabbing";
+  }
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!dragRef.current.active) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    const dx = e.clientX - dragRef.current.startX;
+    el.scrollLeft = dragRef.current.startScrollLeft - dx;
+    e.preventDefault();
+  }
+  function endDrag(e?: React.PointerEvent<HTMLDivElement>) {
+    if (!dragRef.current.active) return;
+    dragRef.current.active = false;
+    const el = scrollerRef.current;
+    if (!el) return;
+    if (e) el.releasePointerCapture(e.pointerId);
+    el.style.cursor = "";
+    // Re-enable snap so the cards lock into alignment on release.
+    el.style.scrollSnapType = "";
+  }
+
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {order.map((k) => (
-        <ScoreCard
-          key={k}
-          title={CHECK_META[k].title}
-          icon={CHECK_META[k].icon}
-          result={data.checks[k] as CheckResult}
-        />
-      ))}
+    <div className="relative">
+      {/* Left arrow. Positioned outside the carousel track at md+ so it
+          doesn't overlap the first card; on mobile we move it inside the
+          edge so it's still tappable without overflow. */}
+      <CarouselArrow
+        direction="left"
+        disabled={atStart}
+        onClick={() => scrollByPage(-1)}
+      />
+      <CarouselArrow
+        direction="right"
+        disabled={atEnd}
+        onClick={() => scrollByPage(1)}
+      />
+
+      <div
+        ref={scrollerRef}
+        onScroll={recomputeEdges}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        // The cursor flips to grabbing while dragging via inline style; the
+        // base cursor signals the card row is draggable.
+        className="flex gap-4 overflow-x-auto cursor-grab select-none scroll-smooth pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+        style={{ scrollSnapType: "x mandatory" }}
+      >
+        {order.map((k) => (
+          <div
+            key={k}
+            // One card per visible "page" on mobile (full width), two on
+            // sm, three on lg. The calc subtracts the gap so the cards
+            // perfectly span the container. flex-shrink-0 stops them
+            // squashing when the row overflows.
+            className="flex-shrink-0 w-full sm:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-2rem)/3)]"
+            style={{ scrollSnapAlign: "start" }}
+          >
+            <ScoreCard
+              title={CHECK_META[k].title}
+              icon={CHECK_META[k].icon}
+              result={data.checks[k] as CheckResult}
+            />
+          </div>
+        ))}
+      </div>
     </div>
+  );
+}
+
+/**
+ * Round arrow button for the Breakdown carousel. Positioned absolutely on
+ * the sides of the carousel; greyed out when at the start/end of the row.
+ */
+function CarouselArrow({
+  direction,
+  disabled,
+  onClick,
+}: {
+  direction: "left" | "right";
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={direction === "left" ? "Previous cards" : "Next cards"}
+      onClick={onClick}
+      disabled={disabled}
+      // Sits on the vertical centre line of the carousel, just outside the
+      // card edge so it doesn't cover content. Slightly inset on small
+      // screens so it stays inside the viewport.
+      className={
+        "absolute top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-beige-line bg-card shadow-card transition " +
+        (disabled
+          ? "cursor-not-allowed opacity-40"
+          : "hover:-translate-y-[calc(50%+1px)] hover:shadow-cardHover") +
+        " " +
+        (direction === "left"
+          ? "-left-3 sm:-left-5"
+          : "-right-3 sm:-right-5")
+      }
+    >
+      <svg
+        viewBox="0 0 16 16"
+        width="16"
+        height="16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="text-ink"
+        style={{ transform: direction === "left" ? "rotate(180deg)" : undefined }}
+      >
+        <polyline points="6 3 11 8 6 13" />
+      </svg>
+    </button>
   );
 }
 
