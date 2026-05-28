@@ -655,14 +655,16 @@ function FoxIllustration() {
         // bottom of the desk legs. Anchor `bottom: 94px` (the footer's
         // height — `border-t + py-9 + 14px line` ≈ 94px) so the desk
         // legs sit exactly on the footer's top edge on any viewport.
-        // clamp() scales the fox smoothly:
-        //   • 320px phone → 280px tall  (head reaches near the trust line)
-        //   • 768px tablet → 380px (capped)
+        // clamp() scales the fox smoothly without distorting the aspect
+        // ratio (width:auto preserves it):
+        //   • 320–375px phone → 140px tall (sits cleanly in the bottom-
+        //     right without spilling off the side)
+        //   • 768px tablet → ~284px tall
         //   • desktop → 380px (capped)
         // Right edge bleeds a touch off-viewport.
         right: "-20px",
         bottom: "94px",
-        height: "clamp(280px, 75vw, 380px)",
+        height: "clamp(140px, 37vw, 380px)",
         width: "auto",
       }}
     />
