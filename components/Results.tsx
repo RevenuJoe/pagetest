@@ -40,14 +40,18 @@ export default function Results({
 }) {
   return (
     <div className="space-y-5">
-      <Section title="The Overview">
+      {/* Only "The Overview" is open by default; every other section is
+          collapsed so the user lands on a tight summary and clicks to
+          expand the rest. */}
+      <Section title="The Overview" defaultOpen>
         <OverviewBlock data={data} onRerun={onRerun} rerunning={rerunning ?? false} />
       </Section>
-      <Section title="Breakdown">
+      <Section title="Breakdown" defaultOpen={false}>
         <BreakdownBlock data={data} />
       </Section>
       <Section
         title="Key Takeaways"
+        defaultOpen={false}
         headerAction={
           <CopyButton getText={() => formatTakeawaysForClipboard(data)} />
         }
@@ -56,13 +60,14 @@ export default function Results({
       </Section>
       <Section
         title="Technical Improvements"
+        defaultOpen={false}
         headerAction={
           <CopyButton getText={() => formatTechImprovementsForClipboard(data)} />
         }
       >
         <TechnicalImprovementsBlock data={data} />
       </Section>
-      <Section title="Initial Load Screenshots">
+      <Section title="Initial Load Screenshots" defaultOpen={false}>
         <ScreenshotsBlock data={data} />
       </Section>
     </div>

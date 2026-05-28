@@ -57,6 +57,40 @@ function Home() {
   const focusResult: AnalyzeResponse | undefined =
     focusRun?.state === "done" ? focusRun.result : focusSaved;
 
+  // Animation phase for the run flow:
+  //   idle    — hero + features visible
+  //   running — only the centred progress card
+  //   ready   — brief "Report ready" with animated tick
+  //   showing — the Results view (slides in from the left)
+  type Phase = "idle" | "running" | "ready" | "showing";
+  const [phase, setPhase] = useState<Phase>(() =>
+    focusResult ? "showing" : "idle",
+  );
+  // Track whether the current result came from THIS session's run (so we
+  // celebrate) or was already saved when the page loaded (no celebration).
+  const lastRunRef = useRef<string | null>(null);
+
+  // Drive phase from loading + result state.
+  useEffect(() => {
+    if (isLoading) {
+      setPhase("running");
+      return;
+    }
+    if (focusResult) {
+      // Just finished a run we kicked off → celebration first, then results.
+      if (lastRunRef.current === focusUrl) {
+        lastRunRef.current = null;
+        setPhase("ready");
+        const t = window.setTimeout(() => setPhase("showing"), 1400);
+        return () => window.clearTimeout(t);
+      }
+      // Saved or already-displayed report → go straight to results.
+      setPhase("showing");
+      return;
+    }
+    setPhase("idle");
+  }, [isLoading, focusResult, focusUrl]);
+
   // Step-text cycle while an analysis is in flight.
   useEffect(() => {
     if (!isLoading) return;
@@ -67,12 +101,12 @@ function Home() {
     return () => clearInterval(id);
   }, [isLoading]);
 
-  // When a result lands, scroll it into view.
+  // When the report finishes its slide-in, scroll it into view.
   useEffect(() => {
-    if (focusResult && resultsRef.current) {
+    if (phase === "showing" && focusResult && resultsRef.current) {
       resultsRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-  }, [focusResult]);
+  }, [phase, focusResult]);
 
   // Surface analysisStore errors as the local error banner.
   useEffect(() => {
@@ -86,6 +120,7 @@ function Home() {
     if (!formUrl.trim()) return;
     setError(null);
     setSubmittedUrl(formUrl);
+    lastRunRef.current = formUrl;
     const existing = savedStore.find(formUrl);
     analysisStore.start(formUrl, { preserveName: existing?.name });
     // If the form URL doesn't match the query URL, swap the query so refresh
@@ -99,6 +134,7 @@ function Home() {
     if (!focusUrl) return;
     const existing = savedStore.find(focusUrl);
     setError(null);
+    lastRunRef.current = focusUrl;
     analysisStore.start(focusUrl, { preserveName: existing?.name });
   }
 
@@ -172,7 +208,19 @@ function Home() {
       <Header />
 
       <main className="mx-auto max-w-[1180px] px-6 sm:px-14">
-        <section className="pt-[50px] md:pt-[72px]">
+        {/* Idle hero: visible only when phase === 'idle'. Fades + slides up
+            out of the way when a run starts. `pointer-events-none` while
+            hidden so the centred progress card never gets covered. */}
+        <section
+          className={
+            "pt-[50px] md:pt-[72px] transition-all duration-500 ease-out " +
+            (phase === "idle"
+              ? "opacity-100 translate-y-0"
+              : "pointer-events-none opacity-0 -translate-y-3")
+          }
+          aria-hidden={phase !== "idle"}
+          style={phase !== "idle" ? { display: "none" } : undefined}
+        >
           <div className="text-center">
             <h1 className="text-[clamp(32px,4.7vw,54px)] font-bold leading-[1.04] tracking-tight text-ink">
               Score Your{" "}
@@ -273,50 +321,76 @@ function Home() {
             </div>
           )}
 
-          {error && (
+          {error && phase === "idle" && (
             <div className="mx-auto mt-[18px] max-w-[640px] rounded-[14px] border border-[#f1c9c5] bg-[#fbece9] px-4 py-3.5 text-sm font-medium text-bad">
               {error}
             </div>
           )}
-
-          {isLoading && (
-            <div className="mx-auto mt-9 max-w-[640px]">
-              <div className="rounded-card border border-beige-line bg-card p-[22px] shadow-card">
-                <div className="flex items-center gap-3">
-                  <Spinner className="h-[18px] w-[18px] text-accent" />
-                  <p className="text-sm font-semibold text-ink">
-                    {LOADING_STEPS[stepIndex]}
-                  </p>
-                </div>
-                <div className="mt-3.5 h-1.5 w-full overflow-hidden rounded-full bg-beige-line">
-                  <div
-                    className="h-full rounded-full bg-accent transition-all duration-[800ms] ease-out"
-                    style={{
-                      width: `${((stepIndex + 1) / LOADING_STEPS.length) * 100}%`,
-                    }}
-                  />
-                </div>
-                <p className="mt-3 text-xs font-medium text-ink-soft">
-                  This usually takes 30 to 60 seconds. Lighthouse is doing a
-                  full real-world render of the page.
-                </p>
-                {focusUrl && (
-                  <p className="mt-3 break-all text-xs font-medium text-ink-soft">
-                    URL: <span className="text-ink">{focusUrl}</span>
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
         </section>
 
-        {focusResult && !isLoading && (
-          <section ref={resultsRef} className="mt-16 scroll-mt-12">
-            <Results data={focusResult} onRerun={rerun} rerunning={false} />
+        {/* Running: centred progress card. Only thing on screen apart from
+            the nav. Fades in when phase flips from idle to running. */}
+        {phase === "running" && (
+          <section className="mx-auto mt-24 max-w-[640px] animate-[fadeIn_360ms_ease-out]">
+            <div className="rounded-card border border-beige-line bg-card p-[22px] shadow-card">
+              <div className="flex items-center gap-3">
+                <Spinner className="h-[18px] w-[18px] text-accent" />
+                <p className="text-sm font-semibold text-ink">
+                  {LOADING_STEPS[stepIndex]}
+                </p>
+              </div>
+              <div className="mt-3.5 h-1.5 w-full overflow-hidden rounded-full bg-beige-line">
+                <div
+                  className="h-full rounded-full bg-accent transition-all duration-[800ms] ease-out"
+                  style={{
+                    width: `${((stepIndex + 1) / LOADING_STEPS.length) * 100}%`,
+                  }}
+                />
+              </div>
+              <p className="mt-3 text-xs font-medium text-ink-soft">
+                This usually takes 30 to 60 seconds. Lighthouse is doing a
+                full real-world render of the page.
+              </p>
+              {focusUrl && (
+                <p className="mt-3 break-all text-xs font-medium text-ink-soft">
+                  URL: <span className="text-ink">{focusUrl}</span>
+                </p>
+              )}
+            </div>
           </section>
         )}
 
-        {!isLoading && !focusResult && (
+        {/* Ready: brief celebration with an animated tick before the report
+            slides in. */}
+        {phase === "ready" && (
+          <section className="mx-auto mt-24 flex max-w-[640px] flex-col items-center text-center animate-[fadeIn_300ms_ease-out]">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-accent-soft text-accent-dark">
+              <AnimatedTick />
+            </span>
+            <p className="mt-4 text-[18px] font-bold tracking-tight text-ink">
+              Your report is ready.
+            </p>
+            <p className="mt-1 text-[13px] font-medium text-ink-soft">
+              Bringing it in now…
+            </p>
+          </section>
+        )}
+
+        {/* Results: only when phase is 'showing'. Slides in from the left. */}
+        {phase === "showing" && focusResult && (
+          <section
+            ref={resultsRef}
+            className="mt-12 scroll-mt-12 animate-[slideInLeft_500ms_ease-out]"
+          >
+            <Results
+              data={focusResult}
+              onRerun={rerun}
+              rerunning={false}
+            />
+          </section>
+        )}
+
+        {phase === "idle" && (
           <section className="mt-[72px]">
             <div
               className="mx-auto mb-[72px] h-px max-w-[760px]"
@@ -338,6 +412,31 @@ function Home() {
         </div>
       </footer>
     </div>
+  );
+}
+
+/* ---------- Animated tick (Report ready celebration) ---------- */
+function AnimatedTick() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-8 w-8"
+      aria-hidden
+    >
+      <path
+        d="M5 12l5 5L20 7"
+        style={{
+          strokeDasharray: 24,
+          strokeDashoffset: 24,
+          animation: "tickDraw 500ms ease-out 120ms forwards",
+        }}
+      />
+    </svg>
   );
 }
 
