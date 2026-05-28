@@ -71,11 +71,6 @@ export default function ReportsPage() {
               ← Run a new analysis
             </Link>
           </div>
-          <p className="mt-2 max-w-[640px] text-[14px] font-medium leading-[1.6] text-ink-soft">
-            Every page test you run is auto-saved here. Click a card to
-            expand the report preview, hit Open to view the full report, or
-            Rerun to refresh the scores.
-          </p>
         </section>
 
         <section className="mt-10">

@@ -355,9 +355,11 @@ function Home() {
         </section>
 
         {/* Running: centred progress card. Only thing on screen apart from
-            the nav. Fades in when phase flips from idle to running. */}
+            the nav. `my-auto` inside the flex-col <main> vertically
+            centres it between the header and the footer so it sits in
+            the middle of the viewport on a laptop. */}
         {phase === "running" && (
-          <section className="mx-auto mt-24 max-w-[640px] animate-[fadeIn_360ms_ease-out]">
+          <section className="mx-auto my-auto max-w-[640px] animate-[fadeIn_360ms_ease-out]">
             <div className="rounded-card border border-beige-line bg-card p-[22px] shadow-card">
               <div className="flex items-center gap-3">
                 <Spinner className="h-[18px] w-[18px] text-accent" />
@@ -389,9 +391,9 @@ function Home() {
         )}
 
         {/* Ready: brief celebration with an animated tick before the report
-            slides in. */}
+            slides in. Same vertical-centre treatment as the running card. */}
         {phase === "ready" && (
-          <section className="mx-auto mt-24 flex max-w-[640px] flex-col items-center text-center animate-[fadeIn_300ms_ease-out]">
+          <section className="mx-auto my-auto flex max-w-[640px] flex-col items-center text-center animate-[fadeIn_300ms_ease-out]">
             <span className="flex h-16 w-16 items-center justify-center rounded-full bg-accent-soft text-accent-dark">
               <AnimatedTick />
             </span>
