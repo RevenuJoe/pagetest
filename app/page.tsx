@@ -433,7 +433,7 @@ function Home() {
                 = 3vh real shift).
               • Desktop: pt-[3.5vh] (smaller, unchanged). */}
         {phase === "idle" && (
-          <div className="my-auto pt-[6vh] md:pt-[3.5vh]">
+          <div className="my-auto pt-[12vh] md:pt-[3.5vh]">
             <FeaturesMarqueeSection />
           </div>
         )}
@@ -652,10 +652,10 @@ function FoxIllustration() {
       alt=""
       aria-hidden
       // Height is set via Tailwind classes so the mobile bump is truly
-      // mobile-only. Mobile (< 768px): fixed 200px (10% larger than
-      // 182px so the head reaches a touch further up the page). Tablet
-      // and desktop: unchanged (clamp tops out at 380px on desktop).
-      className="pointer-events-none absolute z-0 h-[200px] select-none md:h-[clamp(140px,37vw,380px)]"
+      // mobile-only. Mobile (< 768px): fixed 220px (another 10% on top
+      // of 200px so the head reaches further up the page). Tablet and
+      // desktop: unchanged (clamp tops out at 380px on desktop).
+      className="pointer-events-none absolute z-0 h-[220px] select-none md:h-[clamp(140px,37vw,380px)]"
       style={{
         // The fox.webp is already cropped to its visible content (no
         // transparent padding), so the image's bottom edge IS the
