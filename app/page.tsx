@@ -237,11 +237,12 @@ function Home() {
         {/* Idle hero: visible only when phase === 'idle'. Fades + slides up
             out of the way when a run starts. `pointer-events-none` while
             hidden so the centred progress card never gets covered.
-            Mobile top padding 40px (20% less than the old 50px so the
-            whole hero block sits a little higher); desktop unchanged. */}
+            Mobile top padding lifted again — another 10px off (50 → 40 →
+            30) so the whole hero block sits higher still on phones.
+            Desktop unchanged. */}
         <section
           className={
-            "pt-[40px] md:pt-[72px] transition-all duration-500 ease-out " +
+            "pt-[30px] md:pt-[72px] transition-all duration-500 ease-out " +
             (phase === "idle"
               ? "opacity-100 translate-y-0"
               : "pointer-events-none opacity-0 -translate-y-3")
