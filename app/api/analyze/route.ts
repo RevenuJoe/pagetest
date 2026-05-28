@@ -29,11 +29,12 @@ import type {
 } from "@/lib/types";
 import type { PageSpeedResult } from "@/lib/pagespeed";
 
-// Lighthouse can take 30–60s per strategy, and we run desktop + mobile
-// in parallel plus the Claude call. Push the route budget out to 180s
-// (Vercel Pro allows up to 300s) so the desktop PSI run never gets cut
-// off — losing desktop is the main reason reports came back mobile-only.
-export const maxDuration = 180;
+// Lighthouse can take 30–60s per strategy on a clean run, longer when
+// Google's PSI queue is busy or the target page is heavy. We run desktop
+// + mobile + fetchPage in parallel, then six Claude calls in parallel.
+// 270s gives the slowest run plenty of headroom — Vercel Pro allows up
+// to 300s so this stays inside the ceiling.
+export const maxDuration = 270;
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -63,11 +64,19 @@ export async function POST(req: NextRequest) {
       fetchPage(url),
     ]);
 
-    // PSI is allowed to fail; we degrade gracefully.
+    // PSI is allowed to fail; we degrade gracefully. Log failures to the
+    // server so we can see WHY in Vercel logs (e.g. timeout, 4xx, 5xx)
+    // when reports come back missing a strategy.
     const desktop =
       desktopRes.status === "fulfilled" ? desktopRes.value : null;
     const mobile =
       mobileRes.status === "fulfilled" ? mobileRes.value : null;
+    if (desktopRes.status === "rejected") {
+      console.error("PSI desktop failed for", url, "—", errorMessage(desktopRes.reason));
+    }
+    if (mobileRes.status === "rejected") {
+      console.error("PSI mobile failed for", url, "—", errorMessage(mobileRes.reason));
+    }
 
     if (page.status !== "fulfilled") {
       return NextResponse.json(
