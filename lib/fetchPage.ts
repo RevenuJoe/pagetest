@@ -39,6 +39,31 @@ export interface PageStructure {
   hasNav: boolean;
   hasFooter: boolean;
   wordCount: number;
+  /** Concrete form-field inventory parsed from the raw HTML. Used as ground
+   *  truth in the Claude prompt so the model never guesses about field
+   *  presence (e.g. phone fields). Each entry describes one input/textarea/
+   *  select element with whatever identifying attributes were on it. */
+  formFields: FormFieldSummary[];
+  /** True when at least one <input> on the page has type="tel" or a name /
+   *  id / placeholder containing "phone". A blunt yes/no signal Claude can
+   *  rely on without re-deriving it from screenshots. */
+  hasPhoneField: boolean;
+  /** True when at least one <input> on the page has type="email" or a name /
+   *  id / placeholder containing "email". */
+  hasEmailField: boolean;
+}
+
+export interface FormFieldSummary {
+  /** input/textarea/select. */
+  tag: string;
+  /** type attribute when present (text, email, tel, password, etc.). */
+  type: string | null;
+  /** name attribute when present. */
+  name: string | null;
+  /** id attribute when present. */
+  id: string | null;
+  /** placeholder attribute when present. */
+  placeholder: string | null;
 }
 
 export async function fetchPage(url: string): Promise<FetchedPage> {
@@ -158,6 +183,22 @@ function extractStructure(html: string): PageStructure {
     (t) => !/\balt\s*=\s*["'][^"']/i.test(t),
   ).length;
   const bodyText = extractBodyText(html);
+  const formFields = extractFormFields(html);
+
+  // Derive blunt yes/no signals for the most-hallucinated fields. Claude
+  // gets these as ground truth so it can't claim "the form asks for a
+  // phone number" when there is no tel input anywhere on the page.
+  const looksLikePhone = (f: FormFieldSummary): boolean => {
+    if (f.type === "tel") return true;
+    const combined = `${f.name ?? ""} ${f.id ?? ""} ${f.placeholder ?? ""}`.toLowerCase();
+    return /\b(phone|tel|mobile|cell|whatsapp)\b/.test(combined);
+  };
+  const looksLikeEmail = (f: FormFieldSummary): boolean => {
+    if (f.type === "email") return true;
+    const combined = `${f.name ?? ""} ${f.id ?? ""} ${f.placeholder ?? ""}`.toLowerCase();
+    return /\bemail\b|\be-?mail\b/.test(combined);
+  };
+
   return {
     h1Count: count(/<h1\b/gi),
     h2Count: count(/<h2\b/gi),
@@ -174,5 +215,51 @@ function extractStructure(html: string): PageStructure {
     hasNav: /<nav\b/i.test(html),
     hasFooter: /<footer\b/i.test(html),
     wordCount: bodyText.split(/\s+/).filter(Boolean).length,
+    formFields,
+    hasPhoneField: formFields.some(looksLikePhone),
+    hasEmailField: formFields.some(looksLikeEmail),
   };
+}
+
+/**
+ * Pull every form field on the page with its identifying attributes.
+ * Used as ground-truth context for the Claude prompt so it never has to
+ * guess what fields the page's forms actually ask for.
+ */
+function extractFormFields(html: string): FormFieldSummary[] {
+  const fields: FormFieldSummary[] = [];
+  const re = /<(input|textarea|select)\b([^>]*)\/?>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const tag = m[1].toLowerCase();
+    const attrs = m[2] ?? "";
+    const attr = (name: string): string | null => {
+      const mm = attrs.match(
+        new RegExp(`\\b${name}\\s*=\\s*["']([^"']*)["']`, "i"),
+      );
+      return mm ? mm[1] : null;
+    };
+    const type = attr("type");
+    // Skip pure UI inputs that aren't real form fields visitors fill in.
+    if (
+      type === "hidden" ||
+      type === "submit" ||
+      type === "button" ||
+      type === "reset" ||
+      type === "image"
+    ) {
+      continue;
+    }
+    fields.push({
+      tag,
+      type,
+      name: attr("name"),
+      id: attr("id"),
+      placeholder: attr("placeholder"),
+    });
+    // Hard cap so an outlier page with hundreds of inputs can't blow up
+    // the prompt payload.
+    if (fields.length >= 60) break;
+  }
+  return fields;
 }

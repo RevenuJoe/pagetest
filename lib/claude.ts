@@ -209,6 +209,24 @@ function buildUserBlocks(
 
 function buildPromptText(input: ClaudeInput): string {
   const s = input.structure;
+  // Pretty-print the parsed form field inventory. Limit to 25 lines so the
+  // prompt stays compact; the count line tells the model the full total.
+  const fieldLines = s.formFields.slice(0, 25).map((f) => {
+    const parts: string[] = [`<${f.tag}>`];
+    if (f.type) parts.push(`type="${f.type}"`);
+    if (f.name) parts.push(`name="${f.name}"`);
+    if (f.id) parts.push(`id="${f.id}"`);
+    if (f.placeholder) parts.push(`placeholder="${f.placeholder}"`);
+    return `  - ${parts.join(" ")}`;
+  });
+  const formFieldsBlock =
+    s.formFields.length === 0
+      ? "  (no form fields parsed from the HTML)"
+      : fieldLines.join("\n") +
+        (s.formFields.length > 25
+          ? `\n  ...and ${s.formFields.length - 25} more`
+          : "");
+
   return [
     `URL: ${input.url}`,
     `Title: ${input.title ?? "(none)"}`,
@@ -223,6 +241,14 @@ function buildPromptText(input: ClaudeInput): string {
     `- Forms: ${s.formCount}, form fields: ${s.inputCount}`,
     `- <nav>: ${s.hasNav}, <footer>: ${s.hasFooter}`,
     `- Word count: ${s.wordCount}`,
+    "",
+    "GROUND TRUTH — facts parsed directly from the page HTML. Treat these as authoritative. Do NOT contradict them. Do NOT claim the page has elements that aren't listed here.",
+    "",
+    `- Form contains a phone-number field: ${s.hasPhoneField ? "YES" : "NO"}`,
+    `- Form contains an email field: ${s.hasEmailField ? "YES" : "NO"}`,
+    `- Total fillable form fields: ${s.formFields.length}`,
+    "- Form fields on the page (tag + attributes):",
+    formFieldsBlock,
     "",
     "Body text of the FULL page (top to bottom, may be lightly truncated):",
     "---",
