@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { cloneElement, Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Header from "@/components/Header";
 import Results from "@/components/Results";
@@ -172,7 +172,7 @@ function Home() {
       <Header />
 
       <main className="mx-auto max-w-[1180px] px-6 sm:px-14">
-        <section className="pt-14 md:pt-20">
+        <section className="pt-[50px] md:pt-[72px]">
           <div className="text-center">
             <h1 className="text-[clamp(32px,4.7vw,54px)] font-bold leading-[1.04] tracking-tight text-ink">
               Score Your{" "}
@@ -184,7 +184,7 @@ function Home() {
 
           <form
             onSubmit={onSubmit}
-            className="mx-auto mt-9 flex w-full max-w-[640px] flex-col items-stretch gap-2.5 sm:flex-row"
+            className="mx-auto mt-9 flex w-full max-w-[768px] flex-col items-stretch gap-2.5 sm:flex-row"
           >
             <div className="relative flex-1">
               <span
@@ -210,13 +210,13 @@ function Home() {
                 value={formUrl}
                 onChange={(e) => setFormUrl(e.target.value)}
                 disabled={isLoading}
-                className="w-full rounded-[14px] border border-beige-line bg-card py-4 pl-12 pr-4 text-[15px] font-medium text-ink outline-none transition placeholder:font-medium placeholder:text-[#98a0a4] focus:border-accent focus:ring-4 focus:ring-accent-soft disabled:opacity-60"
+                className="w-full rounded-[14px] border border-beige-line bg-card py-[13px] pl-12 pr-4 text-[15px] font-medium text-ink outline-none transition placeholder:font-medium placeholder:text-[#98a0a4] focus:border-accent focus:ring-4 focus:ring-accent-soft disabled:opacity-60"
               />
             </div>
             <button
               type="submit"
               disabled={isLoading || !formUrl.trim()}
-              className="inline-flex items-center justify-center gap-2 rounded-[14px] bg-accent px-6 py-4 text-sm font-semibold tracking-[0.01em] text-white transition hover:bg-accent-dark active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-55"
+              className="inline-flex items-center justify-center gap-2 rounded-[14px] bg-accent px-[29px] py-[13px] text-sm font-semibold tracking-[0.01em] text-white transition hover:bg-accent-dark active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-55"
             >
               {isLoading ? (
                 <>
@@ -249,8 +249,8 @@ function Home() {
           {!isLoading && (
             <div className="mt-5 flex items-center justify-center gap-7 text-[13px] font-medium text-ink-soft">
               <span className="inline-flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-soft text-accent-dark">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden>
+                <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-accent-soft text-accent-dark">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-[11px] w-[11px]" aria-hidden>
                     <path d="M4 6h16v12H4z" />
                     <path d="M4 7l8 6 8-6" />
                     <line x1="3" y1="3" x2="21" y2="21" />
@@ -259,8 +259,8 @@ function Home() {
                 No email required
               </span>
               <span className="inline-flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-soft text-accent-dark">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden>
+                <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-accent-soft text-accent-dark">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-[11px] w-[11px]" aria-hidden>
                     <polyline points="20 12 20 22 4 22 4 12" />
                     <rect x="2" y="7" width="20" height="5" />
                     <line x1="12" y1="22" x2="12" y2="7" />
@@ -411,20 +411,22 @@ function FeaturesGrid() {
     { icon: <IconPhone />, title: "Mobile layout", desc: "Real mobile render. Tap targets, font sizes, overflow, hidden CTAs." },
   ];
   return (
-    <div className="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
+    // Boxes scaled ~20% smaller: tighter grid gap, less padding inside each
+    // card, smaller icon container, and slightly smaller copy.
+    <div className="grid gap-[22px] sm:grid-cols-2 lg:grid-cols-3">
       {items.map((it) => (
         <div
           key={it.title}
-          className="flex items-start gap-3.5 rounded-card border border-beige-line bg-card p-4"
+          className="flex items-start gap-3 rounded-card border border-beige-line bg-card p-[13px]"
         >
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-dark">
-            {it.icon}
+          <div className="flex h-[29px] w-[29px] flex-shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-dark">
+            {cloneElement(it.icon as React.ReactElement<{ className?: string }>, { className: "h-[14px] w-[14px]" })}
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-[13px] font-bold tracking-tight text-ink">
+            <h3 className="text-[11.5px] font-bold tracking-tight text-ink">
               {it.title}
             </h3>
-            <p className="mt-1 text-[12px] font-medium leading-[1.55] text-ink-soft">
+            <p className="mt-1 text-[10.5px] font-medium leading-[1.55] text-ink-soft">
               {it.desc}
             </p>
           </div>
