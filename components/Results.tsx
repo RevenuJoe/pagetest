@@ -888,6 +888,11 @@ function PageSpeedInsightsBlock({ data }: { data: AnalyzeResponse }) {
           Practices / SEO. Bar chart compares desktop vs mobile. */}
       <PsiCategoryComparison desktop={desktop} mobile={mobile} />
 
+      {/* Speed Index — single chart with two bars (Desktop / Mobile). Lower
+          is better; bars use Lighthouse's good/needs-improvement/poor
+          colour bands so divergence between the two devices is obvious. */}
+      <PsiSpeedIndexChart desktop={desktop} mobile={mobile} />
+
       {/* Per-strategy breakdown: 6 chips per device — Performance,
           Accessibility, Best Practices, SEO, Speed Index, Page Weight. */}
       <div className="grid gap-5 md:grid-cols-2">
@@ -937,7 +942,7 @@ function PsiCategoryComparison({
         className="text-[10px] font-bold uppercase text-ink-soft"
         style={{ letterSpacing: "0.16em" }}
       >
-        Lighthouse Categories — Desktop vs Mobile
+        Page Speed Insights — Desktop vs Mobile
       </div>
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {PSI_CATEGORIES.map((cat) => {
@@ -972,6 +977,94 @@ function PsiCategoryComparison({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Speed Index comparison chart. Two vertical bars side-by-side, Desktop on
+ * the left and Mobile on the right, showing Speed Index in seconds. Lower
+ * is better; bar colour follows Lighthouse's official thresholds:
+ *   ≤ 3.4s  good (green)
+ *   ≤ 5.8s  needs improvement (orange)
+ *   > 5.8s  poor (red)
+ */
+function PsiSpeedIndexChart({
+  desktop,
+  mobile,
+}: {
+  desktop?: PsiBreakdown;
+  mobile?: PsiBreakdown;
+}) {
+  const desktopS = desktop?.speedIndexMs != null ? desktop.speedIndexMs / 1000 : null;
+  const mobileS = mobile?.speedIndexMs != null ? mobile.speedIndexMs / 1000 : null;
+  // If neither strategy returned a Speed Index, don't render the chart.
+  if (desktopS == null && mobileS == null) return null;
+
+  // Y-axis max scales to the data with a 10s floor so a fast desktop bar
+  // doesn't shoot to 100% height when mobile is 2s slower.
+  const maxSecs = Math.max(10, desktopS ?? 0, mobileS ?? 0);
+  const BAR_HEIGHT = 140; // px — matches the categories chart
+
+  return (
+    <div className="rounded-card border border-beige-line bg-bg/40 px-5 py-4">
+      <div
+        className="text-[10px] font-bold uppercase text-ink-soft"
+        style={{ letterSpacing: "0.16em" }}
+      >
+        Speed Index — Desktop vs Mobile (lower is better)
+      </div>
+      <div className="mt-5 flex items-end justify-center gap-12" style={{ height: BAR_HEIGHT + 32 }}>
+        <SpeedIndexBar label="Desktop" seconds={desktopS} maxSecs={maxSecs} maxHeight={BAR_HEIGHT} />
+        <SpeedIndexBar label="Mobile" seconds={mobileS} maxSecs={maxSecs} maxHeight={BAR_HEIGHT} />
+      </div>
+    </div>
+  );
+}
+
+/** One Speed Index bar. Colour matches Lighthouse's official bands. */
+function SpeedIndexBar({
+  label,
+  seconds,
+  maxSecs,
+  maxHeight,
+}: {
+  label: string;
+  seconds: number | null;
+  maxSecs: number;
+  maxHeight: number;
+}) {
+  // Lighthouse colour bands for Speed Index (seconds, lower is better).
+  // Source: web.dev/speed-index/.
+  const color =
+    seconds == null
+      ? "#c4c0b6"
+      : seconds <= 3.4
+      ? scoreColor(95) // green
+      : seconds <= 5.8
+      ? scoreColor(60) // orange
+      : scoreColor(30); // red
+  const value = seconds ?? 0;
+  const h = (Math.max(0.05, value) / maxSecs) * maxHeight;
+  return (
+    <div className="flex w-full max-w-[80px] flex-col items-center justify-end">
+      <div className="text-[14px] font-bold tabular-nums leading-none" style={{ color }}>
+        {seconds == null ? "—" : `${seconds.toFixed(2)}s`}
+      </div>
+      <div
+        className="mt-1.5 w-full rounded-t-md transition-all"
+        style={{
+          height: `${h}px`,
+          background: color,
+          minHeight: "2px",
+        }}
+      />
+      <div
+        className="mt-1.5 text-[10px] font-bold uppercase text-ink-soft"
+        style={{ letterSpacing: "0.08em" }}
+      >
+        {label}
       </div>
     </div>
   );
