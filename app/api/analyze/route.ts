@@ -501,13 +501,13 @@ function buildSpeedCheck(
     notes.push(`Mobile score: ${mobile.performanceScore}/100.`);
   }
 
-  // Bullets 3–4: Speed Index, mobile first (mobile is the experience
-  // most visitors actually feel), then desktop.
-  if (mobile?.speedIndexMs != null) {
-    notes.push(`Mobile speed index: ${secs(mobile.speedIndexMs)}.`);
-  }
+  // Bullets 3–4: Speed Index, desktop first then mobile so the order
+  // mirrors the score lines above (desktop → mobile → desktop → mobile).
   if (desktop?.speedIndexMs != null) {
     notes.push(`Desktop speed index: ${secs(desktop.speedIndexMs)}.`);
+  }
+  if (mobile?.speedIndexMs != null) {
+    notes.push(`Mobile speed index: ${secs(mobile.speedIndexMs)}.`);
   }
 
   // Bullets 5 & 6: image format count + context-aware commentary based
