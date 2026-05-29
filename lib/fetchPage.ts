@@ -77,6 +77,80 @@ export interface PageStructure {
    *  Instapage, etc.) that style <div> elements as nav links with no
    *  semantic <nav>/<a>/<button>/<header> markup at all. */
   likelyNavLabels: string[];
+  /** Per-format image counts. Counted by extension across <img src>,
+   *  <img srcset>, <source srcset>, and CSS url(...) references.
+   *  Deduped by URL. Drives the Speed bullets and the WebP key
+   *  takeaway. Now also surfaced to Claude in GROUND TRUTH. */
+  imageFormats: ImageFormatBreakdown;
+  /** Visible alt text of every <img alt="..."> on the page, deduped.
+   *  Lets Claude read what the page's images are labelled as — useful
+   *  for customer logos (which often have brand names in the alt) and
+   *  for content / above-the-fold reasoning. */
+  imageAlts: string[];
+  /** Whether ANY social proof appears anywhere on the page. Derived
+   *  from a body-text scan for trust markers ("Trusted by", "Used by",
+   *  G2/Capterra/Trustpilot, customer counts, testimonials, etc.) AND
+   *  a count of image alts that look like brand names or contain
+   *  "logo". Used as ground truth so Claude doesn't recommend adding
+   *  social proof when the page already has it. */
+  socialProofPresent: boolean;
+  /** Whether social proof appears specifically near the top of the
+   *  page (heuristic for "above the fold"). Detected by scanning the
+   *  first ~3000 characters of body text for trust markers AND
+   *  counting logo-like image alts in the first ~8000 characters of
+   *  HTML. Not pixel-accurate — we can't determine viewport position
+   *  from static HTML — but a reasonable proxy. Claude should also
+   *  verify visually against the above-the-fold screenshot. */
+  socialProofAboveFold: boolean;
+  /** Debug list of which signals fired during social-proof detection.
+   *  Logged but not surfaced to Claude. */
+  socialProofSignals: string[];
+  /** Whether the first ~8000 characters of raw HTML contain any
+   *  checkbox-style or interactive-quiz controls. A strong signal that
+   *  the above-the-fold leads with an interactive experience (quiz,
+   *  qualifier, multi-step form) rather than a static block — Claude
+   *  should NOT penalise the above-the-fold for being "boring" /
+   *  "static" / "lacking interactivity" when this is true. Detected
+   *  by scanning for <input type="checkbox">, <input type="radio">,
+   *  role="checkbox" / role="radio", and class/text patterns like
+   *  "checkbox", "radio-button", "quiz-option", "multi-step". */
+  hasInteractiveAboveFold: boolean;
+  /** Debug list of which interactive-control signals fired. Logged but
+   *  not surfaced to Claude. */
+  interactiveAboveFoldSignals: string[];
+  /** True when the static HTML fetch returned a client-rendered SPA
+   *  shell with little to no visible text — meaning React / Vue /
+   *  Angular / Svelte / similar is expected to inject the content
+   *  client-side via JavaScript, which our server-side `fetch()` does
+   *  NOT execute. Detected by: bodyText word count below the SPA
+   *  threshold AND a framework-shell signature in the raw HTML (an
+   *  empty root container, framework-named globals, or named bundler
+   *  artefacts). When TRUE, the HTML-derived ground-truth flags
+   *  (socialProofPresent, socialProofAboveFold, hasInteractiveAboveFold,
+   *  image alts, body-text counts) may underreport — Claude is told
+   *  to defer to the screenshots in that case. */
+  isClientRenderedShell: boolean;
+  /** Debug list of which SPA-shell signals fired. Logged but not
+   *  surfaced to Claude. */
+  clientRenderedSignals: string[];
+}
+
+/** Per-format image inventory. Counts are deduped by URL (case-
+ *  insensitive, query strings stripped) so the same image referenced
+ *  multiple times only counts once. Derived sums let consumers ask
+ *  "how many legacy-raster images are on the page?" without re-adding. */
+export interface ImageFormatBreakdown {
+  png: number;
+  jpeg: number;
+  gif: number;
+  webp: number;
+  avif: number;
+  svg: number;
+  /** Sum of png + jpeg + gif (raster formats that have a modern
+   *  replacement). */
+  legacyRaster: number;
+  /** Sum of webp + avif (modern raster formats). */
+  modernRaster: number;
 }
 
 export interface FormFieldSummary {
@@ -285,6 +359,11 @@ function extractStructure(html: string): PageStructure {
   const headings = extractHeadings(html);
   const headerCtaTexts = extractHeaderCtaTexts(html);
   const likelyNavLabels = detectLikelyNavLabels(bodyText);
+  const imageFormats = scanImageFormats(html);
+  const imageAlts = extractImageAlts(html);
+  const socialProof = detectSocialProof(html, bodyText, imageAlts);
+  const interactiveAtf = detectInteractiveAboveFold(html);
+  const spaShell = detectClientRenderedShell(html, bodyText);
 
   // Derive blunt yes/no signals for the most-hallucinated fields. Claude
   // gets these as ground truth so it can't claim "the form asks for a
@@ -324,7 +403,337 @@ function extractStructure(html: string): PageStructure {
     headings,
     headerCtaTexts,
     likelyNavLabels,
+    imageFormats,
+    imageAlts,
+    socialProofPresent: socialProof.presentOnSite,
+    socialProofAboveFold: socialProof.aboveTheFold,
+    socialProofSignals: socialProof.signals,
+    hasInteractiveAboveFold: interactiveAtf.present,
+    interactiveAboveFoldSignals: interactiveAtf.signals,
+    isClientRenderedShell: spaShell.present,
+    clientRenderedSignals: spaShell.signals,
   };
+}
+
+/**
+ * Detect whether the page has social proof, and whether it appears
+ * above the fold.
+ *
+ * Two-tier check:
+ *
+ * 1. PRESENT-ON-SITE — fires when ANY of these are found anywhere on
+ *    the page:
+ *      - Body text contains trust markers (Trusted by, Used by,
+ *        G2/Capterra/Trustpilot, customer counts, case studies,
+ *        testimonials, named ratings).
+ *      - At least 3 image alts look like brand names ("Coca-Cola",
+ *        "Microsoft logo") or contain logo/customer/partner/client.
+ *      - At least 5 images appear in close DOM proximity inside the
+ *        same container (heuristic for a logo strip).
+ *
+ * 2. ABOVE-THE-FOLD — fires when ANY of these are found in the FIRST
+ *    portion of the page:
+ *      - First ~3000 chars of body text contain a trust marker.
+ *      - First ~8000 chars of HTML contain ≥2 logo-like image alts.
+ *
+ * Above-the-fold is heuristic — we can't determine actual viewport
+ * position from static HTML. Claude's vision on the screenshot is the
+ * tiebreaker. These flags just give Claude a fact-anchored baseline.
+ */
+const SOCIAL_PROOF_TEXT_PATTERNS: Array<{ name: string; re: RegExp }> = [
+  { name: "trusted-by", re: /\btrusted by\b/i },
+  { name: "used-by", re: /\bused by\b/i },
+  { name: "loved-by", re: /\bloved by\b/i },
+  { name: "rating-out-of", re: /\b\d+(\.\d+)?\s*\/\s*(5|10)\b/i },
+  { name: "g2", re: /\bg2\b/i },
+  { name: "capterra", re: /\bcapterra\b/i },
+  { name: "trustpilot", re: /\btrustpilot\b/i },
+  { name: "gartner", re: /\bgartner\b/i },
+  { name: "forrester", re: /\bforrester\b/i },
+  { name: "customer-count", re: /\b\d{2,}[+]?\s*(customers?|clients?|teams?|companies|brands?|hospitals?|practices?|users?|members?)\b/i },
+  { name: "percent-customers", re: /\b\d+%\s+(of\s+)?(customers?|users?|teams?|companies)/i },
+  { name: "case-studies", re: /\bcase studies?\b/i },
+  { name: "testimonials", re: /\btestimonials?\b/i },
+  { name: "named-reviews", re: /\b\d+\s+reviews?\b/i },
+];
+
+/** Returns true if an alt string looks like a brand name or a logo. */
+function looksLikeLogoAlt(alt: string): boolean {
+  if (!alt) return false;
+  const trimmed = alt.trim();
+  if (trimmed.length === 0 || trimmed.length > 60) return false;
+  // Explicit logo / customer / partner mentions.
+  if (/\b(logo|customer|partner|client|brand)\b/i.test(trimmed)) return true;
+  // Capitalised 1-3 word phrases — likely brand names ("Coca-Cola",
+  // "Lionsgate", "Frontier"). Allow hyphens and ampersands.
+  if (/^[A-Z][A-Za-z0-9&\-]+(?:\s+[A-Z][A-Za-z0-9&\-]+){0,2}$/.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+function detectSocialProof(
+  html: string,
+  bodyText: string,
+  imageAlts: string[],
+): { presentOnSite: boolean; aboveTheFold: boolean; signals: string[] } {
+  const signals: string[] = [];
+
+  // Body-text scan, full page.
+  let textHit = false;
+  for (const { name, re } of SOCIAL_PROOF_TEXT_PATTERNS) {
+    if (re.test(bodyText)) {
+      signals.push(`text:${name}`);
+      textHit = true;
+    }
+  }
+
+  // Image-alt brand-likeness check, full page.
+  const brandyAlts = imageAlts.filter(looksLikeLogoAlt);
+  if (brandyAlts.length >= 3) {
+    signals.push(`alts:${brandyAlts.length}-brand-like`);
+  }
+
+  const presentOnSite = textHit || brandyAlts.length >= 3;
+
+  // Above-the-fold heuristic: first chunk of body text + first chunk
+  // of HTML.
+  const headBody = bodyText.slice(0, 3000);
+  let atfTextHit = false;
+  for (const { name, re } of SOCIAL_PROOF_TEXT_PATTERNS) {
+    if (re.test(headBody)) {
+      signals.push(`atf-text:${name}`);
+      atfTextHit = true;
+      break;
+    }
+  }
+
+  const headHtml = html.slice(0, 8000);
+  const earlyAltMatches = Array.from(
+    headHtml.matchAll(/<img\b[^>]*\balt=["']([^"']*)["'][^>]*>/gi),
+  );
+  const earlyBrandyAlts = earlyAltMatches
+    .map((m) => decodeEntities(m[1] ?? "").trim())
+    .filter(looksLikeLogoAlt);
+  if (earlyBrandyAlts.length >= 2) {
+    signals.push(`atf-alts:${earlyBrandyAlts.length}-brand-like`);
+  }
+
+  const aboveTheFold = atfTextHit || earlyBrandyAlts.length >= 2;
+
+  return { presentOnSite, aboveTheFold, signals };
+}
+
+/**
+ * Detect whether the FIRST chunk of raw HTML contains interactive
+ * controls that would make the above-the-fold feel like a quiz /
+ * qualifier / multi-step form rather than a static block.
+ *
+ * Why this matters: Claude tends to dock the above-the-fold score
+ * when it can't see an obvious primary CTA or hero copy, even when
+ * the page is intentionally leading with an interactive flow (where
+ * the CTA is the next quiz step). This flag tells Claude "the above
+ * the fold IS the interaction" so it stops asking for a static
+ * headline + CTA combo.
+ *
+ * Heuristic: scan first 8,000 characters of raw HTML for any of:
+ *   - <input type="checkbox"> or <input type="radio">
+ *   - role="checkbox" / role="radio"
+ *   - class names containing checkbox / radio-button / quiz-option
+ *   - text/aria patterns that hint at multi-step flows
+ *     ("Step 1 of", "Select all that apply", "Next step")
+ *
+ * Not pixel-accurate — same caveat as social-proof-above-fold — but
+ * a reasonable proxy given we can't determine viewport position from
+ * static HTML.
+ */
+const INTERACTIVE_ATF_PATTERNS: { name: string; re: RegExp }[] = [
+  { name: "input-checkbox", re: /<input\b[^>]*\btype\s*=\s*["']checkbox["']/i },
+  { name: "input-radio", re: /<input\b[^>]*\btype\s*=\s*["']radio["']/i },
+  { name: "role-checkbox", re: /\brole\s*=\s*["']checkbox["']/i },
+  { name: "role-radio", re: /\brole\s*=\s*["']radio["']/i },
+  { name: "class-checkbox", re: /\bclass\s*=\s*["'][^"']*\bcheckbox\b[^"']*["']/i },
+  { name: "class-radio-button", re: /\bclass\s*=\s*["'][^"']*\bradio[-_]?button\b[^"']*["']/i },
+  { name: "class-quiz-option", re: /\bclass\s*=\s*["'][^"']*\bquiz[-_]?option\b[^"']*["']/i },
+  { name: "class-multi-step", re: /\bclass\s*=\s*["'][^"']*\bmulti[-_]?step\b[^"']*["']/i },
+  { name: "step-counter", re: /\bstep\s+\d+\s+of\s+\d+\b/i },
+  { name: "select-all-apply", re: /\bselect\s+all\s+that\s+apply\b/i },
+  { name: "next-step-cta", re: /\b(next\s+step|continue\s+to\s+step|begin\s+quiz|start\s+the\s+quiz)\b/i },
+];
+
+function detectInteractiveAboveFold(
+  html: string,
+): { present: boolean; signals: string[] } {
+  const signals: string[] = [];
+  const head = html.slice(0, 8000);
+  for (const { name, re } of INTERACTIVE_ATF_PATTERNS) {
+    if (re.test(head)) signals.push(name);
+  }
+  return { present: signals.length > 0, signals };
+}
+
+/**
+ * Detect whether the static HTML response is a client-rendered SPA
+ * shell with no meaningful server-rendered content.
+ *
+ * Why this matters: every ground-truth flag derived from the raw HTML
+ * (social proof, interactive AtF, image alts, body text excerpts) is
+ * derived from what the server actually returned in the initial HTML
+ * payload. For server-rendered sites (most marketing pages, Webflow,
+ * Unbounce, Next.js with SSR, etc.) that's effectively the whole page.
+ * For pure client-rendered SPAs (Create React App, plain Vite SPA,
+ * client-only single-page Vue) the initial HTML is a shell — usually
+ * `<div id="root"></div>` plus a script tag — and the actual content
+ * is injected by JavaScript that our server-side `fetch()` does NOT
+ * execute. On those sites, the flags can underreport real content.
+ *
+ * The fix isn't to make the flags more accurate (we can't, without
+ * running a headless browser). It's to TELL Claude when the HTML was
+ * thin so it knows to defer to the screenshots, which DO render JS.
+ *
+ * Signal: bodyText word count is unusually low (under SPA_WORD_THRESHOLD)
+ * AND the HTML carries at least one framework-shell signature. Both
+ * have to be true to avoid false positives on simple static pages that
+ * just happen to have few words (a 404 page, a landing page with a
+ * single CTA, etc.).
+ */
+const SPA_WORD_THRESHOLD = 50;
+const SPA_SHELL_PATTERNS: { name: string; re: RegExp }[] = [
+  // Common framework root-container ids.
+  { name: "root-empty", re: /<div\b[^>]*\bid\s*=\s*["']root["'][^>]*>\s*<\/div>/i },
+  { name: "next-empty", re: /<div\b[^>]*\bid\s*=\s*["']__next["'][^>]*>\s*<\/div>/i },
+  { name: "app-empty", re: /<div\b[^>]*\bid\s*=\s*["']app["'][^>]*>\s*<\/div>/i },
+  { name: "svelte-empty", re: /<div\b[^>]*\bid\s*=\s*["']svelte["'][^>]*>\s*<\/div>/i },
+  // Framework hydration markers / globals that strongly imply client
+  // rendering even when the root isn't literally empty.
+  { name: "react-noscript", re: /<noscript>\s*[^<]*React[^<]*<\/noscript>/i },
+  { name: "next-data", re: /<script\b[^>]*\bid\s*=\s*["']__NEXT_DATA__/i },
+  { name: "nuxt-data", re: /window\.__NUXT__/ },
+  { name: "vite-client", re: /\/@vite\/client/ },
+  { name: "webpack-runtime", re: /webpackChunk|__webpack_require__/ },
+  // Bundled / hashed JS bundle names — characteristic of SPA builds.
+  { name: "hashed-js-bundle", re: /<script\b[^>]*\bsrc\s*=\s*["'][^"']*\/(main|app|index|bundle|chunk)[.\-_][a-f0-9]{6,}\.js/i },
+];
+
+function detectClientRenderedShell(
+  html: string,
+  bodyText: string,
+): { present: boolean; signals: string[] } {
+  const signals: string[] = [];
+  const wordCount = bodyText.split(/\s+/).filter(Boolean).length;
+  if (wordCount >= SPA_WORD_THRESHOLD) {
+    return { present: false, signals };
+  }
+  signals.push(`words:${wordCount}`);
+  for (const { name, re } of SPA_SHELL_PATTERNS) {
+    if (re.test(html)) signals.push(name);
+  }
+  // Need at least one framework signature in addition to the low word
+  // count to call it. Otherwise a one-line legitimate landing page
+  // would trip the flag.
+  const hasFrameworkSignal = signals.some((s) => s !== `words:${wordCount}`);
+  return { present: hasFrameworkSignal, signals };
+}
+
+/**
+ * Walk the HTML and count image references by format. Used to drive
+ * the Speed bullets, the WebP key takeaway, and the GROUND TRUTH
+ * image-format breakdown. Counts dedupe by URL (case-insensitive,
+ * query strings stripped) so the same image referenced multiple
+ * times only counts once. SVG is included because the user wants the
+ * full picture; it's vector and doesn't need conversion.
+ */
+function scanImageFormats(html: string): ImageFormatBreakdown {
+  const empty: ImageFormatBreakdown = {
+    png: 0,
+    jpeg: 0,
+    gif: 0,
+    webp: 0,
+    avif: 0,
+    svg: 0,
+    legacyRaster: 0,
+    modernRaster: 0,
+  };
+  if (!html) return empty;
+
+  const seen: Record<string, Set<string>> = {
+    png: new Set(),
+    jpeg: new Set(),
+    gif: new Set(),
+    webp: new Set(),
+    avif: new Set(),
+    svg: new Set(),
+  };
+
+  const EXT_RE = /\.(png|jpe?g|gif|webp|avif|svg)(?:\?|$|"|'|\))/i;
+
+  const collect = (value: string | undefined | null): void => {
+    if (!value) return;
+    const candidates = value.split(/,\s*/).map((c) => c.trim().split(/\s+/)[0]);
+    for (const raw of candidates) {
+      if (!raw) continue;
+      const m = raw.match(EXT_RE);
+      if (!m) continue;
+      const ext = m[1].toLowerCase().replace(/^jpg$/, "jpeg");
+      const normalised = raw.split("?")[0].toLowerCase();
+      if (seen[ext]) seen[ext].add(normalised);
+    }
+  };
+
+  for (const m of html.matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi)) {
+    collect(m[1]);
+  }
+  for (const m of html.matchAll(/<img\b[^>]*\bsrcset=["']([^"']+)["'][^>]*>/gi)) {
+    collect(m[1]);
+  }
+  for (const m of html.matchAll(
+    /<source\b[^>]*\bsrcset=["']([^"']+)["'][^>]*>/gi,
+  )) {
+    collect(m[1]);
+  }
+  for (const m of html.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)) {
+    collect(m[1]);
+  }
+
+  const png = seen.png.size;
+  const jpeg = seen.jpeg.size;
+  const gif = seen.gif.size;
+  const webp = seen.webp.size;
+  const avif = seen.avif.size;
+  const svg = seen.svg.size;
+  return {
+    png,
+    jpeg,
+    gif,
+    webp,
+    avif,
+    svg,
+    legacyRaster: png + jpeg + gif,
+    modernRaster: webp + avif,
+  };
+}
+
+/**
+ * Extract non-empty alt attributes from every <img> on the page. Many
+ * customer-logo strips put the brand name in the alt ("Coca-Cola
+ * logo"), and hero images often describe what's shown ("Dashboard
+ * showing real-time scheduling"). Giving Claude these strings lets it
+ * reason about brand-named social proof and image content without
+ * having to read the screenshot. Deduped by string. Capped at 40.
+ */
+function extractImageAlts(html: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of html.matchAll(/<img\b[^>]*\balt=["']([^"']*)["'][^>]*>/gi)) {
+    const text = decodeEntities(m[1] ?? "").trim();
+    if (!text || text.length > 120) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+    if (out.length >= 40) break;
+  }
+  return out;
 }
 
 /** Strip HTML tags, decode entities, collapse whitespace. Used when we

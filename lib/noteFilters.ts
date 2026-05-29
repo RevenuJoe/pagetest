@@ -142,26 +142,6 @@ const filterNavBulky: FilterRule = (note, _dim, ctx) => {
   return null;
 };
 
-/** Recommending "add social proof above the fold" when the page already
- *  has clear social-proof signals somewhere on it. The above-the-fold
- *  visual check is something we can't verify programmatically, but if
- *  the page has body-level social proof, a "missing" claim is unsafe
- *  enough to drop. */
-const filterAddSocialProof: FilterRule = (note, _dim, ctx) => {
-  const said =
-    /(add|move|missing|lack|need|include)\b[^.]{0,80}\b(social proof|customer logos?|trust signals?|testimonials?|ratings?|reviews?)\b/i.test(
-      note,
-    ) ||
-    /(no|without)\s+(visible\s+)?(social proof|customer logos?|trust signals?|testimonials?|ratings?)/i.test(
-      note,
-    );
-  if (!said) return null;
-  if (bodyHasSocialProof(ctx.bodyText)) {
-    return "social-proof claimed missing/needed but page contains social-proof markers";
-  }
-  return null;
-};
-
 /** Recommending a bottom / final / footer form when the page has 2+
  *  forms (so one is almost certainly the bottom one). */
 const filterAddBottomForm: FilterRule = (note, _dim, ctx) => {
@@ -283,7 +263,6 @@ const ALL_FILTERS: FilterRule[] = [
   filterAnyNavCommentary,
   filterNavMissingButHasContent,
   filterNavBulky,
-  filterAddSocialProof,
   filterAddBottomForm,
   filterSignInRecommendation,
   filterPhoneFieldGhost,
@@ -576,11 +555,14 @@ const ACTION_VERB = /\b(add|introduce|include|insert|build|create|missing|lack(?
 const PRESENT_VERB = /\b(has|have|shows?|displays?|delivers?|provides?|includes?|features?|contains?|with|visible|present|appears?|already\s+(?:has|includes|shows))\b/i;
 
 /** Run the contradiction sweep over every note + every headline in
- *  every dimension AND every takeaway. Returns cleaned versions. */
+ *  every dimension AND every takeaway. Returns cleaned versions.
+ *  Accepts an optional ground-truth context to enforce structural
+ *  flags like `socialProofPresent` as authoritative. */
 export function runContradictionSweep(
   dimensions: Record<string, CheckResult>,
   takeaways: KeyTakeaway[],
   url: string,
+  groundTruth?: { socialProofPresent?: boolean },
 ): { dimensions: Record<string, CheckResult>; takeaways: KeyTakeaway[] } {
   // Build the pool of positive statements: every note + headline that
   // says some topic is present. We'll check "add X" recommendations
@@ -619,6 +601,17 @@ export function runContradictionSweep(
    *  topic label that contradicts, or null if no contradiction. */
   function findContradiction(text: string, ownPool: string[]): string | null {
     if (!isRecommendingAddition(text)) return null;
+    // GROUND-TRUTH override: socialProofPresent is authoritative. If
+    // the page has social proof anywhere and the text recommends
+    // adding it, drop immediately without needing a counter-note.
+    if (groundTruth?.socialProofPresent) {
+      const socialProofTopic = CONTRADICTION_TOPICS.find(
+        (t) => t.key === "social_proof",
+      );
+      if (socialProofTopic?.topic.test(text)) {
+        return `${socialProofTopic.label} (GROUND TRUTH: socialProofPresent=YES)`;
+      }
+    }
     for (const t of CONTRADICTION_TOPICS) {
       if (!t.topic.test(text)) continue;
       // Look for any other text in the pool that says this topic is

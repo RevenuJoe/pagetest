@@ -246,9 +246,11 @@ export async function runPageSpeed(
   const res = await fetch(`${PSI_ENDPOINT}?${params.toString()}`, {
     // PSI runs Lighthouse on Google's infrastructure. Mobile is the
     // throttled-emulation strategy and is consistently 2–3× slower than
-    // desktop. 230s per strategy keeps both runs comfortably inside the
-    // route's 270s maxDuration even when Google's queue is busy.
-    signal: AbortSignal.timeout(230_000),
+    // desktop. 150s per strategy keeps a comfortable buffer (~120s) for
+    // the Claude pipeline inside the route's 270s maxDuration. PSI
+    // genuinely taking longer than 150s is rare; on the unlucky run we
+    // lose that strategy but the report still renders from the other.
+    signal: AbortSignal.timeout(150_000),
   });
 
   if (!res.ok) {

@@ -12,7 +12,7 @@
  *   1. Open every <details> inside the target so all sections render.
  *   2. Add the "pdf-printing" body class so the same UI-chrome rules
  *      that hide carousel arrows / copy buttons / the rerun row
- *      apply, then unfold the Breakdown carousel into a static grid.
+ *      apply, then unfold the Analysis carousel into a static grid.
  *   3. Wait for repaint; fetch and inline every cross-origin image
  *      as a data URI (Microlink screenshots etc.).
  *   4. Clone the target node and the document's stylesheets into a
@@ -23,9 +23,9 @@
 /**
  * Force the TOP-LEVEL <details> open inside `root`, but leave any
  * nested <details> at their current state. This means each report
- * section (Overview, Breakdown, Key Takeaways, Technical Improvements,
- * PageSpeed Insights, Above-the-Fold Screenshots) opens by default —
- * but the expandable per-improvement rows inside Technical Improvements
+ * section (Overview, Key Takeaways, Analysis, Above-the-Fold Screenshots,
+ * PageSpeed Insights, Technical Improvements) opens by default — but
+ * the expandable per-improvement rows inside Technical Improvements
  * stay closed so the reader can choose which ones to open.
  *
  * Returns a restore function that puts every touched element back to

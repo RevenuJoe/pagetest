@@ -8,7 +8,7 @@
  *      sections render in the PDF.
  *   2. Add a "pdf-printing" class to <body> so global CSS hides UI
  *      chrome (carousel arrows, copy buttons, the rerun/download row)
- *      and unfolds the Breakdown carousel into a static grid.
+ *      and unfolds the Analysis carousel into a static grid.
  *   3. Inline every cross-origin image (Microlink screenshots) as a
  *      data URI so html2canvas doesn't render them as blank squares
  *      under its CORS rules.

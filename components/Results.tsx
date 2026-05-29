@@ -1,11 +1,13 @@
 /**
- * The four-section report view. Shared between / (after a fresh run) and
+ * The six-section report view. Shared between / (after a fresh run) and
  * /reports (when opening a saved report).
  *
- *   1. The Overview      — overall ring + Report name/URL/Analysed + mini scores
- *   2. Breakdown          — six ScoreCards
- *   3. Key Takeaways      — numbered list from Claude
- *   4. Above-the-Fold Screenshots — desktop + mobile at matched height
+ *   1. Overview                     — overall ring + Report name/URL/Analysed + mini scores
+ *   2. Key Takeaways                — numbered list from Claude
+ *   3. Analysis                     — six ScoreCards (one per dimension)
+ *   4. Above-the-Fold Screenshots   — desktop + mobile at matched height
+ *   5. PageSpeed Insights           — Desktop vs Mobile comparison + per-strategy chips
+ *   6. Technical Improvements       — Lighthouse opportunities + diagnostics
  */
 
 "use client";
@@ -68,21 +70,6 @@ export default function Results({
       ),
     },
     {
-      key: "breakdown",
-      node: (
-        <Section
-          title="Breakdown"
-          icon={<IconLayers />}
-          defaultOpen={false}
-          headerAction={
-            <CopyButton getText={() => formatBreakdownForClipboard(data)} />
-          }
-        >
-          <BreakdownBlock data={data} />
-        </Section>
-      ),
-    },
-    {
       key: "takeaways",
       node: (
         <Section
@@ -98,17 +85,25 @@ export default function Results({
       ),
     },
     {
-      key: "tech",
+      key: "analysis",
       node: (
         <Section
-          title="Technical Improvements"
-          icon={<IconWrench />}
+          title="Analysis"
+          icon={<IconLayers />}
           defaultOpen={false}
           headerAction={
-            <CopyButton getText={() => formatTechImprovementsForClipboard(data)} />
+            <CopyButton getText={() => formatBreakdownForClipboard(data)} />
           }
         >
-          <TechnicalImprovementsBlock data={data} />
+          <BreakdownBlock data={data} />
+        </Section>
+      ),
+    },
+    {
+      key: "screenshots",
+      node: (
+        <Section title="Above-the-Fold Screenshots" icon={<IconEye />} defaultOpen={false}>
+          <ScreenshotsBlock data={data} />
         </Section>
       ),
     },
@@ -128,10 +123,17 @@ export default function Results({
       ),
     },
     {
-      key: "screenshots",
+      key: "tech",
       node: (
-        <Section title="Above-the-Fold Screenshots" icon={<IconEye />} defaultOpen={false}>
-          <ScreenshotsBlock data={data} />
+        <Section
+          title="Technical Improvements"
+          icon={<IconWrench />}
+          defaultOpen={false}
+          headerAction={
+            <CopyButton getText={() => formatTechImprovementsForClipboard(data)} />
+          }
+        >
+          <TechnicalImprovementsBlock data={data} />
         </Section>
       ),
     },
@@ -285,7 +287,7 @@ function formatOverviewForClipboard(data: AnalyzeResponse): string {
   );
 }
 
-/** Breakdown section clipboard format: each of the six dimension cards
+/** Analysis section clipboard format: each of the six dimension cards
  *  with its score, headline, and bullet notes laid out like an outline. */
 function formatBreakdownForClipboard(data: AnalyzeResponse): string {
   const order: CheckKey[] = [
@@ -307,7 +309,7 @@ function formatBreakdownForClipboard(data: AnalyzeResponse): string {
       return title + headline + (notes ? `\n${notes}` : "");
     })
     .join("\n\n");
-  return clipboardHeader(data, "Breakdown") + body + "\n";
+  return clipboardHeader(data, "Analysis") + body + "\n";
 }
 
 /** PageSpeed Insights section clipboard format: per-strategy category
@@ -671,11 +673,13 @@ function BreakdownBlock({ data }: { data: AnalyzeResponse }) {
         {order.map((k) => (
           <div
             key={k}
-            // One card per visible "page" on mobile (full width), two on
-            // sm, three on lg. The calc subtracts the gap so the cards
-            // perfectly span the container. flex-shrink-0 stops them
-            // squashing when the row overflows.
-            className="flex-shrink-0 w-full sm:w-[calc((100%-1rem)/2)] lg:w-[calc((100%-2rem)/3)]"
+            // Cards are 30% wider than the "exactly N per page" sizing
+            // so the carousel scrolls instead of fitting evenly. Mobile
+            // stays full-width (one per screen). sm and lg multiply the
+            // even-fit width by 1.3 — same gap math, just stretched
+            // cards. flex-shrink-0 stops them squashing when the row
+            // overflows.
+            className="flex-shrink-0 w-full sm:w-[calc((100%-1rem)/2*1.3)] lg:w-[calc((100%-2rem)/3*1.3)]"
           >
             <ScoreCard
               title={CHECK_META[k].title}
@@ -1082,7 +1086,7 @@ function PsiCategoryComparison({
           return (
             <div
               key={cat.key}
-              className="flex flex-col items-center rounded-card border border-beige-line bg-card px-3 pb-3 pt-3"
+              className="flex flex-col items-center rounded-card border border-beige-line bg-card shadow-card px-3 pb-3 pt-3"
             >
               <div
                 className="text-center text-[11px] font-bold uppercase text-ink"
@@ -1094,8 +1098,8 @@ function PsiCategoryComparison({
                 className="mt-3 flex w-full items-end justify-center gap-3"
                 style={{ height: BAR_HEIGHT + 24 /* room for value labels */ }}
               >
-                <VerticalBar label="Desktop" score={d} maxHeight={BAR_HEIGHT} />
-                <VerticalBar label="Mobile" score={m} maxHeight={BAR_HEIGHT} />
+                <VerticalBar label="Desktop" score={d} maxHeight={BAR_HEIGHT} device="desktop" />
+                <VerticalBar label="Mobile" score={m} maxHeight={BAR_HEIGHT} device="mobile" />
               </div>
             </div>
           );
@@ -1105,7 +1109,7 @@ function PsiCategoryComparison({
             categories. Bar height comes from a 0-100 score derived from
             seconds (Lighthouse's bands), but the value above the bar is
             the actual seconds reading so the user sees what matters. */}
-        <div className="flex flex-col items-center rounded-card border border-beige-line bg-card px-3 pb-3 pt-3">
+        <div className="flex flex-col items-center rounded-card border border-beige-line bg-card shadow-card px-3 pb-3 pt-3">
           <div
             className="text-center text-[11px] font-bold uppercase text-ink"
             style={{ letterSpacing: "0.06em" }}
@@ -1120,11 +1124,13 @@ function PsiCategoryComparison({
               label="Desktop"
               ms={desktop?.speedIndexMs ?? null}
               maxHeight={BAR_HEIGHT}
+              device="desktop"
             />
             <SpeedIndexVerticalBar
               label="Mobile"
               ms={mobile?.speedIndexMs ?? null}
               maxHeight={BAR_HEIGHT}
+              device="mobile"
             />
           </div>
         </div>
@@ -1159,10 +1165,12 @@ function SpeedIndexVerticalBar({
   label,
   ms,
   maxHeight,
+  device,
 }: {
   label: string;
   ms: number | null;
   maxHeight: number;
+  device: "desktop" | "mobile";
 }) {
   const seconds = ms == null ? null : ms / 1000;
   const color = seconds == null ? "#c4c0b6" : speedIndexBandColor(seconds);
@@ -1171,6 +1179,11 @@ function SpeedIndexVerticalBar({
   // chart's drawing area.
   const clamped = Math.min(seconds ?? 0, SPEED_INDEX_MAX_SECS);
   const h = (clamped / SPEED_INDEX_MAX_SECS) * maxHeight;
+  // Differentiate Desktop vs Mobile by saturation: Desktop renders at
+  // full colour, Mobile uses a softer / lighter version of the same
+  // colour so the two bars read as a paired set (like the lighter
+  // accent backgrounds used behind the category icons).
+  const barBackground = device === "mobile" ? `${color}80` : color;
   return (
     <div className="flex w-full max-w-[44px] flex-col items-center justify-end">
       <div className="text-[13px] font-bold tabular-nums leading-none" style={{ color }}>
@@ -1180,7 +1193,7 @@ function SpeedIndexVerticalBar({
         className="mt-1.5 w-full rounded-t-md transition-all"
         style={{
           height: `${h}px`,
-          background: color,
+          background: barBackground,
           minHeight: "2px",
         }}
       />
@@ -1199,14 +1212,21 @@ function VerticalBar({
   label,
   score,
   maxHeight,
+  device,
 }: {
   label: string;
   score: number | null;
   maxHeight: number;
+  device: "desktop" | "mobile";
 }) {
   const value = score ?? 0;
   const color = score == null ? "#c4c0b6" : scoreColor(score);
   const h = Math.max(2, Math.min(100, value)) * (maxHeight / 100);
+  // Differentiate Desktop vs Mobile by saturation: Desktop renders at
+  // full colour, Mobile uses a softer / lighter version of the same
+  // colour (50% alpha) so the two bars read as a paired set with the
+  // same lighter-accent feel as the icon backgrounds.
+  const barBackground = device === "mobile" ? `${color}80` : color;
   return (
     <div className="flex w-full max-w-[44px] flex-col items-center justify-end">
       <div
@@ -1219,7 +1239,7 @@ function VerticalBar({
         className="mt-1.5 w-full rounded-t-md transition-all"
         style={{
           height: `${h}px`,
-          background: color,
+          background: barBackground,
           minHeight: "2px",
         }}
       />
@@ -1273,8 +1293,12 @@ function PsiStrategyCard({
   // Index and Page Weight. The other PSI metrics (LCP, CLS, TBT, FCP,
   // TTI, Server, DOM size) were dropped per Joe's spec to keep this
   // section focused.
+  //
+  // Visual pattern mirrors the Overview section: the outer card sits on
+  // the lighter (white) background, and the inner stat chips use the
+  // same translucent-beige bg as the Overview's per-dimension chips.
   return (
-    <div className="rounded-card border border-beige-line bg-bg/40 px-5 py-4">
+    <div className="rounded-card border border-beige-line bg-card shadow-card px-5 py-4">
       <div
         className="flex items-center gap-2 text-[12px] font-bold uppercase text-ink-soft"
         style={{ letterSpacing: "0.18em" }}
@@ -1359,7 +1383,7 @@ function PsiValueChip({
 }) {
   const color = warn ? "#C44536" : good ? "#2F7D6F" : "#76A09C";
   return (
-    <div className="flex flex-col items-center gap-1 rounded-card border border-beige-line bg-card px-3 py-3">
+    <div className="flex flex-col items-center gap-1 rounded-card border border-beige-line bg-bg/40 px-3 py-3">
       <div
         className="flex h-7 w-7 items-center justify-center rounded-lg"
         style={{ background: `${color}1a`, color }}
@@ -1422,7 +1446,7 @@ function PsiCategoryChip({
   const value = score ?? 0;
   const color = score == null ? "#c4c0b6" : scoreColor(score);
   return (
-    <div className="flex flex-col items-center gap-1 rounded-card border border-beige-line bg-card px-3 py-3">
+    <div className="flex flex-col items-center gap-1 rounded-card border border-beige-line bg-bg/40 px-3 py-3">
       <div
         className="flex h-7 w-7 items-center justify-center rounded-lg"
         style={{ background: `${color}1a`, color }}

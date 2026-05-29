@@ -51,7 +51,7 @@ In order:
 4. Speed check is built deterministically from PSI's Lighthouse numbers.
 5. Claude is called once with: URL, the page's <title> and meta description, a structural summary (H1/H2/H3 counts, paragraph count, image count and alt-missing count, link/button/form counts, nav and footer presence, word count), the body text (capped at 12k characters), and both above-the-fold screenshots.
 6. Claude returns scored JSON for content, digestibility, CRO, aboveTheFold, mobile, plus the keyTakeaways array.
-7. The combined response is rendered as a four-section collapsible report: The Overview, Breakdown, Key Takeaways, Above-the-Fold Screenshots.
+7. The combined response is rendered as a six-section collapsible report: Overview, Key Takeaways, Analysis, Above-the-Fold Screenshots, PageSpeed Insights, Technical Improvements.
 8. The report auto-saves to the user's browser (localStorage) and appears in /reports.
 
 ## Saved reports

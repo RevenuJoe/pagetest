@@ -29,7 +29,16 @@ import { displayName } from "@/lib/nameUtil";
 interface LoadingStep {
   text: string;
   icon: React.ReactNode;
+  /** Optional override for how long this rotation step stays on screen,
+   *  in milliseconds. Defaults to ROTATION_DEFAULT_MS (6000) when unset.
+   *  Used to give the knock-knock joke a faster cadence than the rest
+   *  of the rotation so the punchline lands instead of dragging. */
+  durationMs?: number;
 }
+
+/** Default duration each Phase 2 rotation message stays on screen,
+ *  unless the step overrides it via `durationMs`. */
+const ROTATION_DEFAULT_MS = 6000;
 
 const LOADING_STEPS: LoadingStep[] = [
   { text: "Booting up Lighthouse on the Google's servers…", icon: <IconSearch /> },
@@ -41,16 +50,38 @@ const LOADING_STEPS: LoadingStep[] = [
   { text: "Compiling your report…", icon: <IconReport /> },
 ];
 
-// Once we land on the final "compiling" step we cycle through these every
-// few seconds so the message doesn't sit static while the analysis
-// finishes.
+// Once we land on the final linear step ("Claude is grading…"), we
+// switch the display to this rotation. Phase 2 escalates from "we're
+// compiling" → "nearly ready" → a couple of marketing jokes → a
+// rapid-fire knock-knock joke (faster per-step cadence) → gradually-
+// more-alarmed copy if the run is taking unusually long, ending on
+// "you can wait but it doesn't usually take this long" — and we stick
+// on that last message (no looping) so the user reads the most honest
+// summary if they're really stuck.
 const COMPILING_ROTATION: LoadingStep[] = [
+  { text: "We're compiling your report", icon: <IconReport /> },
   { text: "Not too long now, it's worth the wait...", icon: <IconClock /> },
   { text: "It's nearly ready...", icon: <IconHourglass /> },
-  { text: "I promise it's basically done", icon: <IconCheck className="h-[18px] w-[18px]" /> },
-  { text: "Last tweaks", icon: <IconWrench /> },
-  { text: "Wow this is strange, sorry", icon: <IconHourglass /> },
-  { text: "It's nearly ready...", icon: <IconClock /> },
+  { text: "How about I tell you a joke?", icon: <IconCheck className="h-[18px] w-[18px]" /> },
+  { text: "Q: How does a B2B marketer power their boats?", icon: <IconClock /> },
+  { text: "A: They use sail's force.", icon: <IconCheck className="h-[18px] w-[18px]" /> },
+  { text: "Okay I'm sorry I know that was bad", icon: <IconHourglass /> },
+  { text: "Here is another", icon: <IconClock /> },
+  { text: "How many marketers does it take to screw in a lightbulb?", icon: <IconClock /> },
+  { text: "Just one, but Sales will take the credit for it.", icon: <IconCheck className="h-[18px] w-[18px]" /> },
+  { text: "Just kidding, we love Sales", icon: <IconCheck className="h-[18px] w-[18px]" /> },
+  { text: "Okay this report is taking ages", icon: <IconHourglass /> },
+  { text: "It's probably worth waiting a little longer", icon: <IconClock /> },
+  { text: "One more joke then we should give up", icon: <IconHourglass /> },
+  { text: "Knock, knock!", icon: <IconClock />, durationMs: 2000 },
+  { text: "Who's there?", icon: <IconHourglass />, durationMs: 2000 },
+  { text: "Our new eBook!", icon: <IconCheck className="h-[18px] w-[18px]" />, durationMs: 2000 },
+  { text: "Our new eBook, who?", icon: <IconHourglass />, durationMs: 2000 },
+  { text: "Please enter your email for the punchline.", icon: <IconCheck className="h-[18px] w-[18px]" />, durationMs: 3000 },
+  { text: "Okay that's not even funny", icon: <IconHourglass /> },
+  { text: "It's best to cancel and re-run at this point", icon: <IconWrench /> },
+  { text: "I think it's failed, re-run the URL", icon: <IconWrench /> },
+  { text: "You can wait but it doesn't usually take this long", icon: <IconClock /> },
 ];
 
 export default function HomePage() {
@@ -137,9 +168,14 @@ function Home() {
     return () => clearInterval(id);
   }, [isLoading]);
 
-  // Once stepIndex has landed on the FINAL "Compiling your report…" step
-  // (the one that tends to linger), rotate through engaging messages
-  // every ~3 seconds so the user feels something is still happening.
+  // Once stepIndex has landed on the FINAL linear step ("Claude is
+  // grading…"), the display switches to COMPILING_ROTATION and we tick
+  // through those messages on a per-step duration. Each step defaults
+  // to ROTATION_DEFAULT_MS (6000ms); the knock-knock entries override
+  // to 2000–3000ms so the punchline pacing reads correctly. When we
+  // reach the LAST rotation message, we stop scheduling — the user
+  // sits on that final "You can wait but it doesn't usually take this
+  // long" line until the report finishes or they re-run.
   const [rotationIndex, setRotationIndex] = useState(0);
   useEffect(() => {
     const onLastStep = stepIndex === LOADING_STEPS.length - 1;
@@ -147,11 +183,17 @@ function Home() {
       setRotationIndex(0);
       return;
     }
-    const id = setInterval(() => {
-      setRotationIndex((i) => (i + 1) % COMPILING_ROTATION.length);
-    }, 5000);
-    return () => clearInterval(id);
-  }, [isLoading, stepIndex]);
+    // Stop scheduling once we've reached the last rotation message —
+    // sticking on that final line is more honest than looping back to
+    // "Not too long now…" after telling the user it's failed.
+    if (rotationIndex >= COMPILING_ROTATION.length - 1) return;
+    const duration =
+      COMPILING_ROTATION[rotationIndex].durationMs ?? ROTATION_DEFAULT_MS;
+    const id = setTimeout(() => {
+      setRotationIndex((i) => Math.min(i + 1, COMPILING_ROTATION.length - 1));
+    }, duration);
+    return () => clearTimeout(id);
+  }, [isLoading, stepIndex, rotationIndex]);
 
   // The report just animates in below the hero space — we deliberately
   // do NOT scrollIntoView. The user controls the scroll; if they want to

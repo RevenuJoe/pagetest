@@ -43,7 +43,14 @@ import type { AnalyzeResponse } from "@/lib/types";
 interface LoadingStep {
   text: string;
   icon: React.ReactNode;
+  /** Optional override for how long this rotation step stays on screen,
+   *  in milliseconds. Defaults to ROTATION_DEFAULT_MS (6000) when unset. */
+  durationMs?: number;
 }
+
+/** Default duration each Phase 2 rotation message stays on screen,
+ *  unless the step overrides it via `durationMs`. */
+const ROTATION_DEFAULT_MS = 6000;
 
 const LOADING_STEPS: LoadingStep[] = [
   { text: "Booting up Lighthouse on the Google's servers…", icon: <IconSearch /> },
@@ -55,14 +62,34 @@ const LOADING_STEPS: LoadingStep[] = [
   { text: "Compiling your report…", icon: <IconReport /> },
 ];
 
-// Engaging cycle for the final "Compiling" step (used during reruns).
+// Phase 2 rotation: starts with "We're compiling your report", escalates
+// through marketing jokes and a knock-knock joke (faster cadence), and
+// ends with a stuck-on-screen "you can wait but it doesn't usually take
+// this long" — used during reruns kicked off from the saved-report page.
 const COMPILING_ROTATION: LoadingStep[] = [
+  { text: "We're compiling your report", icon: <IconReport /> },
   { text: "Not too long now, it's worth the wait...", icon: <IconClock /> },
   { text: "It's nearly ready...", icon: <IconHourglass /> },
-  { text: "I promise it's basically done", icon: <IconCheck className="h-[18px] w-[18px]" /> },
-  { text: "Last tweaks", icon: <IconWrench /> },
-  { text: "Wow this is strange, sorry", icon: <IconHourglass /> },
-  { text: "It's nearly ready...", icon: <IconClock /> },
+  { text: "How about I tell you a joke?", icon: <IconCheck className="h-[18px] w-[18px]" /> },
+  { text: "Q: How does a B2B marketer power their boats?", icon: <IconClock /> },
+  { text: "A: They use sail's force.", icon: <IconCheck className="h-[18px] w-[18px]" /> },
+  { text: "Okay I'm sorry I know that was bad", icon: <IconHourglass /> },
+  { text: "Here is another", icon: <IconClock /> },
+  { text: "How many marketers does it take to screw in a lightbulb?", icon: <IconClock /> },
+  { text: "Just one, but Sales will take the credit for it.", icon: <IconCheck className="h-[18px] w-[18px]" /> },
+  { text: "Just kidding, we love Sales", icon: <IconCheck className="h-[18px] w-[18px]" /> },
+  { text: "Okay this report is taking ages", icon: <IconHourglass /> },
+  { text: "It's probably worth waiting a little longer", icon: <IconClock /> },
+  { text: "One more joke then we should give up", icon: <IconHourglass /> },
+  { text: "Knock, knock!", icon: <IconClock />, durationMs: 2000 },
+  { text: "Who's there?", icon: <IconHourglass />, durationMs: 2000 },
+  { text: "Our new eBook!", icon: <IconCheck className="h-[18px] w-[18px]" />, durationMs: 2000 },
+  { text: "Our new eBook, who?", icon: <IconHourglass />, durationMs: 2000 },
+  { text: "Please enter your email for the punchline.", icon: <IconCheck className="h-[18px] w-[18px]" />, durationMs: 3000 },
+  { text: "Okay that's not even funny", icon: <IconHourglass /> },
+  { text: "It's best to cancel and re-run at this point", icon: <IconWrench /> },
+  { text: "I think it's failed, re-run the URL", icon: <IconWrench /> },
+  { text: "You can wait but it doesn't usually take this long", icon: <IconClock /> },
 ];
 
 export default function ReportPage() {
@@ -99,8 +126,12 @@ function ReportView() {
     return () => window.clearInterval(id);
   }, [isLoading]);
 
-  // Once stepIndex is parked on the final "Compiling" step, rotate
-  // engaging messages every ~3 seconds so it never feels stuck.
+  // Once stepIndex is parked on the final linear step, switch to the
+  // COMPILING_ROTATION ticker. Each step uses its own duration (default
+  // 6000ms; knock-knock entries override to 2000–3000ms). When we hit
+  // the LAST rotation message, we stop scheduling so the user sits on
+  // "You can wait but it doesn't usually take this long" instead of
+  // looping back to the cheerful opening lines.
   const [rotationIndex, setRotationIndex] = useState(0);
   useEffect(() => {
     const onLastStep = stepIndex === LOADING_STEPS.length - 1;
@@ -108,11 +139,14 @@ function ReportView() {
       setRotationIndex(0);
       return;
     }
-    const id = window.setInterval(() => {
-      setRotationIndex((i) => (i + 1) % COMPILING_ROTATION.length);
-    }, 5000);
-    return () => window.clearInterval(id);
-  }, [isLoading, stepIndex]);
+    if (rotationIndex >= COMPILING_ROTATION.length - 1) return;
+    const duration =
+      COMPILING_ROTATION[rotationIndex].durationMs ?? ROTATION_DEFAULT_MS;
+    const id = window.setTimeout(() => {
+      setRotationIndex((i) => Math.min(i + 1, COMPILING_ROTATION.length - 1));
+    }, duration);
+    return () => window.clearTimeout(id);
+  }, [isLoading, stepIndex, rotationIndex]);
 
   // No automatic scroll when the report lands — the user controls
   // scrolling. The animation runs in place wherever the page currently

@@ -32,6 +32,43 @@ import {
 
 const MODEL = "claude-sonnet-4-5";
 
+/**
+ * Run an Anthropic `messages.create` call with one retry on transient
+ * errors. A single 429 (rate limit), 529 (overloaded), or socket-level
+ * blip currently kills the whole phase — and because dimension calls
+ * run in parallel via `Promise.all`, one transient failure aborts the
+ * report. One retry with a 1.5s backoff catches the overwhelming
+ * majority of these without meaningfully extending wall-clock time on
+ * the happy path.
+ *
+ * We only retry on errors that are plausibly transient: HTTP 408 / 425
+ * / 429 / 500 / 502 / 503 / 504 / 529, AbortError, and "fetch failed"
+ * / ECONNRESET / ETIMEDOUT-style network errors. 4xx errors that
+ * indicate a real client problem (400 bad request, 401/403 auth,
+ * 404, 413 payload-too-large) are NOT retried.
+ */
+async function createWithRetry(
+  client: Anthropic,
+  params: Parameters<Anthropic["messages"]["create"]>[0],
+  label: string,
+): Promise<Anthropic.Message> {
+  const TRANSIENT_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
+  try {
+    return (await client.messages.create(params)) as Anthropic.Message;
+  } catch (err) {
+    const isTransient =
+      (err instanceof Anthropic.APIError && TRANSIENT_STATUSES.has(err.status ?? 0)) ||
+      (err instanceof Error &&
+        /AbortError|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|fetch failed|network/i.test(
+          err.message,
+        ));
+    if (!isTransient) throw err;
+    console.warn(`[claude] ${label} transient error, retrying once:`, err instanceof Error ? err.message : err);
+    await new Promise((r) => setTimeout(r, 1500));
+    return (await client.messages.create(params)) as Anthropic.Message;
+  }
+}
+
 export interface ClaudeInput {
   url: string;
   title: string | null;
@@ -158,30 +195,57 @@ export async function analyzeWithClaude(
   const aboveTheFold = filterDimensionResult(aboveTheFoldRaw, "aboveTheFold", filterCtx);
   const mobile = filterDimensionResult(mobileRaw, "mobile", filterCtx);
 
-  // Phase 2: now that the dimensions have concluded (and been filtered),
-  // run the Takeaways call with each dimension's CLEAN notes injected
-  // into the prompt as the SOURCE MATERIAL. Takeaways can only
-  // summarise / re-prioritise what the dimensions already concluded —
-  // it can't invent new observations.
+  // Phase 2: PARALLEL. We start two Claude calls at the same time:
+  //
+  //   (a) Takeaways — receives the dimensions' clean notes as source
+  //       material. Takeaways can only summarise / re-prioritise what
+  //       the dimensions already concluded — never invent new claims.
+  //
+  //   (b) Dimensions-critic — fact-checks every dimension headline and
+  //       note against the same evidence the generators saw. Runs
+  //       independently because takeaways only consumes the filtered
+  //       (not yet critic-audited) dim notes, and we don't want to
+  //       block the takeaways call waiting for the critic.
+  //
+  // Running these in parallel saves ~25-30s vs the old strictly-
+  // sequential pipeline. Quality is preserved because every claim
+  // still gets critic-audited (dim claims by the dims-critic here,
+  // takeaway claims by a smaller takeaways-critic right after).
   const dimensionResultsAfterFilter = { content, digestibility, cro, aboveTheFold, mobile };
-  const rawTakeaways = await callTakeaways(client, input, dimensionResultsAfterFilter);
+  const dimensionsCriticPromise = runCriticPass(
+    client,
+    input,
+    dimensionResultsAfterFilter,
+    [],
+    "dimensions",
+  );
+  const takeawaysPromise = callTakeaways(client, input, dimensionResultsAfterFilter);
 
-  // Phase 2b: deterministic filter on takeaways too, in case Claude
-  // re-introduced a hallucination by rewording a dimension note.
+  // As soon as Takeaways comes back, filter it and kick off the
+  // takeaways-critic. The dims-critic may still be running — both
+  // critics now race to completion. The takeaways-critic has a much
+  // smaller candidate list so it's typically the faster of the two.
+  const rawTakeaways = await takeawaysPromise;
   const filteredTakeaways = filterTakeaways(rawTakeaways, filterCtx);
-
-  // Phase 3: GENERATOR-THEN-CRITIC fact-check. A single fresh Claude
-  // call audits every headline, every note, and every takeaway against
-  // the same evidence (GROUND TRUTH + body text + screenshots). For
-  // each item the critic returns KEEP, REWRITE, or DROP. The deterministic
-  // filters above catch known hallucination patterns; this call catches
-  // the rest. It's the standard generate-then-verify pattern.
-  const audited = await runCriticPass(
+  const takeawaysCriticPromise = runCriticPass(
     client,
     input,
     dimensionResultsAfterFilter,
     filteredTakeaways,
+    "takeaways",
   );
+
+  // Wait for both critics. Each one returns the slice it audited; we
+  // merge them into a single `audited` object with the same shape the
+  // old all-in-one critic produced.
+  const [dimensionsCriticResult, takeawaysCriticResult] = await Promise.all([
+    dimensionsCriticPromise,
+    takeawaysCriticPromise,
+  ]);
+  const audited = {
+    dimensions: dimensionsCriticResult.dimensions,
+    takeaways: takeawaysCriticResult.takeaways,
+  };
 
   // Phase 4: FINAL CONTRADICTION SWEEP. Deterministic, fast. Scans the
   // whole report for "add X" recommendations where another note /
@@ -196,6 +260,7 @@ export async function analyzeWithClaude(
     sweepInput,
     audited.takeaways,
     input.url,
+    { socialProofPresent: input.structure.socialProofPresent },
   );
 
   // Rebuild dimensions in the original ClaudeChecks shape (the sweep
@@ -226,16 +291,20 @@ async function callDimension(
 ): Promise<CheckResult> {
   const system = buildDimensionPrompt(dim);
   const userBlocks = buildUserBlocks(input, dim);
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 800,
-    // Temperature 0 keeps output as deterministic as possible. Higher
-    // temperatures invent more novel content — exactly what we don't
-    // want for factual analysis of a specific page.
-    temperature: 0,
-    system,
-    messages: [{ role: "user", content: userBlocks }],
-  });
+  const response = await createWithRetry(
+    client,
+    {
+      model: MODEL,
+      max_tokens: 800,
+      // Temperature 0 keeps output as deterministic as possible. Higher
+      // temperatures invent more novel content — exactly what we don't
+      // want for factual analysis of a specific page.
+      temperature: 0,
+      system,
+      messages: [{ role: "user", content: userBlocks }],
+    },
+    `dim:${dim}`,
+  );
   const text = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
@@ -270,13 +339,17 @@ async function callTakeaways(
     input.technicalImprovements,
   );
   userBlocks.push({ type: "text", text: dimensionDigest });
-  const response = await client.messages.create({
-    model: MODEL,
-    max_tokens: 800,
-    temperature: 0,
-    system,
-    messages: [{ role: "user", content: userBlocks }],
-  });
+  const response = await createWithRetry(
+    client,
+    {
+      model: MODEL,
+      max_tokens: 800,
+      temperature: 0,
+      system,
+      messages: [{ role: "user", content: userBlocks }],
+    },
+    "takeaways",
+  );
   const text = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
@@ -330,29 +403,36 @@ async function runCriticPass(
   input: ClaudeInput,
   dimensionResults: Record<ClaudeDimension, CheckResult>,
   takeaways: KeyTakeaway[],
+  scope: "dimensions" | "takeaways" | "all" = "all",
 ): Promise<{
   dimensions: Record<ClaudeDimension, CheckResult>;
   takeaways: KeyTakeaway[];
 }> {
   // Build the candidate list — every piece of generated text in the
-  // report that the model produced (not deterministic content).
+  // report that the model produced (not deterministic content). The
+  // `scope` parameter lets the orchestrator run the dimensions-critic
+  // in parallel with Takeaways, then a smaller takeaways-critic after.
   const candidates: CandidateItem[] = [];
   let nextId = 1;
-  for (const dim of CLAUDE_DIMS) {
-    const r = dimensionResults[dim];
-    if (r.headline && r.headline.trim().length > 0) {
-      candidates.push({ id: nextId++, kind: "headline", dim, text: r.headline });
+  if (scope === "dimensions" || scope === "all") {
+    for (const dim of CLAUDE_DIMS) {
+      const r = dimensionResults[dim];
+      if (r.headline && r.headline.trim().length > 0) {
+        candidates.push({ id: nextId++, kind: "headline", dim, text: r.headline });
+      }
+      r.notes.forEach((note, idx) => {
+        candidates.push({ id: nextId++, kind: "note", dim, noteIndex: idx, text: note });
+      });
     }
-    r.notes.forEach((note, idx) => {
-      candidates.push({ id: nextId++, kind: "note", dim, noteIndex: idx, text: note });
+  }
+  if (scope === "takeaways" || scope === "all") {
+    takeaways.forEach((tk, idx) => {
+      const text = typeof tk === "string" ? tk : tk.text;
+      const dim: ClaudeDimension | "speed" =
+        typeof tk === "string" ? "content" : (tk.category as ClaudeDimension | "speed");
+      candidates.push({ id: nextId++, kind: "takeaway", dim, takeawayIndex: idx, text });
     });
   }
-  takeaways.forEach((tk, idx) => {
-    const text = typeof tk === "string" ? tk : tk.text;
-    const dim: ClaudeDimension | "speed" =
-      typeof tk === "string" ? "content" : (tk.category as ClaudeDimension | "speed");
-    candidates.push({ id: nextId++, kind: "takeaway", dim, takeawayIndex: idx, text });
-  });
 
   // If nothing to audit, return inputs unchanged.
   if (candidates.length === 0) {
@@ -367,13 +447,22 @@ async function runCriticPass(
 
   let verdicts: CriticVerdict[] = [];
   try {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 2000,
-      temperature: 0,
-      system,
-      messages: [{ role: "user", content: userBlocks }],
-    });
+    // max_tokens 4000 fits the full verdict JSON even when the candidate
+    // list is large (5 dims × headline + ~5 notes + 5 takeaways = ~35
+    // verdicts; each verdict is ~50-80 tokens with a reason). 2000 was
+    // overflowing on big reports, which silently truncated the JSON and
+    // tripped the parse-failure fallback (everything defaults to KEEP).
+    const response = await createWithRetry(
+      client,
+      {
+        model: MODEL,
+        max_tokens: 4000,
+        temperature: 0,
+        system,
+        messages: [{ role: "user", content: userBlocks }],
+      },
+      `critic:${scope}`,
+    );
     const text = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
       .map((b) => b.text)
@@ -381,9 +470,10 @@ async function runCriticPass(
       .trim();
     verdicts = parseCriticVerdicts(text);
   } catch (err) {
-    // If the critic call fails, fall back to the un-audited results.
-    // This keeps the tool working even if the critic API misbehaves.
-    console.warn("Critic pass failed — returning un-audited results:", err);
+    // If the critic call fails even after the retry, fall back to the
+    // un-audited results for whichever scope was being audited. This
+    // keeps the tool working when the critic API misbehaves persistently.
+    console.warn(`Critic pass (scope=${scope}) failed — returning un-audited results:`, err);
     return { dimensions: dimensionResults, takeaways };
   }
 
@@ -654,12 +744,14 @@ function formatDimensionDigest(
 /**
  * Shared user-message builder. Includes URL + structure + body text and
  * the four screenshots, but TRIMS to what's relevant per dimension to
- * keep token usage sensible:
+ * keep token usage sensible and Claude's focus tight:
  *
- *   - aboveTheFold: only the above-the-fold screenshots
- *   - mobile:       only the mobile screenshots (above-the-fold + full)
- *   - others:       all four screenshots
- *   - takeaways:    all four screenshots
+ *   - aboveTheFold: mobile above-the-fold screenshot only (same image
+ *                   shown in the finished report)
+ *   - mobile:       mobile full-page screenshot only (includes the top
+ *                   of the page already)
+ *   - content/digestibility/cro: all four screenshots
+ *   - takeaways/critic:          all four screenshots
  */
 type UserContentBlock = Anthropic.TextBlockParam | Anthropic.ImageBlockParam;
 
@@ -668,11 +760,23 @@ function buildUserBlocks(
   dim?: ClaudeDimension,
 ): UserContentBlock[] {
   const blocks: UserContentBlock[] = [];
-  blocks.push({ type: "text", text: buildPromptText(input) });
+  // Body-text budget per dimension. Content / Digestibility / CRO need
+  // the full page so they can reason about copy, structure, and
+  // conversion flow end to end. AtF and Mobile are judged primarily
+  // from the screenshots; the body-text excerpt only needs to cover
+  // the hero region (~15,000 chars handily includes that on every
+  // landing page tested). Same applies for Takeaways / Critic where
+  // dim is undefined — they need the full page.
+  const bodyTextCharLimit =
+    dim === "aboveTheFold" || dim === "mobile" ? 15_000 : 60_000;
+  blocks.push({ type: "text", text: buildPromptText(input, bodyTextCharLimit) });
 
-  const wantAboveFold = dim !== "mobile"; // mobile call doesn't need desktop above-the-fold
-  const wantFullPage = dim !== "aboveTheFold"; // above-the-fold doesn't need full-page
-  const wantDesktop = dim !== "mobile";
+  const wantAboveFold = dim !== "mobile"; // mobile call doesn't need the AtF crops — the mobile full-page already includes the top of the page
+  const wantFullPage = dim !== "aboveTheFold"; // above-the-fold dim doesn't need full-page — focus stays on the hero
+  // Desktop images are sent only to content/digestibility/cro. The AtF dim
+  // is judged purely from the mobile AtF screenshot (same one shown in the
+  // finished report) and the mobile dim is judged from the mobile full-page.
+  const wantDesktop = dim !== "mobile" && dim !== "aboveTheFold";
   const wantMobile = true;
 
   if (wantAboveFold && wantDesktop && input.desktopScreenshotB64) {
@@ -718,7 +822,7 @@ function buildUserBlocks(
   return blocks;
 }
 
-function buildPromptText(input: ClaudeInput): string {
+function buildPromptText(input: ClaudeInput, bodyTextCharLimit = 60_000): string {
   const s = input.structure;
   // Pretty-print the parsed form field inventory. Limit to 25 lines so the
   // prompt stays compact; the count line tells the model the full total.
@@ -764,6 +868,31 @@ function buildPromptText(input: ClaudeInput): string {
     "",
     "- Navigation: DO NOT comment on, count, list, praise, or recommend changes to the page's navigation. Navigation analysis is OFF-LIMITS because static HTML extraction of nav links is unreliable on modern landing pages. Skip the topic entirely in every dimension — including Above-the-fold.",
     "",
+    `- Total <img> elements on the page: ${s.imgCount}`,
+    `- Images missing alt text: ${s.imgMissingAlt}`,
+    `- Image formats (deduped by URL across <img>, srcset, and CSS url()):`,
+    s.imageFormats.png > 0 ? `    PNG: ${s.imageFormats.png}` : "",
+    s.imageFormats.jpeg > 0 ? `    JPEG: ${s.imageFormats.jpeg}` : "",
+    s.imageFormats.gif > 0 ? `    GIF: ${s.imageFormats.gif}` : "",
+    s.imageFormats.webp > 0 ? `    WebP: ${s.imageFormats.webp}` : "",
+    s.imageFormats.avif > 0 ? `    AVIF: ${s.imageFormats.avif}` : "",
+    s.imageFormats.svg > 0 ? `    SVG: ${s.imageFormats.svg}` : "",
+    `    Legacy raster total (PNG+JPEG+GIF): ${s.imageFormats.legacyRaster}`,
+    `    Modern raster total (WebP+AVIF): ${s.imageFormats.modernRaster}`,
+    s.imageAlts.length > 0
+      ? `- Image alt text (verbatim, up to 20 shown): ${s.imageAlts.slice(0, 20).map((a) => `"${a}"`).join(", ")}`
+      : "- Image alt text: (none captured)",
+    "",
+    `- Social proof present on site: ${s.socialProofPresent ? "YES" : "NO"}`,
+    `- Social proof visible above the fold (HTML heuristic): ${s.socialProofAboveFold ? "LIKELY YES" : "LIKELY NO"}`,
+    "- IMPORTANT: 'Social proof present on site' is authoritative. If YES, do NOT recommend adding social proof anywhere on the page. The 'above the fold' flag is a HTML heuristic (we scan the first chunk of the page for trust markers and logo-like image alts) — use the above-the-fold screenshot as the tiebreaker. If you can see logos / ratings / 'Trusted by' in the above-the-fold screenshot, treat that as authoritative and do NOT say social proof is missing above the fold.",
+    "",
+    `- Above-the-fold contains interactive controls (checkbox / radio / quiz / multi-step): ${s.hasInteractiveAboveFold ? "YES" : "NO"}`,
+    "- IMPORTANT: If 'interactive controls' is YES, the page is intentionally leading with an interactive flow (quiz, qualifier, multi-step form) where the CTA is the next step in the interaction. Treat this as a GOOD above-the-fold pattern. Do NOT say the hero is static, boring, lacks interactivity, or is missing a primary CTA — the interactive control IS the primary CTA. Score the above-the-fold dimension on the quality of the interaction, not on the absence of a traditional headline + button layout.",
+    "",
+    `- Page appears to be client-rendered with no server HTML (SPA shell): ${s.isClientRenderedShell ? "YES" : "NO"}`,
+    "- IMPORTANT: If the SPA shell flag is YES, the HTML returned by our server-side fetch was a thin JavaScript-only shell. All ground-truth flags derived from the raw HTML (social proof presence, interactive controls, image alts, body-text excerpts, form fields) may UNDERREPORT what's actually on the rendered page. The SCREENSHOTS are rendered by a real browser and DO show the live page — trust the screenshots over the HTML-derived flags on this page. Specifically: if the screenshot clearly shows logos / testimonials / quizzes / forms that the ground-truth flags say are absent, the screenshot is correct and the flags are wrong.",
+    "",
     `- Number of CTA-like buttons/links found: ${s.ctaTexts.length}`,
     s.ctaTexts.length > 0
       ? `- CTA labels (verbatim, up to 20 shown): ${s.ctaTexts.slice(0, 20).map((t) => `"${t}"`).join(", ")}`
@@ -777,9 +906,11 @@ function buildPromptText(input: ClaudeInput): string {
       ? `- Last heading on the page: "${s.headings[s.headings.length - 1]}"`
       : "",
     "",
-    "Body text of the FULL page (top to bottom, may be lightly truncated):",
+    bodyTextCharLimit >= 60_000
+      ? "Body text of the FULL page (top to bottom, may be lightly truncated):"
+      : `Body text of the page (first ~${Math.round(bodyTextCharLimit / 1000)},000 chars — the visible above-the-fold + nearby content):`,
     "---",
-    input.bodyText.slice(0, 60_000),
+    input.bodyText.slice(0, bodyTextCharLimit),
     "---",
     "",
     "Use the body text AND the attached screenshots together to verify everything. Bottom-of-page forms, FAQ sections, social-proof logo strips, footer CTAs all count.",

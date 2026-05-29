@@ -4,16 +4,24 @@
  * Body: { "url": "https://example.com" }
  * Returns: AnalyzeResponse (see /lib/types.ts)
  *
- * Orchestration:
- *   1. Validate the URL.
- *   2. In parallel:
- *      - PSI desktop run
- *      - PSI mobile run
- *      - Raw HTML fetch for structure + text
- *   3. Build the "speed" check from desktop PSI numbers (deterministic).
- *   4. Call Claude once with text + both above-the-fold screenshots,
- *      get back content / digestibility / cro / aboveTheFold / mobile.
- *   5. Return everything as a single JSON payload.
+ * Orchestration (see /REPORT_PROCESS_FLOW.md for the canonical breakdown):
+ *   Phase 1 — In parallel: PSI desktop, PSI mobile, raw HTML fetch
+ *             (fetchPage), Microlink desktop screenshot, Microlink
+ *             mobile screenshot. All five run via Promise.allSettled
+ *             so individual failures don't take down the route.
+ *   Phase 2 — Deterministic computation: mergeImprovements, image
+ *             format scan, buildSpeedCheck, psiInsights bundle.
+ *   Phase 3 — Five parallel Claude dimension calls (content,
+ *             digestibility, cro, aboveTheFold, mobile) — see claude.ts.
+ *   Phase 3b — Deterministic note-filter sweep over each dimension.
+ *   Phase 4 — Single Claude takeaways call, fed the cleaned dimension
+ *             output + speed + PSI insights + tech improvements.
+ *   Phase 4b — Note-filter sweep over the takeaways.
+ *   Phase 5 — Critic Claude call: KEEP / REWRITE / DROP audit over
+ *             every headline + note + takeaway.
+ *   Phase 6 — Final deterministic contradiction sweep with ground-truth
+ *             overrides.
+ *   Phase 7 — Image-format takeaway prepended; response assembled.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -30,6 +38,7 @@ import type {
   TechnicalImprovement,
 } from "@/lib/types";
 import type { PageSpeedResult } from "@/lib/pagespeed";
+import type { ImageFormatBreakdown } from "@/lib/fetchPage";
 
 // Lighthouse can take 30–60s per strategy on a clean run, longer when
 // Google's PSI queue is busy or the target page is heavy. We run desktop
@@ -104,11 +113,39 @@ export async function POST(req: NextRequest) {
         { status: 502 },
       );
     }
-    if (page.value.status >= 400) {
+    // HTTP status handling. 401 / 403 frequently appear on pages that
+    // serve real, useful content behind a login wall or paywall — and
+    // PSI + Microlink will often render those pages correctly even
+    // though the static fetch was challenged. We log and proceed in
+    // those cases. Other 4xx / 5xx codes get a specific error message
+    // so the user knows what actually went wrong.
+    if (page.value.status === 401 || page.value.status === 403) {
+      console.warn(
+        `[fetchPage] ${page.value.status} on ${url} — proceeding (login wall or paywall; PSI/Microlink may still render correctly)`,
+      );
+    } else if (page.value.status === 404) {
       return NextResponse.json(
-        {
-          error: `The target site returned HTTP ${page.value.status}.`,
-        },
+        { error: "The target page returned a 404 — that URL doesn't exist." },
+        { status: 502 },
+      );
+    } else if (page.value.status === 410) {
+      return NextResponse.json(
+        { error: "The target page returned a 410 — that URL has been permanently removed." },
+        { status: 502 },
+      );
+    } else if (page.value.status === 451) {
+      return NextResponse.json(
+        { error: "The target page returned a 451 — content is legally unavailable." },
+        { status: 502 },
+      );
+    } else if (page.value.status >= 500) {
+      return NextResponse.json(
+        { error: `The target site returned an HTTP ${page.value.status} server error. The site may be down or experiencing issues.` },
+        { status: 502 },
+      );
+    } else if (page.value.status >= 400) {
+      return NextResponse.json(
+        { error: `The target site returned HTTP ${page.value.status}. Check the URL is correct.` },
         { status: 502 },
       );
     }
@@ -125,7 +162,7 @@ export async function POST(req: NextRequest) {
     // the per-format breakdown for the Speed section's image-format count
     // bullet and the context-aware commentary bullet. Counts are deduped
     // by URL so the same image referenced multiple times only counts once.
-    const imageFormats = scanImageFormats(page.value.html);
+    const imageFormats = page.value.structure.imageFormats;
 
     const speedCheck = buildSpeedCheck(
       desktop,
@@ -218,8 +255,6 @@ export async function POST(req: NextRequest) {
         6,
     );
 
-    // (psiInsights was built earlier so we could pass it into Claude.)
-
     // Image-format takeaway. When the HTML scan found any PNG/JPEG/GIF
     // images, we prepend a deterministic "convert to WebP" takeaway as
     // priority #1 — this is the single most impactful speed win on most
@@ -283,110 +318,6 @@ const IMAGE_AUDIT_IDS = [
 ];
 
 /**
- * Per-format inventory of every image reference on the page. Keys are
- * lowercase extensions. We use this to drive the "Image format count"
- * bullet and the context-aware commentary bullet in the Speed section.
- */
-interface ImageFormatBreakdown {
-  png: number;
-  jpeg: number;
-  gif: number;
-  webp: number;
-  avif: number;
-  svg: number;
-  /** Sum of png + jpeg + gif (raster formats that have a modern replacement). */
-  legacyRaster: number;
-  /** Sum of webp + avif (modern raster formats). */
-  modernRaster: number;
-}
-
-/**
- * Walk the raw HTML and count image references by format.
- *
- * Scans:
- *   1. <img src="..."> attribute values.
- *   2. <img srcset="..."> and <source srcset="..."> for picture/img candidates.
- *   3. CSS url(...) references in inline styles and <style> blocks.
- *
- * Dedupes by URL (case-insensitive, with query strings stripped) so the
- * same image referenced multiple times only counts once. SVG is included
- * because the user wants to see the full picture, but it's a vector
- * format and doesn't need conversion.
- */
-function scanImageFormats(html: string): ImageFormatBreakdown {
-  const empty: ImageFormatBreakdown = {
-    png: 0,
-    jpeg: 0,
-    gif: 0,
-    webp: 0,
-    avif: 0,
-    svg: 0,
-    legacyRaster: 0,
-    modernRaster: 0,
-  };
-  if (!html) return empty;
-
-  // Set per format keeps the dedupe stable across the various scan paths.
-  const seen: Record<string, Set<string>> = {
-    png: new Set(),
-    jpeg: new Set(),
-    gif: new Set(),
-    webp: new Set(),
-    avif: new Set(),
-    svg: new Set(),
-  };
-
-  const EXT_RE = /\.(png|jpe?g|gif|webp|avif|svg)(?:\?|$|"|'|\))/i;
-
-  const collect = (value: string | undefined | null): void => {
-    if (!value) return;
-    // srcset is comma-separated "url 1x, url 2x" — split and check each.
-    const candidates = value.split(/,\s*/).map((c) => c.trim().split(/\s+/)[0]);
-    for (const raw of candidates) {
-      if (!raw) continue;
-      const m = raw.match(EXT_RE);
-      if (!m) continue;
-      // Normalise extension (jpg → jpeg) and the URL itself for dedupe.
-      const ext = m[1].toLowerCase().replace(/^jpg$/, "jpeg");
-      const normalised = raw.split("?")[0].toLowerCase();
-      if (seen[ext]) seen[ext].add(normalised);
-    }
-  };
-
-  for (const m of html.matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi)) {
-    collect(m[1]);
-  }
-  for (const m of html.matchAll(/<img\b[^>]*\bsrcset=["']([^"']+)["'][^>]*>/gi)) {
-    collect(m[1]);
-  }
-  for (const m of html.matchAll(
-    /<source\b[^>]*\bsrcset=["']([^"']+)["'][^>]*>/gi,
-  )) {
-    collect(m[1]);
-  }
-  for (const m of html.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi)) {
-    collect(m[1]);
-  }
-
-  const png = seen.png.size;
-  const jpeg = seen.jpeg.size;
-  const gif = seen.gif.size;
-  const webp = seen.webp.size;
-  const avif = seen.avif.size;
-  const svg = seen.svg.size;
-  return {
-    png,
-    jpeg,
-    gif,
-    webp,
-    avif,
-    svg,
-    legacyRaster: png + jpeg + gif,
-    modernRaster: webp + avif,
-  };
-}
-
-/**
  * Two bullets describing the page's image-format mix:
  *   1. "Image format count: 4 PNGs, 5 JPEGs, 3 WebPs..." — only formats
  *      with count > 0 are listed.
@@ -429,32 +360,49 @@ function buildImageFormatBullets(b: ImageFormatBreakdown): string[] {
 }
 
 /**
- * Prepend a deterministic "convert images to WebP" takeaway as priority
- * #1 in the Key Takeaways list when the HTML scan found any legacy
- * raster images (PNG / JPEG / GIF). This is the single most impactful
- * speed win on most landing pages so we don't leave it to Claude to
- * remember.
+ * Prepend a deterministic image-format takeaway as priority #1 in the
+ * Key Takeaways list. Slot #1 always carries the image-format read,
+ * either as a fix or as a win:
+ *
+ *   - Legacy raster images present (PNG / JPEG / GIF) → "Convert N
+ *     PNGs, M JPEGs to WebP for major speed gain." The single most
+ *     impactful speed win on most landing pages, so we don't leave it
+ *     to Claude to remember.
+ *   - All raster images already use modern formats (WebP / AVIF) →
+ *     "Good work: all raster images already use WebP or AVIF." A
+ *     positive read so the user gets credit for already having done
+ *     the optimisation.
+ *   - No raster images at all (SVG-only page, or no images) → return
+ *     the takeaways unchanged. Nothing useful to say about format
+ *     conversion when there's nothing to convert.
  *
  * If Claude already wrote a takeaway about image formats, we strip it
  * to avoid duplication. The final list is capped at 5 takeaways.
- *
- * Returns the original list unchanged when the page has no legacy
- * raster images (e.g. all WebP/AVIF, or SVG-only pages).
  */
 function prependImageFormatTakeaway(
   takeaways: Array<KeyTakeaway | string>,
   imageFormats: ImageFormatBreakdown,
 ): Array<KeyTakeaway | string> {
-  if (imageFormats.legacyRaster === 0) return takeaways;
+  // No raster images at all (e.g. SVG-only page, or no images on the
+  // page). Nothing useful to say about format conversion either way.
+  if (imageFormats.legacyRaster === 0 && imageFormats.modernRaster === 0) {
+    return takeaways;
+  }
 
-  // Build the parts list — only formats actually present in the page.
-  const parts: string[] = [];
-  if (imageFormats.png > 0) parts.push(`${imageFormats.png} PNG${imageFormats.png === 1 ? "" : "s"}`);
-  if (imageFormats.jpeg > 0) parts.push(`${imageFormats.jpeg} JPEG${imageFormats.jpeg === 1 ? "" : "s"}`);
-  if (imageFormats.gif > 0) parts.push(`${imageFormats.gif} GIF${imageFormats.gif === 1 ? "" : "s"}`);
+  let text: string;
+  if (imageFormats.legacyRaster === 0) {
+    // All raster images already use modern formats — celebrate the win.
+    text = "Good work: all raster images already use WebP or AVIF.";
+  } else {
+    // Build the parts list — only formats actually present in the page.
+    const parts: string[] = [];
+    if (imageFormats.png > 0) parts.push(`${imageFormats.png} PNG${imageFormats.png === 1 ? "" : "s"}`);
+    if (imageFormats.jpeg > 0) parts.push(`${imageFormats.jpeg} JPEG${imageFormats.jpeg === 1 ? "" : "s"}`);
+    if (imageFormats.gif > 0) parts.push(`${imageFormats.gif} GIF${imageFormats.gif === 1 ? "" : "s"}`);
 
-  // Keep it tight — the takeaway text rule is max 14 words.
-  const text = `Convert ${parts.join(", ")} to WebP for major speed gain.`;
+    // Keep it tight — the takeaway text rule is max 18 words.
+    text = `Convert ${parts.join(", ")} to WebP for major speed gain.`;
+  }
 
   const synthetic: KeyTakeaway = { category: "speed", text };
 
