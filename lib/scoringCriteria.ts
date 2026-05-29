@@ -193,6 +193,7 @@ Look for:
     • Page opens with a question via preset answers but never captures an email → recommend adding an email capture step AFTER the question.
     • Page opens up with just buttons → recommend adding a conversion widget above the fold as a very important improvement.
 - A multi-step form is ONE form, not several. Even if it shows multiple sequential steps (question → answer → email), or has multiple visible widgets at different stages, that's still ONE form. Do NOT describe a multi-step form as "two competing forms", "multiple competing forms", or "the hero has two forms side-by-side". If the hero contains a question with a dropdown plus an email input, that's a single multi-step form, not two forms. Pages also commonly have an unrelated <form>-tagged element wrapping an account button (e.g. "Go to my account") — that is NOT a competing conversion form. Do NOT count it as one.
+- SHORT-OPTION DROPDOWNS IN THE HERO FORM. If the hero / above-the-fold form uses a <select> dropdown with only 3–4 real options (check the GROUND TRUTH "Short-option dropdowns" list and confirm visibility in the above-the-fold screenshot), recommend converting it to a visible radio-button or tick-box group. Exposing 3–4 choices upfront removes a click and reduces friction more than a closed dropdown. Caveats: only apply this when the dropdown is in the hero form (above-the-fold), AND the choice list is short enough (3–4 ideal; 5 options is borderline; 6+ would overwhelm the hero — leave those as dropdowns). Do NOT recommend this for dropdowns that only appear in below-the-fold forms (e.g. footer contact forms) — the friction matters most in the hero where the visitor is deciding whether to engage.
 - Ideal form types — the TOP of the page and the BOTTOM of the page should have different forms, and you should NEVER recommend making them match:
     • TOP of page: a SMALL form. Either a one-field input (e.g. just email), OR a multi-step / question-led form that opens with a qualifying question and preset answers. The qualifying question belongs in the HERO ONLY. Big top-of-page forms with 4+ visible fields scare users away.
     • BOTTOM of page: a BIG form that captures all the fields you'd actually need for a good lead (name, company, email, etc). A one-field form can work at the bottom too if that suits the funnel, but the big form is the default ideal.
@@ -358,6 +359,9 @@ RULES:
 - "category" tags which scoring dimension this primarily helps. Choose the single best fit. The category MUST match the dimension whose notes the takeaway is drawn from.
 - "text" is ONE concise sentence, MAX 18 WORDS. Use the extra room to include specific section names, button labels, or quoted phrases from the source note — do not pad with filler.
 - Highest-impact items first.
+
+HIGH-PRIORITY PATTERN — surface as a takeaway whenever the CRO dimension flagged it:
+- "Hero form has a short-option dropdown (3–4 choices) that would convert better as visible radio buttons / tick boxes." This is a small, specific, high-conversion change. If a CRO note describes this pattern for the above-the-fold form, lift it into the takeaways list and quote the dropdown's purpose (e.g. "annual revenue dropdown", "team size dropdown") from the source note so the recommendation is concrete.
 
 Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
 

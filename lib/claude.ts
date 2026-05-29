@@ -832,6 +832,12 @@ function buildPromptText(input: ClaudeInput, bodyTextCharLimit = 60_000): string
     if (f.name) parts.push(`name="${f.name}"`);
     if (f.id) parts.push(`id="${f.id}"`);
     if (f.placeholder) parts.push(`placeholder="${f.placeholder}"`);
+    if (f.tag === "select" && typeof f.optionCount === "number") {
+      parts.push(`options=${f.optionCount}`);
+      if (f.optionLabels && f.optionLabels.length > 0) {
+        parts.push(`[${f.optionLabels.map((l) => `"${l}"`).join(", ")}]`);
+      }
+    }
     return `  - ${parts.join(" ")}`;
   });
   const formFieldsBlock =
@@ -841,6 +847,69 @@ function buildPromptText(input: ClaudeInput, bodyTextCharLimit = 60_000): string
         (s.formFields.length > 25
           ? `\n  ...and ${s.formFields.length - 25} more`
           : "");
+
+  // Short-option dropdowns: any <select> with 2–5 options is a candidate
+  // for replacing with a visible radio-button / tick-box group, which
+  // exposes all the choices without the user having to click open the
+  // dropdown. 3–4 options is the sweet spot. We surface these
+  // separately in GROUND TRUTH so Claude flags them — specifically when
+  // they appear in the HERO / above-the-fold form, which is where the
+  // friction matters most.
+  const shortDropdowns = s.formFields.filter(
+    (f) =>
+      f.tag === "select" &&
+      typeof f.optionCount === "number" &&
+      f.optionCount !== null &&
+      f.optionCount >= 2 &&
+      f.optionCount <= 5,
+  );
+  const shortDropdownsBlock = shortDropdowns
+    .slice(0, 6)
+    .map((f) => {
+      const id = f.name ?? f.id ?? "(unnamed)";
+      const labels =
+        f.optionLabels && f.optionLabels.length > 0
+          ? ` — options: ${f.optionLabels.map((l) => `"${l}"`).join(", ")}`
+          : "";
+      return `  - <select> ${id} — ${f.optionCount} options${labels}`;
+    })
+    .join("\n");
+
+  // Per-<form> breakdown so Claude knows exactly which fields belong to
+  // which form. Position labels (early / middle / late) come from the
+  // form's byte offset in the HTML, giving Claude a "hero vs bottom"
+  // hint without having to guess from the screenshot.
+  const formsBlock = s.forms
+    .map((f) => {
+      const positionLabel =
+        f.position === "early"
+          ? "early in the page (likely hero / above-the-fold)"
+          : f.position === "late"
+          ? "late in the page (likely bottom / footer area)"
+          : "middle of the page";
+      const fieldSummary =
+        f.fields.length === 0
+          ? "(no fields detected inside this <form>)"
+          : f.fields
+              .slice(0, 12)
+              .map((field) => {
+                const parts: string[] = [`<${field.tag}>`];
+                if (field.type) parts.push(`type="${field.type}"`);
+                if (field.name) parts.push(`name="${field.name}"`);
+                if (field.placeholder) parts.push(`placeholder="${field.placeholder}"`);
+                if (
+                  field.tag === "select" &&
+                  typeof field.optionCount === "number"
+                ) {
+                  parts.push(`options=${field.optionCount}`);
+                }
+                return `      • ${parts.join(" ")}`;
+              })
+              .join("\n");
+      const cta = f.submitLabel ? ` (submit: "${f.submitLabel}")` : "";
+      return `  - Form #${f.index + 1} — ${positionLabel}, ${f.fields.length} field${f.fields.length === 1 ? "" : "s"}${cta}:\n${fieldSummary}`;
+    })
+    .join("\n");
 
   return [
     `URL: ${input.url}`,
@@ -863,8 +932,17 @@ function buildPromptText(input: ClaudeInput, bodyTextCharLimit = 60_000): string
     `- Form contains an email field: ${s.hasEmailField ? "YES" : "NO"}`,
     `- Total fillable form fields on the page: ${s.formFields.length}`,
     `- Total <form> elements on the page: ${s.formCount}`,
-    "- Form fields on the page (tag + attributes):",
+    "- Form fields on the page (tag + attributes, flat list across all forms):",
     formFieldsBlock,
+    "",
+    `- <form> elements detected on the page, in document order: ${s.forms.length}`,
+    s.forms.length > 0 ? formsBlock : "  (no <form> tags found — fields may be wrapped in <div> with JS handlers; defer to the screenshot to identify forms)",
+    "- IMPORTANT — anti-hallucination rule for forms:",
+    "    When describing what fields a SPECIFIC form has (hero form, bottom form, footer form, etc.), the fields you name MUST appear in the per-<form> breakdown above for that form's position. Do NOT invent fields like 'first name', 'last name', 'company name', 'phone' if those fields aren't listed for the form you're describing. If the bottom form has 1 email input, say 'a one-field email form', not 'a full lead-gen form with first name, last name, company, and email'. If the page has zero <form> tags but you can clearly see a form in the screenshot, describe it from the screenshot but flag that the HTML couldn't confirm it.",
+    "",
+    `- Short-option dropdowns found on the page (2–5 options each): ${shortDropdowns.length}`,
+    shortDropdowns.length > 0 ? shortDropdownsBlock : "  (none)",
+    "- NOTE: any recommendation about converting a short-option dropdown into a visible radio-button / tick-box group belongs in the CRO dimension only, NOT in Above-the-fold. The CRO criteria document explains when this applies.",
     "",
     "- Navigation: DO NOT comment on, count, list, praise, or recommend changes to the page's navigation. Navigation analysis is OFF-LIMITS because static HTML extraction of nav links is unreliable on modern landing pages. Skip the topic entirely in every dimension — including Above-the-fold.",
     "",

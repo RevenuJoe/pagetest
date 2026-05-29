@@ -321,19 +321,17 @@ function formatPsiForClipboard(data: AnalyzeResponse): string {
   if (!desktop && !mobile) return "";
 
   const formatStrategy = (label: string, b: PsiBreakdown): string => {
+    // Lighthouse category scores (also rendered in the comparison chart).
     const cats = PSI_CATEGORIES.map((cat) => {
       const s = catScore(b, cat.key);
       return `- ${cat.label}: ${s == null ? "—" : `${s}/100`}`;
     }).join("\n");
-    const si =
-      b.speedIndexMs != null
-        ? `\n- Speed Index: ${(b.speedIndexMs / 1000).toFixed(2)}s`
-        : "";
-    const weight =
-      b.totalByteWeight != null
-        ? `\n- Page Weight: ${(b.totalByteWeight / 1024 / 1024).toFixed(2)} MB`
-        : "";
-    return `${label}:\n${cats}${si}${weight}`;
+    // Detail metrics rendered inside the strategy card. Mirror the
+    // STRATEGY_METRICS array so the clipboard stays in sync with the UI.
+    const metrics = STRATEGY_METRICS.map(
+      (m) => `- ${m.label}: ${m.getValue(b)}`,
+    ).join("\n");
+    return `${label}:\n${cats}\n${metrics}`;
   };
 
   const blocks: string[] = [];
@@ -1280,6 +1278,112 @@ function ScoreBar({ label, score }: { label: string; score: number | null }) {
   );
 }
 
+/**
+ * Detail metrics rendered inside each Desktop / Mobile strategy card.
+ * The four Lighthouse category scores (Performance / Accessibility /
+ * Best Practices / SEO) already live in the comparison chart above, so
+ * the strategy cards now surface the timing-and-weight metrics that
+ * actually drive page experience: Core Web Vitals (LCP, CLS), the
+ * supporting Lighthouse perf signals (Speed Index, FCP, TBT), and
+ * total page weight. Thresholds follow Lighthouse's published bands.
+ */
+interface StrategyMetric {
+  label: string;
+  icon: React.ReactNode;
+  getValue: (b: PsiBreakdown) => string;
+  isGood: (b: PsiBreakdown) => boolean;
+  isWarn: (b: PsiBreakdown) => boolean;
+}
+
+const STRATEGY_METRICS: StrategyMetric[] = [
+  {
+    // Speed Index: how quickly visible content paints during page load.
+    // Good ≤ 3.4s, poor > 5.8s (Lighthouse).
+    label: "Speed Index",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <circle cx="12" cy="13" r="8" />
+        <path d="M12 9v4l3 2" />
+        <path d="M9 2h6" />
+      </svg>
+    ),
+    getValue: (b) => fmtTime(b.speedIndexMs),
+    isGood: (b) => b.speedIndexMs != null && b.speedIndexMs <= 3400,
+    isWarn: (b) => b.speedIndexMs != null && b.speedIndexMs > 5800,
+  },
+  {
+    // Largest Contentful Paint: when the biggest visible element loads.
+    // Good ≤ 2.5s, poor > 4s (Core Web Vital).
+    label: "Largest Contentful Paint",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <circle cx="9" cy="11" r="1.5" />
+        <path d="M3 17l5-5 4 4 3-3 6 6" />
+      </svg>
+    ),
+    getValue: (b) => fmtTime(b.lcpMs),
+    isGood: (b) => b.lcpMs != null && b.lcpMs <= 2500,
+    isWarn: (b) => b.lcpMs != null && b.lcpMs > 4000,
+  },
+  {
+    // First Contentful Paint: when the FIRST piece of content appears.
+    // Good ≤ 1.8s, poor > 3s (Lighthouse).
+    label: "First Contentful Paint",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
+      </svg>
+    ),
+    getValue: (b) => fmtTime(b.fcpMs),
+    isGood: (b) => b.fcpMs != null && b.fcpMs <= 1800,
+    isWarn: (b) => b.fcpMs != null && b.fcpMs > 3000,
+  },
+  {
+    // Cumulative Layout Shift: visual stability score (unitless).
+    // Good ≤ 0.1, poor > 0.25 (Core Web Vital).
+    label: "Cumulative Layout Shift",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <rect x="3" y="3" width="10" height="10" rx="1" />
+        <rect x="11" y="11" width="10" height="10" rx="1" />
+      </svg>
+    ),
+    getValue: (b) => (b.cls == null ? "—" : b.cls.toFixed(2)),
+    isGood: (b) => b.cls != null && b.cls <= 0.1,
+    isWarn: (b) => b.cls != null && b.cls > 0.25,
+  },
+  {
+    // Total Blocking Time: how long JS blocks the main thread (lab
+    // proxy for INP). Good ≤ 200ms, poor > 600ms (Lighthouse).
+    label: "Total Blocking Time",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <rect x="6" y="4" width="4" height="16" rx="1" />
+        <rect x="14" y="4" width="4" height="16" rx="1" />
+      </svg>
+    ),
+    getValue: (b) => fmtTime(b.tbtMs),
+    isGood: (b) => b.tbtMs != null && b.tbtMs <= 200,
+    isWarn: (b) => b.tbtMs != null && b.tbtMs > 600,
+  },
+  {
+    // Page Weight: total bytes transferred. Thresholds are pragmatic
+    // landing-page targets, not a Lighthouse band. Good ≤ 1.5MB,
+    // poor > 3MB.
+    label: "Page Weight",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <path d="M6 2h12l2 4-8 16L4 6z" />
+        <path d="M9 6l3 4 3-4" />
+      </svg>
+    ),
+    getValue: (b) => fmtBytes(b.totalByteWeight),
+    isGood: (b) => b.totalByteWeight != null && b.totalByteWeight <= 1.5 * 1024 * 1024,
+    isWarn: (b) => b.totalByteWeight != null && b.totalByteWeight > 3 * 1024 * 1024,
+  },
+];
+
 function PsiStrategyCard({
   label,
   data,
@@ -1289,14 +1393,16 @@ function PsiStrategyCard({
   data: PsiBreakdown;
   device: "desktop" | "mobile";
 }) {
-  // Six chips per strategy: the four Lighthouse categories plus Speed
-  // Index and Page Weight. The other PSI metrics (LCP, CLS, TBT, FCP,
-  // TTI, Server, DOM size) were dropped per Joe's spec to keep this
-  // section focused.
+  // Six chips per strategy: Speed Index, LCP, FCP, CLS, TBT, Page
+  // Weight. The four Lighthouse category scores (Performance /
+  // Accessibility / Best Practices / SEO) are already shown in the
+  // comparison chart above — these cards surface the supporting
+  // timing-and-weight metrics so the user gets a complete picture of
+  // page experience.
   //
-  // Visual pattern mirrors the Overview section: the outer card sits on
-  // the lighter (white) background, and the inner stat chips use the
-  // same translucent-beige bg as the Overview's per-dimension chips.
+  // Visual pattern mirrors the Overview section: the outer card sits
+  // on the lighter (white) background, and the inner stat chips use
+  // the same translucent-beige bg as the Overview's per-dimension chips.
   return (
     <div className="rounded-card border border-beige-line bg-card shadow-card px-5 py-4">
       <div
@@ -1308,39 +1414,16 @@ function PsiStrategyCard({
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {PSI_CATEGORIES.map((cat) => (
-          <PsiCategoryChip
-            key={cat.key}
-            label={cat.label}
-            score={catScore(data, cat.key)}
-            icon={CATEGORY_ICONS[cat.key]}
+        {STRATEGY_METRICS.map((m) => (
+          <PsiValueChip
+            key={m.label}
+            label={m.label}
+            value={m.getValue(data)}
+            icon={m.icon}
+            good={m.isGood(data)}
+            warn={m.isWarn(data)}
           />
         ))}
-        <PsiValueChip
-          label="Speed Index"
-          value={fmtTime(data.speedIndexMs)}
-          icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-              <circle cx="12" cy="13" r="8" />
-              <path d="M12 9v4l3 2" />
-              <path d="M9 2h6" />
-            </svg>
-          }
-          good={data.speedIndexMs != null && data.speedIndexMs <= 3400}
-          warn={data.speedIndexMs != null && data.speedIndexMs > 5800}
-        />
-        <PsiValueChip
-          label="Page Weight"
-          value={fmtBytes(data.totalByteWeight)}
-          icon={
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-              <path d="M6 2h12l2 4-8 16L4 6z" />
-              <path d="M9 6l3 4 3-4" />
-            </svg>
-          }
-          good={data.totalByteWeight != null && data.totalByteWeight <= 1.5 * 1024 * 1024}
-          warn={data.totalByteWeight != null && data.totalByteWeight > 3 * 1024 * 1024}
-        />
       </div>
     </div>
   );
@@ -1395,69 +1478,6 @@ function PsiValueChip({
         style={{ color }}
       >
         {value}
-      </div>
-      <div
-        className="text-center text-[10px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.08em" }}
-      >
-        {label}
-      </div>
-    </div>
-  );
-}
-
-const CATEGORY_ICONS: Record<CategoryRow["key"], React.ReactNode> = {
-  performance: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden>
-      <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
-    </svg>
-  ),
-  accessibility: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-      <circle cx="12" cy="4" r="2" />
-      <path d="M19 13a7 7 0 1 1-14 0" />
-      <path d="M12 6v6l4 8" />
-      <path d="M12 12l-4 8" />
-    </svg>
-  ),
-  bestPractices: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-      <path d="M12 2L4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-4z" />
-      <path d="M9 12l2 2 4-4" />
-    </svg>
-  ),
-  seo: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-      <circle cx="11" cy="11" r="7" />
-      <path d="M21 21l-5-5" />
-    </svg>
-  ),
-};
-
-function PsiCategoryChip({
-  label,
-  score,
-  icon,
-}: {
-  label: string;
-  score: number | null;
-  icon: React.ReactNode;
-}) {
-  const value = score ?? 0;
-  const color = score == null ? "#c4c0b6" : scoreColor(score);
-  return (
-    <div className="flex flex-col items-center gap-1 rounded-card border border-beige-line bg-bg/40 px-3 py-3">
-      <div
-        className="flex h-7 w-7 items-center justify-center rounded-lg"
-        style={{ background: `${color}1a`, color }}
-      >
-        {icon}
-      </div>
-      <div
-        className="text-[22px] font-bold tabular-nums leading-none tracking-tight"
-        style={{ color }}
-      >
-        {score == null ? "—" : value}
       </div>
       <div
         className="text-center text-[10px] font-bold uppercase text-ink-soft"

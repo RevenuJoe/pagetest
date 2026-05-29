@@ -133,6 +133,14 @@ export interface PageStructure {
   /** Debug list of which SPA-shell signals fired. Logged but not
    *  surfaced to Claude. */
   clientRenderedSignals: string[];
+  /** Every <form> element on the page, with the fields each contains,
+   *  in document order. The flat `formFields` list above is kept for
+   *  back-compat but Claude is told to use `forms` when describing
+   *  any specific form (e.g. "the hero form has X fields", "the bottom
+   *  form has Y fields") — that way it can't invent fields that aren't
+   *  in any of the forms. Empty array when the page has zero <form>
+   *  tags (e.g. fields are wrapped in <div> with JS handlers). */
+  forms: FormGroup[];
 }
 
 /** Per-format image inventory. Counts are deduped by URL (case-
@@ -164,6 +172,40 @@ export interface FormFieldSummary {
   id: string | null;
   /** placeholder attribute when present. */
   placeholder: string | null;
+  /** For <select> tags only: total count of <option> children. Used to
+   *  flag short dropdowns (typically 3-4 real options, possibly + a
+   *  placeholder "Select…" option) that would convert well to a
+   *  visible radio-button / tick-box group. Null on non-select tags. */
+  optionCount?: number | null;
+  /** For <select> tags only: visible text of up to 8 <option> children
+   *  so Claude can describe the dropdown's choices in its takeaway
+   *  recommendation. Empty array on non-select tags. */
+  optionLabels?: string[];
+}
+
+/**
+ * One <form> element on the page, with the fields it contains. Used as
+ * the authoritative reference for "what form lives where" so Claude
+ * can't invent fields that aren't actually present. Forms are ordered
+ * by position in the HTML, so `forms[0]` is the topmost form on the
+ * page and `forms[forms.length - 1]` is the bottom-most.
+ */
+export interface FormGroup {
+  /** 0-based index in document order. */
+  index: number;
+  /** Where this form sits on the page, derived from its byte offset
+   *  in the HTML divided into thirds. "early" = top of page (often the
+   *  hero form), "late" = bottom of page (footer / final CTA form),
+   *  "middle" = everything else. A heuristic, but reliable enough on
+   *  most landing pages where the hero is at the top and the footer
+   *  CTA form is at the bottom. */
+  position: "early" | "middle" | "late";
+  /** Form fields inside this <form> element. */
+  fields: FormFieldSummary[];
+  /** Visible text of any submit-style button inside this form, when
+   *  detected. Helps Claude name the form by its CTA, e.g. "the
+   *  bottom email form (Get a Demo)". */
+  submitLabel: string | null;
 }
 
 export async function fetchPage(url: string): Promise<FetchedPage> {
@@ -364,6 +406,7 @@ function extractStructure(html: string): PageStructure {
   const socialProof = detectSocialProof(html, bodyText, imageAlts);
   const interactiveAtf = detectInteractiveAboveFold(html);
   const spaShell = detectClientRenderedShell(html, bodyText);
+  const forms = extractForms(html);
 
   // Derive blunt yes/no signals for the most-hallucinated fields. Claude
   // gets these as ground truth so it can't claim "the form asks for a
@@ -412,6 +455,7 @@ function extractStructure(html: string): PageStructure {
     interactiveAboveFoldSignals: interactiveAtf.signals,
     isClientRenderedShell: spaShell.present,
     clientRenderedSignals: spaShell.signals,
+    forms,
   };
 }
 
@@ -986,16 +1030,112 @@ function extractFormFields(html: string): FormFieldSummary[] {
     ) {
       continue;
     }
+    // For <select> tags, walk forward to the closing </select> and pull
+    // out the <option> count + labels so Claude can recommend converting
+    // short dropdowns (3-4 real options) to a visible radio-button /
+    // tick-box group in the hero form.
+    let optionCount: number | null = null;
+    let optionLabels: string[] = [];
+    if (tag === "select") {
+      const tagEnd = m.index + m[0].length;
+      const closeIdx = html.toLowerCase().indexOf("</select>", tagEnd);
+      if (closeIdx !== -1) {
+        const inner = html.slice(tagEnd, closeIdx);
+        const optMatches = Array.from(
+          inner.matchAll(/<option\b[^>]*>([\s\S]*?)<\/option>/gi),
+        );
+        optionCount = optMatches.length;
+        optionLabels = optMatches
+          .slice(0, 8)
+          .map((mm) => decodeEntities((mm[1] ?? "").replace(/\s+/g, " ").trim()))
+          .filter(Boolean);
+      } else {
+        // No closing tag in the captured HTML (truncated or malformed) —
+        // count any <option> still inside the byte cap so we don't lose
+        // the signal entirely.
+        const optMatches = Array.from(
+          html.slice(tagEnd).matchAll(/<option\b/gi),
+        );
+        optionCount = optMatches.length;
+      }
+    }
     fields.push({
       tag,
       type,
       name: attr("name"),
       id: attr("id"),
       placeholder: attr("placeholder"),
+      optionCount,
+      optionLabels,
     });
     // Hard cap so an outlier page with hundreds of inputs can't blow up
     // the prompt payload.
     if (fields.length >= 60) break;
   }
   return fields;
+}
+
+/**
+ * Group form fields by their containing <form> element.
+ *
+ * Why: the flat `formFields` list above can't tell Claude which fields
+ * belong to which form. When the page has multiple forms (e.g. hero
+ * email form + footer email form + a popup form), Claude has no way
+ * to know "the bottom form has only one field". It then fills in
+ * plausible-but-invented details ("first name, last name, company")
+ * from the CRO criterion's "ideal pattern" description.
+ *
+ * This grouping gives Claude a per-form fact sheet so it can say "the
+ * bottom form has 1 email field" with certainty instead of guessing.
+ *
+ * Position is derived from the form's byte offset in the HTML divided
+ * into thirds — a rough but reliable proxy for "where on the page
+ * does this form appear" on most landing pages.
+ *
+ * Caveat: this only sees forms wrapped in <form> tags. Modern marketing
+ * tools (HubSpot, Marketo, Pardot) usually do wrap their embeds. Pages
+ * that render forms client-side with <div> wrappers and JS handlers
+ * will produce an empty `forms` array — Claude is told in GROUND TRUTH
+ * to fall back to the screenshot in that case.
+ */
+function extractForms(html: string): FormGroup[] {
+  const forms: FormGroup[] = [];
+  const re = /<form\b[^>]*>([\s\S]*?)<\/form>/gi;
+  const totalLen = Math.max(1, html.length);
+  let m: RegExpExecArray | null;
+  let idx = 0;
+  while ((m = re.exec(html)) !== null) {
+    if (forms.length >= 12) break; // sanity cap
+    const inner = m[1] ?? "";
+    const fields = extractFormFields(inner);
+    // Submit-button label heuristic: look for a <button type="submit">
+    // or <input type="submit">. Falls back to the first <button> inside
+    // the form when neither is explicit.
+    const submitLabel =
+      pickButtonText(inner, /<button\b[^>]*\btype\s*=\s*["']submit["'][^>]*>([\s\S]*?)<\/button>/i) ??
+      pickInputValue(inner, /<input\b[^>]*\btype\s*=\s*["']submit["'][^>]*\bvalue\s*=\s*["']([^"']*)["']/i) ??
+      pickButtonText(inner, /<button\b[^>]*>([\s\S]*?)<\/button>/i);
+    const positionFraction = m.index / totalLen;
+    const position: FormGroup["position"] =
+      positionFraction < 0.33 ? "early" : positionFraction > 0.66 ? "late" : "middle";
+    forms.push({
+      index: idx++,
+      position,
+      fields,
+      submitLabel: submitLabel ? submitLabel.replace(/\s+/g, " ").trim().slice(0, 80) : null,
+    });
+  }
+  return forms;
+}
+
+function pickButtonText(html: string, re: RegExp): string | null {
+  const m = html.match(re);
+  if (!m) return null;
+  // Strip nested tags from the button's inner HTML.
+  return m[1].replace(/<[^>]+>/g, "").trim() || null;
+}
+
+function pickInputValue(html: string, re: RegExp): string | null {
+  const m = html.match(re);
+  return m ? m[1].trim() : null;
 }
