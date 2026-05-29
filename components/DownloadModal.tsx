@@ -112,7 +112,7 @@ function ReadyState({
         Great, your download is ready.
       </p>
       <p className="mt-1 text-[13px] font-medium text-ink-soft">
-        Save the PDF to keep a copy of this report.
+        This download is an HTML file. It&apos;s completely shareable and makes the download interactive.
       </p>
       <div className="mt-6 flex items-center gap-3">
         <button
