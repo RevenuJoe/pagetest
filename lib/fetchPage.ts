@@ -333,7 +333,25 @@ function cleanInlineText(s: string): string {
   return decodeEntities(stripTags(s)).replace(/\s+/g, " ").trim();
 }
 
-/** Every <a> link found inside a <nav>. Dedupes by text. */
+/**
+ * Every visible-ish <a> link found inside a <nav>. Filters that bring
+ * the count in line with what a human actually sees on the page:
+ *
+ *   - "Skip to ..." accessibility links (visually hidden screen-reader
+ *     shortcuts). Skipped.
+ *   - "Log in" / "Sign in" / "Sign up" / "My account" / etc. — these
+ *     are for EXISTING users, not visitor navigation, and we already
+ *     never want to recommend them as positive CTAs. Skipped.
+ *   - Cross-nav duplicates. Many sites ship duplicate copies of the
+ *     same nav for desktop and mobile-menu states; we dedupe by text
+ *     so we never count the same label twice.
+ *
+ * The unfiltered count was producing reports like "Navigation carries
+ * 11 links" on monday.com — the page only has 2 visible nav items;
+ * the other 9 were skip-links and hidden mobile-menu items.
+ */
+const NAV_LINK_NOISE = /^(skip(?:\s+to)?(?:\s+(?:main\s+)?(?:content|footer|nav(?:igation)?))?|skip\s+navigation|log\s*in|login|sign\s*in|signin|sign\s*up|signup|create\s+account|register|log\s*out|logout|my\s+account|go\s+to\s+my\s+account|account|go\s+to\s+homepage|go\s+to\s+home)$/i;
+
 function extractNavLinks(html: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -345,6 +363,7 @@ function extractNavLinks(html: string): string[] {
     )) {
       const text = cleanInlineText(linkMatch[1] ?? "");
       if (!text || text.length > 60) continue;
+      if (NAV_LINK_NOISE.test(text)) continue;
       const key = text.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
