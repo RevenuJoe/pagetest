@@ -519,10 +519,40 @@ function buildSpeedCheck(
       ],
     };
   }
-  // Average desktop + mobile if we got both; otherwise use whichever ran.
-  const score = desktop && mobile
+  // Start with the average Lighthouse performance score across desktop
+  // and mobile — that's the holistic Lighthouse view. Then apply a
+  // bonus based on Speed Index (the metric closest to "did the page
+  // actually feel fast"). If BOTH desktop and mobile load quickly,
+  // boost the score so the dimension reflects real-world snappiness
+  // even when Lighthouse penalises the page on niche audits.
+  // Thresholds (doubled from earlier — Joe wants real-world speed to
+  // carry more weight in the score):
+  //   Worst-of-both Speed Index < 1.0s  → +30 (extraordinary)
+  //   < 2.0s                           → +20 (really, really good)
+  //   < 3.0s                           → +10 (good / okay)
+  //   ≥ 3.0s                           → no boost
+  // Capped at 100.
+  const rawScore = desktop && mobile
     ? Math.round((desktop.performanceScore + mobile.performanceScore) / 2)
     : (desktop?.performanceScore ?? mobile?.performanceScore ?? 0);
+  let speedIndexBoost = 0;
+  let speedIndexBoostNote: string | null = null;
+  const desktopSI = desktop?.speedIndexMs ?? null;
+  const mobileSI = mobile?.speedIndexMs ?? null;
+  if (desktopSI != null && mobileSI != null) {
+    const worstSI = Math.max(desktopSI, mobileSI);
+    if (worstSI < 1000) {
+      speedIndexBoost = 30;
+      speedIndexBoostNote = `Both Desktop and Mobile load in under a second, which is exceptional and gives this score a +${speedIndexBoost} boost over the Lighthouse average.`;
+    } else if (worstSI < 2000) {
+      speedIndexBoost = 20;
+      speedIndexBoostNote = `Both Desktop and Mobile load in under 2 seconds, which is really strong and gives this score a +${speedIndexBoost} boost over the Lighthouse average.`;
+    } else if (worstSI < 3000) {
+      speedIndexBoost = 10;
+      speedIndexBoostNote = `Both Desktop and Mobile load in under 3 seconds, which is solid and gives this score a +${speedIndexBoost} boost over the Lighthouse average.`;
+    }
+  }
+  const score = Math.min(100, rawScore + speedIndexBoost);
 
   const notes: string[] = [];
 
@@ -564,6 +594,10 @@ function buildSpeedCheck(
   );
   if (otherObservation) notes.push(otherObservation);
 
+  // When the Speed Index boost fired, surface a note explaining the
+  // bump so the score's strength is justified to the reader.
+  if (speedIndexBoostNote) notes.push(speedIndexBoostNote);
+
   const headline =
     score >= 90
       ? "Page loads fast on both desktop and mobile."
@@ -573,9 +607,10 @@ function buildSpeedCheck(
       ? "Load speed is mediocre, visitors will feel the lag."
       : "Page is slow enough to hurt conversions.";
 
-  // Up to 7 bullets: 2 scores + 2 speed-index + image count + image
-  // commentary + one other observation. Cap defensively.
-  return { score, headline, notes: notes.slice(0, 7) };
+  // Up to 8 bullets: 2 scores + 2 speed-index + image count + image
+  // commentary + one other observation + (optional) speed-boost note.
+  // Cap defensively.
+  return { score, headline, notes: notes.slice(0, 8) };
 }
 
 /**
