@@ -4,9 +4,9 @@
  *
  *   1. Overview                     — overall ring + Report name/URL/Analysed + mini scores
  *   2. Key Recommendations          — numbered list from Claude
- *   3. Analysis                     — six ScoreCards (one per dimension)
- *   4. Above-the-Fold Screenshots   — desktop + mobile at matched height
- *   5. PageSpeed Insights           — Desktop vs Mobile comparison + per-strategy chips
+ *   3. PageSpeed Insights           — 10 Desktop vs Mobile bar charts + numbered summary
+ *   4. Analysis                     — six ScoreCards (one per dimension)
+ *   5. Above-the-Fold Screenshots   — desktop + mobile at matched height
  *   6. Technical Improvements       — Lighthouse opportunities + diagnostics
  */
 
@@ -85,6 +85,21 @@ export default function Results({
       ),
     },
     {
+      key: "psi",
+      node: (
+        <Section
+          title="PageSpeed Insights"
+          icon={<IconGauge />}
+          defaultOpen={false}
+          headerAction={
+            <CopyButton getText={() => formatPsiForClipboard(data)} />
+          }
+        >
+          <PageSpeedInsightsBlock data={data} />
+        </Section>
+      ),
+    },
+    {
       key: "analysis",
       node: (
         <Section
@@ -104,21 +119,6 @@ export default function Results({
       node: (
         <Section title="Above-the-Fold Screenshots" icon={<IconEye />} defaultOpen={false}>
           <ScreenshotsBlock data={data} />
-        </Section>
-      ),
-    },
-    {
-      key: "psi",
-      node: (
-        <Section
-          title="PageSpeed Insights"
-          icon={<IconGauge />}
-          defaultOpen={false}
-          headerAction={
-            <CopyButton getText={() => formatPsiForClipboard(data)} />
-          }
-        >
-          <PageSpeedInsightsBlock data={data} />
         </Section>
       ),
     },
@@ -1112,68 +1112,10 @@ interface PsiChartMetricConfig {
   getColor: (v: number | null) => string;
 }
 
+// Order: Speed Index, Largest Paint, First Paint, Page Weight,
+// Blocking Time first (row 1 = the perceived-speed / impact metrics);
+// then Layout Shift + the four Lighthouse category scores (row 2).
 const CHART_METRIC_CONFIGS: PsiChartMetricConfig[] = [
-  {
-    key: "performance",
-    title: "Performance",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-        <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
-      </svg>
-    ),
-    yMax: 100,
-    yTickFormat: (v) => String(Math.round(v)),
-    getValue: (b) => b?.performanceScore ?? null,
-    formatValueLabel: (v) => (v == null ? "—" : String(v)),
-    getColor: (v) => (v == null ? "#c4c0b6" : scoreColor(v)),
-  },
-  {
-    key: "accessibility",
-    title: "Accessibility",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-        <circle cx="12" cy="4" r="2" />
-        <path d="M19 13a7 7 0 1 1-14 0" />
-        <path d="M12 6v6l4 8" />
-        <path d="M12 12l-4 8" />
-      </svg>
-    ),
-    yMax: 100,
-    yTickFormat: (v) => String(Math.round(v)),
-    getValue: (b) => b?.accessibilityScore ?? null,
-    formatValueLabel: (v) => (v == null ? "—" : String(v)),
-    getColor: (v) => (v == null ? "#c4c0b6" : scoreColor(v)),
-  },
-  {
-    key: "bestPractices",
-    title: "Best Practices",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-        <path d="M12 2L4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-4z" />
-        <path d="M9 12l2 2 4-4" />
-      </svg>
-    ),
-    yMax: 100,
-    yTickFormat: (v) => String(Math.round(v)),
-    getValue: (b) => b?.bestPracticesScore ?? null,
-    formatValueLabel: (v) => (v == null ? "—" : String(v)),
-    getColor: (v) => (v == null ? "#c4c0b6" : scoreColor(v)),
-  },
-  {
-    key: "seo",
-    title: "SEO",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-        <circle cx="11" cy="11" r="7" />
-        <path d="M21 21l-5-5" />
-      </svg>
-    ),
-    yMax: 100,
-    yTickFormat: (v) => String(Math.round(v)),
-    getValue: (b) => b?.seoScore ?? null,
-    formatValueLabel: (v) => (v == null ? "—" : String(v)),
-    getColor: (v) => (v == null ? "#c4c0b6" : scoreColor(v)),
-  },
   {
     key: "speedIndex",
     title: "Speed Index",
@@ -1244,26 +1186,28 @@ const CHART_METRIC_CONFIGS: PsiChartMetricConfig[] = [
         : scoreColor(60),
   },
   {
-    // Cumulative Layout Shift — unitless score of visual stability.
-    // Good ≤ 0.1, poor > 0.25 (Core Web Vital).
-    key: "cls",
-    title: "Layout Shift",
+    // Page Weight — total bytes transferred. Thresholds are pragmatic
+    // landing-page targets, not a Lighthouse band. Good ≤ 1.5MB,
+    // poor > 3MB.
+    key: "pageWeight",
+    title: "Page Weight",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-        <rect x="3" y="3" width="10" height="10" rx="1" />
-        <rect x="11" y="11" width="10" height="10" rx="1" />
+        <path d="M6 2h12l2 4-8 16L4 6z" />
+        <path d="M9 6l3 4 3-4" />
       </svg>
     ),
-    yMax: 0.4,
-    yTickFormat: (v) => (v === 0 ? "0" : v.toFixed(2)),
-    getValue: (b) => (b?.cls == null ? null : b.cls),
-    formatValueLabel: (v) => (v == null ? "—" : v.toFixed(2)),
+    yMax: 10 * 1024 * 1024, // 10MB in bytes
+    yTickFormat: (v) => (v === 0 ? "0" : `${(v / 1024 / 1024).toFixed(0)}MB`),
+    getValue: (b) => (b?.totalByteWeight == null ? null : b.totalByteWeight),
+    formatValueLabel: (v) =>
+      v == null ? "—" : `${(v / 1024 / 1024).toFixed(1)}MB`,
     getColor: (v) =>
       v == null
         ? "#c4c0b6"
-        : v <= 0.1
+        : v <= 1.5 * 1024 * 1024
         ? scoreColor(95)
-        : v > 0.25
+        : v > 3 * 1024 * 1024
         ? scoreColor(30)
         : scoreColor(60),
   },
@@ -1297,30 +1241,89 @@ const CHART_METRIC_CONFIGS: PsiChartMetricConfig[] = [
         : scoreColor(60),
   },
   {
-    // Page Weight — total bytes transferred. Thresholds are pragmatic
-    // landing-page targets, not a Lighthouse band. Good ≤ 1.5MB,
-    // poor > 3MB.
-    key: "pageWeight",
-    title: "Page Weight",
+    // Cumulative Layout Shift — unitless score of visual stability.
+    // Good ≤ 0.1, poor > 0.25 (Core Web Vital).
+    key: "cls",
+    title: "Layout Shift",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-        <path d="M6 2h12l2 4-8 16L4 6z" />
-        <path d="M9 6l3 4 3-4" />
+        <rect x="3" y="3" width="10" height="10" rx="1" />
+        <rect x="11" y="11" width="10" height="10" rx="1" />
       </svg>
     ),
-    yMax: 10 * 1024 * 1024, // 10MB in bytes
-    yTickFormat: (v) => (v === 0 ? "0" : `${(v / 1024 / 1024).toFixed(0)}MB`),
-    getValue: (b) => (b?.totalByteWeight == null ? null : b.totalByteWeight),
-    formatValueLabel: (v) =>
-      v == null ? "—" : `${(v / 1024 / 1024).toFixed(1)}MB`,
+    yMax: 0.4,
+    yTickFormat: (v) => (v === 0 ? "0" : v.toFixed(2)),
+    getValue: (b) => (b?.cls == null ? null : b.cls),
+    formatValueLabel: (v) => (v == null ? "—" : v.toFixed(2)),
     getColor: (v) =>
       v == null
         ? "#c4c0b6"
-        : v <= 1.5 * 1024 * 1024
+        : v <= 0.1
         ? scoreColor(95)
-        : v > 3 * 1024 * 1024
+        : v > 0.25
         ? scoreColor(30)
         : scoreColor(60),
+  },
+  {
+    key: "performance",
+    title: "Performance",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
+      </svg>
+    ),
+    yMax: 100,
+    yTickFormat: (v) => String(Math.round(v)),
+    getValue: (b) => b?.performanceScore ?? null,
+    formatValueLabel: (v) => (v == null ? "—" : String(v)),
+    getColor: (v) => (v == null ? "#c4c0b6" : scoreColor(v)),
+  },
+  {
+    key: "accessibility",
+    title: "Accessibility",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <circle cx="12" cy="4" r="2" />
+        <path d="M19 13a7 7 0 1 1-14 0" />
+        <path d="M12 6v6l4 8" />
+        <path d="M12 12l-4 8" />
+      </svg>
+    ),
+    yMax: 100,
+    yTickFormat: (v) => String(Math.round(v)),
+    getValue: (b) => b?.accessibilityScore ?? null,
+    formatValueLabel: (v) => (v == null ? "—" : String(v)),
+    getColor: (v) => (v == null ? "#c4c0b6" : scoreColor(v)),
+  },
+  {
+    key: "bestPractices",
+    title: "Best Practices",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <path d="M12 2L4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-4z" />
+        <path d="M9 12l2 2 4-4" />
+      </svg>
+    ),
+    yMax: 100,
+    yTickFormat: (v) => String(Math.round(v)),
+    getValue: (b) => b?.bestPracticesScore ?? null,
+    formatValueLabel: (v) => (v == null ? "—" : String(v)),
+    getColor: (v) => (v == null ? "#c4c0b6" : scoreColor(v)),
+  },
+  {
+    key: "seo",
+    title: "SEO",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <circle cx="11" cy="11" r="7" />
+        <path d="M21 21l-5-5" />
+      </svg>
+    ),
+    yMax: 100,
+    yTickFormat: (v) => String(Math.round(v)),
+    getValue: (b) => b?.seoScore ?? null,
+    formatValueLabel: (v) => (v == null ? "—" : String(v)),
+    getColor: (v) => (v == null ? "#c4c0b6" : scoreColor(v)),
   },
 ];
 
