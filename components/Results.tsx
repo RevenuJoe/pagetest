@@ -1074,101 +1074,8 @@ function catScore(b: PsiBreakdown | undefined, k: CategoryRow["key"]) {
   return b.seoScore;
 }
 
-function PsiCategoryComparison({
-  desktop,
-  mobile,
-}: {
-  desktop?: PsiBreakdown;
-  mobile?: PsiBreakdown;
-}) {
-  // Five columns side-by-side, each with TWO vertical bars (Desktop /
-  // Mobile) so divergence reads at a glance. The first four are normal
-  // 0-100 scores; the fifth (Speed Index) shows seconds with the same
-  // bar UI, mapped to a 0-100 height so it sits visually alongside the
-  // others.
-  const BAR_HEIGHT = 140; // px — the chart's max bar height
-  return (
-    <div className="rounded-card border border-beige-line bg-bg/40 px-5 py-4">
-      <div
-        className="text-[10px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.16em" }}
-      >
-        Desktop vs. Mobile
-      </div>
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5">
-        {PSI_CATEGORIES.map((cat) => {
-          const d = catScore(desktop, cat.key);
-          const m = catScore(mobile, cat.key);
-          return (
-            <div
-              key={cat.key}
-              className="flex flex-col items-center rounded-card border border-beige-line bg-card shadow-card px-3 pb-3 pt-3"
-            >
-              <div
-                className="text-center text-[11px] font-bold uppercase text-ink"
-                style={{ letterSpacing: "0.06em" }}
-              >
-                {cat.label}
-              </div>
-              <div
-                className="mt-3 flex w-full items-end justify-center gap-3"
-                style={{ height: BAR_HEIGHT + 24 /* room for value labels */ }}
-              >
-                <VerticalBar label="Desktop" score={d} maxHeight={BAR_HEIGHT} device="desktop" />
-                <VerticalBar label="Mobile" score={m} maxHeight={BAR_HEIGHT} device="mobile" />
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Speed Index column — sits on the same row as the four
-            categories. Bar height comes from a 0-100 score derived from
-            seconds (Lighthouse's bands), but the value above the bar is
-            the actual seconds reading so the user sees what matters. */}
-        <div className="flex flex-col items-center rounded-card border border-beige-line bg-card shadow-card px-3 pb-3 pt-3">
-          <div
-            className="text-center text-[11px] font-bold uppercase text-ink"
-            style={{ letterSpacing: "0.06em" }}
-          >
-            Speed Index
-          </div>
-          <div
-            className="mt-3 flex w-full items-end justify-center gap-3"
-            style={{ height: BAR_HEIGHT + 24 }}
-          >
-            <SpeedIndexVerticalBar
-              label="Desktop"
-              ms={desktop?.speedIndexMs ?? null}
-              maxHeight={BAR_HEIGHT}
-              device="desktop"
-            />
-            <SpeedIndexVerticalBar
-              label="Mobile"
-              ms={mobile?.speedIndexMs ?? null}
-              maxHeight={BAR_HEIGHT}
-              device="mobile"
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Vertical bar for Speed Index. UNLIKE the score bars (where taller =
- * better), this one's height tracks seconds directly: longer page-load
- * time = taller bar = worse. A fast page produces a short, green bar.
- *
- * Colour still follows Lighthouse's official bands so green/orange/red
- * signals good/bad regardless of bar height:
- *   ≤ 3.4s  → green
- *   ≤ 5.8s  → orange
- *   > 5.8s  → red
- *
- * Y-axis tops out at SPEED_INDEX_MAX_SECS (10s) — values beyond that
- * clamp to a full-height red bar.
- */
+/** Maximum value used for the Speed Index chart's y-axis. Anything
+ *  beyond this clamps to full height. */
 const SPEED_INDEX_MAX_SECS = 10;
 
 function speedIndexBandColor(secs: number): string {
@@ -1177,94 +1084,354 @@ function speedIndexBandColor(secs: number): string {
   return scoreColor(30); // red
 }
 
-function SpeedIndexVerticalBar({
-  label,
-  ms,
-  maxHeight,
-  device,
+/**
+ * Configuration for one PSI bar-chart card. We have five — Performance,
+ * Accessibility, Best Practices, SEO (all 0-100 score bars) plus Speed
+ * Index (0-10s timing bar). Each config supplies the title shown
+ * top-left, the icon shown top-right, the y-axis scale, and getters /
+ * formatters for the underlying value.
+ */
+interface PsiChartMetricConfig {
+  key: string;
+  title: string;
+  icon: React.ReactNode;
+  yMax: number;
+  yTickFormat: (v: number) => string;
+  getValue: (b: PsiBreakdown | undefined) => number | null;
+  formatValueLabel: (v: number | null) => string;
+  getColor: (v: number | null) => string;
+}
+
+const CHART_METRIC_CONFIGS: PsiChartMetricConfig[] = [
+  {
+    key: "performance",
+    title: "Performance",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
+      </svg>
+    ),
+    yMax: 100,
+    yTickFormat: (v) => String(Math.round(v)),
+    getValue: (b) => b?.performanceScore ?? null,
+    formatValueLabel: (v) => (v == null ? "—" : String(v)),
+    getColor: (v) => (v == null ? "#c4c0b6" : scoreColor(v)),
+  },
+  {
+    key: "accessibility",
+    title: "Accessibility",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <circle cx="12" cy="4" r="2" />
+        <path d="M19 13a7 7 0 1 1-14 0" />
+        <path d="M12 6v6l4 8" />
+        <path d="M12 12l-4 8" />
+      </svg>
+    ),
+    yMax: 100,
+    yTickFormat: (v) => String(Math.round(v)),
+    getValue: (b) => b?.accessibilityScore ?? null,
+    formatValueLabel: (v) => (v == null ? "—" : String(v)),
+    getColor: (v) => (v == null ? "#c4c0b6" : scoreColor(v)),
+  },
+  {
+    key: "bestPractices",
+    title: "Best Practices",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <path d="M12 2L4 6v6c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-4z" />
+        <path d="M9 12l2 2 4-4" />
+      </svg>
+    ),
+    yMax: 100,
+    yTickFormat: (v) => String(Math.round(v)),
+    getValue: (b) => b?.bestPracticesScore ?? null,
+    formatValueLabel: (v) => (v == null ? "—" : String(v)),
+    getColor: (v) => (v == null ? "#c4c0b6" : scoreColor(v)),
+  },
+  {
+    key: "seo",
+    title: "SEO",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <circle cx="11" cy="11" r="7" />
+        <path d="M21 21l-5-5" />
+      </svg>
+    ),
+    yMax: 100,
+    yTickFormat: (v) => String(Math.round(v)),
+    getValue: (b) => b?.seoScore ?? null,
+    formatValueLabel: (v) => (v == null ? "—" : String(v)),
+    getColor: (v) => (v == null ? "#c4c0b6" : scoreColor(v)),
+  },
+  {
+    key: "speedIndex",
+    title: "Speed Index",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <circle cx="12" cy="13" r="8" />
+        <path d="M12 9v4l3 2" />
+        <path d="M9 2h6" />
+      </svg>
+    ),
+    yMax: SPEED_INDEX_MAX_SECS,
+    // Tick labels in seconds — keep them short so they fit the narrow y-axis.
+    yTickFormat: (v) => `${v % 1 === 0 ? v : v.toFixed(1)}s`,
+    // Convert PSI ms -> seconds for plotting. Speed Index is "smaller is
+    // better" so the bar height tracks seconds directly (a fast page
+    // produces a short, green bar).
+    getValue: (b) =>
+      b?.speedIndexMs == null ? null : b.speedIndexMs / 1000,
+    formatValueLabel: (v) => (v == null ? "—" : `${v.toFixed(2)}s`),
+    getColor: (v) => (v == null ? "#c4c0b6" : speedIndexBandColor(v)),
+  },
+];
+
+function PsiCategoryComparison({
+  desktop,
+  mobile,
 }: {
-  label: string;
-  ms: number | null;
-  maxHeight: number;
-  device: "desktop" | "mobile";
+  desktop?: PsiBreakdown;
+  mobile?: PsiBreakdown;
 }) {
-  const seconds = ms == null ? null : ms / 1000;
-  const color = seconds == null ? "#c4c0b6" : speedIndexBandColor(seconds);
-  // Bar height is proportional to seconds: shorter page-load → shorter
-  // bar. Clamp at 10s so an unusually slow run doesn't overflow the
-  // chart's drawing area.
-  const clamped = Math.min(seconds ?? 0, SPEED_INDEX_MAX_SECS);
-  const h = (clamped / SPEED_INDEX_MAX_SECS) * maxHeight;
-  // Differentiate Desktop vs Mobile by saturation: Desktop renders at
-  // full colour, Mobile uses a softer / lighter version of the same
-  // colour so the two bars read as a paired set (like the lighter
-  // accent backgrounds used behind the category icons).
-  const barBackground = device === "mobile" ? `${color}80` : color;
   return (
-    <div className="flex w-full max-w-[44px] flex-col items-center justify-end">
-      <div className="text-[13px] font-bold tabular-nums leading-none" style={{ color }}>
-        {seconds == null ? "—" : `${seconds.toFixed(2)}s`}
-      </div>
+    <div className="rounded-card border border-beige-line bg-bg/40 px-5 py-4">
       <div
-        className="mt-1.5 w-full rounded-t-md transition-all"
-        style={{
-          height: `${h}px`,
-          background: barBackground,
-          minHeight: "2px",
-        }}
-      />
-      <div
-        className="mt-1.5 text-[9px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.08em" }}
+        className="text-[10px] font-bold uppercase text-ink-soft"
+        style={{ letterSpacing: "0.16em" }}
       >
-        {label}
+        Desktop vs. Mobile
+      </div>
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {CHART_METRIC_CONFIGS.map((cfg) => (
+          <PsiBarChartCard
+            key={cfg.key}
+            config={cfg}
+            desktop={desktop}
+            mobile={mobile}
+          />
+        ))}
       </div>
     </div>
   );
 }
 
-/** One vertical bar inside the category-comparison chart. */
-function VerticalBar({
-  label,
-  score,
-  maxHeight,
+/**
+ * One PSI bar-chart card. Layout matches Joe's reference design:
+ *
+ *   - Title bold + left-aligned at top-left.
+ *   - Small metric icon top-right.
+ *   - Y-axis with 5 tick labels on the left (e.g. 100 / 75 / 50 / 25 / 0
+ *     for score charts; 10s / 7.5s / 5s / 2.5s / 0 for Speed Index).
+ *   - Faint dashed horizontal grid lines aligned to the y-ticks.
+ *   - Two bars side by side (Desktop full saturation, Mobile 50% alpha).
+ *     Each bar has a faint full-height "track" behind it showing the
+ *     full possible range, plus the filled portion in the score-band
+ *     colour.
+ *   - X-axis labels (Desktop / Mobile) under the bars.
+ *
+ * Value labels sit above the top of each filled bar so the user reads
+ * the exact number without doing y-axis arithmetic.
+ */
+function PsiBarChartCard({
+  config,
+  desktop,
+  mobile,
+}: {
+  config: PsiChartMetricConfig;
+  desktop?: PsiBreakdown;
+  mobile?: PsiBreakdown;
+}) {
+  // Height of the bar drawing area. Total card height = this + room
+  // for the title row + room for value labels above the bars + room
+  // for x-axis labels below the bars.
+  const CHART_HEIGHT = 150;
+  const VALUE_LABEL_GAP = 18; // px of space above the chart for the value labels
+  // Five evenly-spaced y-axis ticks: max, 75%, 50%, 25%, 0.
+  const yTicks = [
+    config.yMax,
+    config.yMax * 0.75,
+    config.yMax * 0.5,
+    config.yMax * 0.25,
+    0,
+  ];
+
+  const dValue = config.getValue(desktop);
+  const mValue = config.getValue(mobile);
+
+  return (
+    <div className="rounded-card border border-beige-line bg-card shadow-card px-3 pb-3 pt-3">
+      {/* Header row: title left, icon right. */}
+      <div className="flex items-center justify-between gap-2">
+        <h3
+          className="truncate text-[11px] font-bold uppercase text-ink"
+          style={{ letterSpacing: "0.06em" }}
+        >
+          {config.title}
+        </h3>
+        <div className="flex-shrink-0 text-ink-soft">{config.icon}</div>
+      </div>
+
+      {/* Chart area: y-axis labels on the left, grid + bars on the right. */}
+      <div
+        className="mt-3 flex"
+        style={{ height: CHART_HEIGHT + VALUE_LABEL_GAP }}
+      >
+        {/* Y-axis tick column. Use space-between to push the first
+            tick to the top and the last to the bottom. The value-label
+            gap padding above keeps everything aligned with the chart's
+            bar drawing area. */}
+        <div
+          className="flex flex-col items-end pr-1.5 text-[9px] tabular-nums text-ink-soft"
+          style={{
+            height: CHART_HEIGHT,
+            marginTop: VALUE_LABEL_GAP,
+            justifyContent: "space-between",
+            lineHeight: 1,
+          }}
+        >
+          {yTicks.map((v, i) => (
+            <span key={i}>{config.yTickFormat(v)}</span>
+          ))}
+        </div>
+
+        {/* Right side: grid lines + bars + value labels. */}
+        <div
+          className="relative flex-1"
+          style={{ height: CHART_HEIGHT + VALUE_LABEL_GAP }}
+        >
+          {/* Horizontal grid lines aligned to y-ticks. Pinned to the
+              chart's bar drawing area, not the value-label gap above. */}
+          <div
+            className="pointer-events-none absolute inset-x-0"
+            style={{
+              top: VALUE_LABEL_GAP,
+              height: CHART_HEIGHT,
+            }}
+          >
+            <div className="flex h-full flex-col justify-between">
+              {yTicks.map((_, i) => (
+                <div
+                  key={i}
+                  className="border-t border-dashed border-beige-line/70"
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Bars sit on top of the grid. The value-label gap reserves
+              space above the tallest possible bar so labels never
+              clip the title above. */}
+          <div
+            className="absolute inset-x-0 bottom-0 flex items-end justify-center gap-3"
+            style={{ height: CHART_HEIGHT + VALUE_LABEL_GAP }}
+          >
+            <PsiChartBar
+              value={dValue}
+              yMax={config.yMax}
+              chartHeight={CHART_HEIGHT}
+              valueLabelGap={VALUE_LABEL_GAP}
+              color={config.getColor(dValue)}
+              valueLabel={config.formatValueLabel(dValue)}
+              device="desktop"
+            />
+            <PsiChartBar
+              value={mValue}
+              yMax={config.yMax}
+              chartHeight={CHART_HEIGHT}
+              valueLabelGap={VALUE_LABEL_GAP}
+              color={config.getColor(mValue)}
+              valueLabel={config.formatValueLabel(mValue)}
+              device="mobile"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* X-axis labels below the bars. */}
+      <div className="mt-1.5 flex justify-center gap-3 pl-[24px]">
+        <div
+          className="text-center text-[9px] font-bold uppercase text-ink-soft"
+          style={{ width: 44, letterSpacing: "0.08em" }}
+        >
+          Desktop
+        </div>
+        <div
+          className="text-center text-[9px] font-bold uppercase text-ink-soft"
+          style={{ width: 44, letterSpacing: "0.08em" }}
+        >
+          Mobile
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One bar inside a PsiBarChartCard. Renders a faint full-height "track"
+ * (showing the bar's max possible range) plus the actual filled portion
+ * in the score-band colour. Mobile bars use 50% alpha so the Desktop /
+ * Mobile pair reads as related. The value label floats above the top
+ * of the filled bar so the user gets the exact number without reading
+ * the y-axis.
+ */
+function PsiChartBar({
+  value,
+  yMax,
+  chartHeight,
+  valueLabelGap,
+  color,
+  valueLabel,
   device,
 }: {
-  label: string;
-  score: number | null;
-  maxHeight: number;
+  value: number | null;
+  yMax: number;
+  chartHeight: number;
+  valueLabelGap: number;
+  color: string;
+  valueLabel: string;
   device: "desktop" | "mobile";
 }) {
-  const value = score ?? 0;
-  const color = score == null ? "#c4c0b6" : scoreColor(score);
-  const h = Math.max(2, Math.min(100, value)) * (maxHeight / 100);
-  // Differentiate Desktop vs Mobile by saturation: Desktop renders at
-  // full colour, Mobile uses a softer / lighter version of the same
-  // colour (50% alpha) so the two bars read as a paired set with the
-  // same lighter-accent feel as the icon backgrounds.
-  const barBackground = device === "mobile" ? `${color}80` : color;
+  const clamped = Math.max(0, Math.min(yMax, value ?? 0));
+  const filledHeight = (clamped / yMax) * chartHeight;
+  const barBg = device === "mobile" ? `${color}80` : color;
   return (
-    <div className="flex w-full max-w-[44px] flex-col items-center justify-end">
+    <div
+      className="relative flex flex-col items-center"
+      style={{ width: 44, height: chartHeight + valueLabelGap }}
+    >
+      {/* Faint full-height track. Sits at the bottom and extends to the
+          chart top (height: chartHeight), inside the value-label gap. */}
       <div
-        className="text-[13px] font-bold tabular-nums leading-none"
-        style={{ color }}
-      >
-        {score == null ? "—" : score}
-      </div>
-      <div
-        className="mt-1.5 w-full rounded-t-md transition-all"
+        className="absolute inset-x-0 rounded-t-md"
         style={{
-          height: `${h}px`,
-          background: barBackground,
-          minHeight: "2px",
+          bottom: 0,
+          height: chartHeight,
+          background: "rgba(20, 30, 28, 0.05)",
         }}
       />
+      {/* Filled bar on top of the track. */}
       <div
-        className="mt-1.5 text-[9px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.08em" }}
-      >
-        {label}
-      </div>
+        className="absolute inset-x-0 rounded-t-md transition-all"
+        style={{
+          bottom: 0,
+          height: `${filledHeight}px`,
+          background: barBg,
+          minHeight: value == null ? 0 : "2px",
+        }}
+      />
+      {/* Value label floats just above the top of the filled bar. */}
+      {value != null && (
+        <div
+          className="absolute inset-x-0 text-center text-[11px] font-bold tabular-nums leading-none"
+          style={{
+            bottom: `${filledHeight + 4}px`,
+            color,
+          }}
+        >
+          {valueLabel}
+        </div>
+      )}
     </div>
   );
 }
