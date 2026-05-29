@@ -245,10 +245,12 @@ function applyFilters(
   return { keep: true };
 }
 
-/** Filter notes inside a dimension's CheckResult. The headline and
- *  score are untouched; only the notes array is rebuilt without dropped
- *  items. Returns the cleaned CheckResult (or the original if nothing
- *  was dropped). */
+/** Filter notes AND clean the headline inside a dimension's CheckResult.
+ *  Notes that match a hallucination pattern are dropped. The headline
+ *  goes through a similar check, but instead of being dropped it's
+ *  trimmed (e.g. "Strong X, but lacks Y" → "Strong X") when the
+ *  trailing clause is the hallucinating part. If trimming fails, the
+ *  headline is blanked. Score and other fields are untouched. */
 export function filterDimensionResult(
   result: CheckResult,
   dim: ClaudeDimension,
@@ -265,8 +267,136 @@ export function filterDimensionResult(
       );
     }
   }
-  if (kept.length === result.notes.length) return result;
-  return { ...result, notes: kept };
+  const headline = cleanHeadline(result.headline, dim, ctx, kept);
+  if (kept.length === result.notes.length && headline === result.headline) {
+    return result;
+  }
+  return { ...result, headline, notes: kept };
+}
+
+/**
+ * Clean a dimension's headline. Two checks:
+ *
+ *   1. Run all existing note filters against the headline. If any
+ *      fires, try trimming the clause that introduces the
+ *      hallucination (split on ", but" / " but " / "; however" /
+ *      etc and keep the clean first half). If the trimmed version
+ *      still fails a filter, blank the headline entirely.
+ *
+ *   2. Cross-check against the dimension's notes: if the headline
+ *      claims X is missing but a note in the same dimension says X
+ *      is present, that's a self-contradiction; trim or blank as
+ *      above.
+ *
+ * Returns the cleaned headline (possibly empty).
+ */
+function cleanHeadline(
+  headline: string,
+  dim: ClaudeDimension | "takeaways",
+  ctx: FilterContext,
+  notesInDimension: string[],
+): string {
+  if (!headline) return headline;
+
+  // 1) Direct filter match.
+  const directReason = firstFilterHit(headline, dim, ctx);
+  if (directReason) {
+    const trimmed = trySplitHeadline(headline);
+    if (trimmed && !firstFilterHit(trimmed, dim, ctx)) {
+      console.warn(
+        `[noteFilter] HEADLINE trim dim="${dim}" reason="${directReason}" url="${ctx.url}" before="${headline}" after="${trimmed}"`,
+      );
+      return trimmed;
+    }
+    console.warn(
+      `[noteFilter] HEADLINE blank dim="${dim}" reason="${directReason}" url="${ctx.url}" original="${headline}"`,
+    );
+    return "";
+  }
+
+  // 2) Cross-check headline vs notes — the model's own observations
+  //    can override its own misleading headline. Look for "lacks/no
+  //    social proof" in the headline while a note says social proof
+  //    is present. Same pattern for nav, CTAs, hero, FAQ.
+  const headlineSaysMissing = (re: RegExp) => re.test(headline);
+  const noteSaysPresent = (re: RegExp) =>
+    notesInDimension.some((n) => re.test(n));
+
+  const contradictions: Array<{ missing: RegExp; present: RegExp; label: string }> = [
+    {
+      missing: /\b(lack(s|ing)?|missing|no|without)\b[^.]{0,40}\bsocial\s+proof\b/i,
+      present:
+        /\b(visible|shows?|displays?|delivers?|provides?|has|includes?|features?)\b[^.]{0,60}\b(social\s+proof|customer\s+logos?|logos?)\b/i,
+      label: "headline says social proof missing but a note says it's present",
+    },
+    {
+      missing: /\b(lack(s|ing)?|missing|no|without)\b[^.]{0,40}\bnav(igation)?\b/i,
+      present:
+        /\b(visible|shows?|has|includes?|features?|with|contains?)\b[^.]{0,60}\bnav(igation)?\s+(?:links?|items?|menu|bar)\b/i,
+      label: "headline says nav missing but a note describes nav links",
+    },
+    {
+      missing: /\b(lack(s|ing)?|missing|no|without)\b[^.]{0,40}\b(cta|call[- ]to[- ]action|button)\b/i,
+      present:
+        /\b(visible|shows?|has|includes?|features?|with|contains?)\b[^.]{0,60}\b(cta|call[- ]to[- ]action|button)\b/i,
+      label: "headline says CTA missing but a note describes a CTA",
+    },
+  ];
+
+  for (const c of contradictions) {
+    if (headlineSaysMissing(c.missing) && noteSaysPresent(c.present)) {
+      const trimmed = trySplitHeadline(headline);
+      if (trimmed && !c.missing.test(trimmed)) {
+        console.warn(
+          `[noteFilter] HEADLINE trim (cross-check) dim="${dim}" reason="${c.label}" url="${ctx.url}" before="${headline}" after="${trimmed}"`,
+        );
+        return trimmed;
+      }
+      console.warn(
+        `[noteFilter] HEADLINE blank (cross-check) dim="${dim}" reason="${c.label}" url="${ctx.url}" original="${headline}"`,
+      );
+      return "";
+    }
+  }
+
+  return headline;
+}
+
+/** Try to trim a hallucination clause from the headline by splitting on
+ *  common conjunctions ("but", "however", "though", "yet"). Returns the
+ *  cleaned first half, or null if no valid split is found. */
+function trySplitHeadline(headline: string): string | null {
+  const SEPS = [
+    /,\s+but\s+/i,
+    /\s+but\s+/i,
+    /;\s+however[, ]+/i,
+    /,\s+however[, ]+/i,
+    /;\s+though\s+/i,
+    /,\s+though\s+/i,
+    /;\s+yet\s+/i,
+    /,\s+yet\s+/i,
+  ];
+  for (const re of SEPS) {
+    const match = headline.match(re);
+    if (!match || match.index == null) continue;
+    const left = headline.slice(0, match.index).trim().replace(/[,;:.]\s*$/, "");
+    // Need at least a few words on the left for it to be a real headline.
+    if (left.split(/\s+/).length >= 3) return left;
+  }
+  return null;
+}
+
+/** Run all filters and return the first reason that fires, or null. */
+function firstFilterHit(
+  text: string,
+  dim: ClaudeDimension | "takeaways",
+  ctx: FilterContext,
+): string | null {
+  for (const rule of ALL_FILTERS) {
+    const reason = rule(text, dim, ctx);
+    if (reason) return reason;
+  }
+  return null;
 }
 
 /** Filter the Key Takeaways list. Each takeaway has a `text` field
