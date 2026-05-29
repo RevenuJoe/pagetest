@@ -67,6 +67,16 @@ const VALID_CATEGORIES: ReadonlyArray<CheckKey> = [
   "mobile",
 ];
 
+/** The five Claude-scored dimensions, in canonical order. Speed is
+ *  excluded because it's computed deterministically on the server. */
+const CLAUDE_DIMS: ReadonlyArray<ClaudeDimension> = [
+  "content",
+  "digestibility",
+  "cro",
+  "aboveTheFold",
+  "mobile",
+];
+
 export async function analyzeWithClaude(
   input: ClaudeInput,
 ): Promise<ClaudeOutput> {
@@ -112,16 +122,29 @@ export async function analyzeWithClaude(
   // into the prompt as the SOURCE MATERIAL. Takeaways can only
   // summarise / re-prioritise what the dimensions already concluded —
   // it can't invent new observations.
-  const dimensionResults = { content, digestibility, cro, aboveTheFold, mobile };
-  const rawTakeaways = await callTakeaways(client, input, dimensionResults);
+  const dimensionResultsAfterFilter = { content, digestibility, cro, aboveTheFold, mobile };
+  const rawTakeaways = await callTakeaways(client, input, dimensionResultsAfterFilter);
 
-  // Phase 2b: filter takeaways too, in case Claude re-introduced a
-  // hallucination by rewording a dimension note.
-  const keyTakeaways = filterTakeaways(rawTakeaways, filterCtx);
+  // Phase 2b: deterministic filter on takeaways too, in case Claude
+  // re-introduced a hallucination by rewording a dimension note.
+  const filteredTakeaways = filterTakeaways(rawTakeaways, filterCtx);
+
+  // Phase 3: GENERATOR-THEN-CRITIC fact-check. A single fresh Claude
+  // call audits every headline, every note, and every takeaway against
+  // the same evidence (GROUND TRUTH + body text + screenshots). For
+  // each item the critic returns KEEP, REWRITE, or DROP. The deterministic
+  // filters above catch known hallucination patterns; this call catches
+  // the rest. It's the standard generate-then-verify pattern.
+  const audited = await runCriticPass(
+    client,
+    input,
+    dimensionResultsAfterFilter,
+    filteredTakeaways,
+  );
 
   return {
-    checks: dimensionResults,
-    keyTakeaways,
+    checks: audited.dimensions,
+    keyTakeaways: audited.takeaways,
   };
 }
 
@@ -140,6 +163,10 @@ async function callDimension(
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 800,
+    // Temperature 0 keeps output as deterministic as possible. Higher
+    // temperatures invent more novel content — exactly what we don't
+    // want for factual analysis of a specific page.
+    temperature: 0,
     system,
     messages: [{ role: "user", content: userBlocks }],
   });
@@ -173,6 +200,7 @@ async function callTakeaways(
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 800,
+    temperature: 0,
     system,
     messages: [{ role: "user", content: userBlocks }],
   });
@@ -183,6 +211,242 @@ async function callTakeaways(
     .trim();
   return parseTakeaways(text);
 }
+
+// ---------------------------------------------------------------------------
+// PHASE 3 — generator-then-critic fact-check
+// ---------------------------------------------------------------------------
+
+/** Where a candidate claim sits in the report so we can put verdicts back. */
+type ItemKind = "headline" | "note" | "takeaway";
+
+interface CandidateItem {
+  id: number;
+  kind: ItemKind;
+  /** Dimension this item belongs to. For takeaways the dimension is the
+   *  category Claude assigned. */
+  dim: ClaudeDimension | "speed";
+  /** Index within the dimension's notes (only for notes). */
+  noteIndex?: number;
+  /** Index within the takeaways array (only for takeaways). */
+  takeawayIndex?: number;
+  /** Verbatim text the model wrote. */
+  text: string;
+}
+
+interface CriticVerdict {
+  id: number;
+  decision: "KEEP" | "REWRITE" | "DROP";
+  /** New text to use when decision is REWRITE. */
+  text?: string;
+  reason?: string;
+}
+
+/**
+ * Run a fresh Claude call that fact-checks every headline / note /
+ * takeaway against the same evidence (GROUND TRUTH + body text +
+ * screenshots) the generators saw. Returns the dimensions + takeaways
+ * with KEEPs untouched, REWRITEs substituted, and DROPs removed.
+ *
+ * Rationale: the generator passes can drift from the evidence even with
+ * lots of prompt rules. A second pass that ONLY judges "is this claim
+ * supported?" is a much more bounded task for the model and is the
+ * standard approach for factuality-critical pipelines.
+ */
+async function runCriticPass(
+  client: Anthropic,
+  input: ClaudeInput,
+  dimensionResults: Record<ClaudeDimension, CheckResult>,
+  takeaways: KeyTakeaway[],
+): Promise<{
+  dimensions: Record<ClaudeDimension, CheckResult>;
+  takeaways: KeyTakeaway[];
+}> {
+  // Build the candidate list — every piece of generated text in the
+  // report that the model produced (not deterministic content).
+  const candidates: CandidateItem[] = [];
+  let nextId = 1;
+  for (const dim of CLAUDE_DIMS) {
+    const r = dimensionResults[dim];
+    if (r.headline && r.headline.trim().length > 0) {
+      candidates.push({ id: nextId++, kind: "headline", dim, text: r.headline });
+    }
+    r.notes.forEach((note, idx) => {
+      candidates.push({ id: nextId++, kind: "note", dim, noteIndex: idx, text: note });
+    });
+  }
+  takeaways.forEach((tk, idx) => {
+    const text = typeof tk === "string" ? tk : tk.text;
+    const dim: ClaudeDimension | "speed" =
+      typeof tk === "string" ? "content" : (tk.category as ClaudeDimension | "speed");
+    candidates.push({ id: nextId++, kind: "takeaway", dim, takeawayIndex: idx, text });
+  });
+
+  // If nothing to audit, return inputs unchanged.
+  if (candidates.length === 0) {
+    return { dimensions: dimensionResults, takeaways };
+  }
+
+  // Build the critic prompt + user blocks (same evidence the generators
+  // had, plus the candidate list).
+  const system = buildCriticPrompt();
+  const userBlocks = buildUserBlocks(input);
+  userBlocks.push({ type: "text", text: formatCandidateList(candidates) });
+
+  let verdicts: CriticVerdict[] = [];
+  try {
+    const response = await client.messages.create({
+      model: MODEL,
+      max_tokens: 2000,
+      temperature: 0,
+      system,
+      messages: [{ role: "user", content: userBlocks }],
+    });
+    const text = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+    verdicts = parseCriticVerdicts(text);
+  } catch (err) {
+    // If the critic call fails, fall back to the un-audited results.
+    // This keeps the tool working even if the critic API misbehaves.
+    console.warn("Critic pass failed — returning un-audited results:", err);
+    return { dimensions: dimensionResults, takeaways };
+  }
+
+  // Apply verdicts. Default for any item missing a verdict is KEEP
+  // (safer than dropping everything if the critic returns a partial list).
+  const verdictById = new Map<number, CriticVerdict>();
+  for (const v of verdicts) verdictById.set(v.id, v);
+
+  // Rebuild dimensions.
+  const newDimensions = { ...dimensionResults };
+  for (const dim of CLAUDE_DIMS) {
+    const r = newDimensions[dim];
+    const newNotes: string[] = [];
+    let newHeadline = r.headline;
+    for (const cand of candidates) {
+      if (cand.dim !== dim) continue;
+      const v = verdictById.get(cand.id);
+      if (cand.kind === "headline") {
+        if (v?.decision === "DROP") {
+          newHeadline = "";
+          console.warn(`[critic] DROP headline dim="${dim}" reason="${v.reason ?? ""}" text="${cand.text}"`);
+        } else if (v?.decision === "REWRITE" && v.text) {
+          newHeadline = v.text;
+          console.warn(`[critic] REWRITE headline dim="${dim}" reason="${v.reason ?? ""}" before="${cand.text}" after="${v.text}"`);
+        }
+      } else if (cand.kind === "note") {
+        if (v?.decision === "DROP") {
+          console.warn(`[critic] DROP note dim="${dim}" reason="${v.reason ?? ""}" text="${cand.text}"`);
+        } else if (v?.decision === "REWRITE" && v.text) {
+          newNotes.push(v.text);
+          console.warn(`[critic] REWRITE note dim="${dim}" reason="${v.reason ?? ""}" before="${cand.text}" after="${v.text}"`);
+        } else {
+          newNotes.push(cand.text);
+        }
+      }
+    }
+    newDimensions[dim] = { ...r, headline: newHeadline, notes: newNotes };
+  }
+
+  // Rebuild takeaways. callTakeaways always returns KeyTakeaway objects
+  // (legacy string-only takeaways live in older saved reports, not in
+  // newly-generated ones).
+  const newTakeaways: KeyTakeaway[] = [];
+  takeaways.forEach((tk, idx) => {
+    const cand = candidates.find(
+      (c) => c.kind === "takeaway" && c.takeawayIndex === idx,
+    );
+    if (!cand) {
+      newTakeaways.push(tk);
+      return;
+    }
+    const v = verdictById.get(cand.id);
+    if (v?.decision === "DROP") {
+      console.warn(`[critic] DROP takeaway reason="${v.reason ?? ""}" text="${cand.text}"`);
+      return;
+    }
+    if (v?.decision === "REWRITE" && v.text) {
+      newTakeaways.push({ ...tk, text: v.text });
+      console.warn(`[critic] REWRITE takeaway reason="${v.reason ?? ""}" before="${cand.text}" after="${v.text}"`);
+      return;
+    }
+    newTakeaways.push(tk);
+  });
+
+  return { dimensions: newDimensions, takeaways: newTakeaways };
+}
+
+/** System prompt for the critic. Narrow and structured — the only job
+ *  is to compare each candidate claim against the page evidence. */
+function buildCriticPrompt(): string {
+  return [
+    "You are a strict fact-checker auditing a website analysis report.",
+    "",
+    "You are given:",
+    "  - The same page evidence the original analyser had: structural summary, GROUND TRUTH from the parsed HTML, the body text, and the above-the-fold + full-page screenshots for desktop and mobile.",
+    "  - A numbered list of CANDIDATE items the original analyser produced (headlines, notes, takeaways).",
+    "",
+    "For each candidate, decide one of three verdicts:",
+    "  - KEEP: the claim is fully supported by the evidence (a specific element in GROUND TRUTH, a quoted phrase from the body text, or a clearly visible feature in the screenshots).",
+    "  - REWRITE: the claim is partly supported but contains an unsupported clause, an exaggeration, a numerical error, or a contradiction. Rewrite the claim to be conservative and supported. Keep the same intent but cut the unsupported part.",
+    "  - DROP: the claim has no specific evidence in any of the three sources, or contradicts the evidence (e.g. recommends adding X when X is already present in the body text / screenshot).",
+    "",
+    "Hard rules:",
+    "  - When in doubt, prefer REWRITE over KEEP and DROP over REWRITE. Conservative output is the goal.",
+    "  - Never KEEP a claim whose evidence you cannot specifically point to.",
+    "  - Never invent new content. REWRITE must be a SHORTER, more conservative version of the original — not a replacement that introduces new claims.",
+    "  - Do NOT comment on navigation in any form — navigation is OFF-LIMITS as a topic. DROP any item that talks about nav links, nav bar, nav being lean/bulky/minimal, slimming the nav, adding nav links, etc.",
+    "  - DROP any item that claims X is missing when X is visible in the screenshot or named in the body text.",
+    "  - DROP any item that claims the page has 'two competing forms' or 'forms competing' — a multi-step form is ONE form.",
+    "  - DROP any item recommending sign-in / log-in / create-account CTAs.",
+    "",
+    "Return ONLY valid JSON, no markdown fences, no preamble, in this exact shape:",
+    "",
+    '{ "verdicts": [ { "id": <number>, "decision": "KEEP" | "REWRITE" | "DROP", "text": "<rewritten text — only when decision is REWRITE>", "reason": "<one short clause: what evidence is missing or what was wrong>" }, ... ] }',
+    "",
+    "Include exactly one verdict per candidate id. If you forget an id, the system assumes KEEP — so always emit all ids.",
+  ].join("\n");
+}
+
+/** Inline the candidate list at the end of the critic's user message. */
+function formatCandidateList(candidates: CandidateItem[]): string {
+  const lines: string[] = [];
+  lines.push("================================================================");
+  lines.push("CANDIDATE ITEMS TO AUDIT");
+  lines.push("================================================================");
+  for (const c of candidates) {
+    const dimLabel = c.dim;
+    lines.push(`[${c.id}] (${c.kind} • ${dimLabel}) ${c.text}`);
+  }
+  return lines.join("\n");
+}
+
+/** Parse the critic's JSON response into structured verdicts. Tolerant
+ *  of common output mistakes — extra fields, missing reasons, etc. */
+function parseCriticVerdicts(raw: string): CriticVerdict[] {
+  const parsed = parseJsonObject(raw);
+  const items = Array.isArray(parsed.verdicts) ? parsed.verdicts : [];
+  const out: CriticVerdict[] = [];
+  for (const it of items) {
+    if (!it || typeof it !== "object") continue;
+    const rec = it as Record<string, unknown>;
+    const id = typeof rec.id === "number" ? rec.id : null;
+    const decisionRaw = typeof rec.decision === "string" ? rec.decision.toUpperCase() : null;
+    if (id == null || !decisionRaw) continue;
+    if (decisionRaw !== "KEEP" && decisionRaw !== "REWRITE" && decisionRaw !== "DROP") continue;
+    out.push({
+      id,
+      decision: decisionRaw as CriticVerdict["decision"],
+      text: typeof rec.text === "string" ? rec.text : undefined,
+      reason: typeof rec.reason === "string" ? rec.reason : undefined,
+    });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 
 /**
  * Format the five dimension results into a structured digest that the
