@@ -75,7 +75,7 @@ export default function Results({
         <Section
           title="Key Recommendations"
           icon={<IconBulb />}
-          defaultOpen={false}
+          defaultOpen
           headerAction={
             <CopyButton getText={() => formatTakeawaysForClipboard(data)} />
           }
@@ -320,18 +320,32 @@ function formatPsiForClipboard(data: AnalyzeResponse): string {
   const mobile = data.pageSpeedInsights?.mobile;
   if (!desktop && !mobile) return "";
 
-  const formatStrategy = (label: string, b: PsiBreakdown): string => {
-    // Lighthouse category scores (also rendered in the comparison chart).
-    const cats = PSI_CATEGORIES.map((cat) => {
-      const s = catScore(b, cat.key);
-      return `- ${cat.label}: ${s == null ? "—" : `${s}/100`}`;
+  // Expand the short chart titles to the full Lighthouse names for
+  // clipboard so the copied text is self-explanatory outside the UI.
+  const METRIC_LONG_TITLES: Record<string, string> = {
+    performance: "Performance",
+    accessibility: "Accessibility",
+    bestPractices: "Best Practices",
+    seo: "SEO",
+    speedIndex: "Speed Index",
+    lcp: "Largest Contentful Paint",
+    fcp: "First Contentful Paint",
+    cls: "Cumulative Layout Shift",
+    tbt: "Total Blocking Time",
+    pageWeight: "Page Weight",
+  };
+
+  const formatStrategy = (deviceLabel: string, b: PsiBreakdown): string => {
+    // Mirror the 10 bar-chart graphs on screen (CHART_METRIC_CONFIGS).
+    // Each line shows the metric's full title + the strategy's value
+    // using the same formatter the chart uses, so the clipboard stays
+    // in sync with the UI.
+    const metrics = CHART_METRIC_CONFIGS.map((m) => {
+      const v = m.getValue(b);
+      const longTitle = METRIC_LONG_TITLES[m.key] ?? m.title;
+      return `- ${longTitle}: ${m.formatValueLabel(v)}`;
     }).join("\n");
-    // Detail metrics rendered inside the strategy card. Mirror the
-    // STRATEGY_METRICS array so the clipboard stays in sync with the UI.
-    const metrics = STRATEGY_METRICS.map(
-      (m) => `- ${m.label}: ${m.getValue(b)}`,
-    ).join("\n");
-    return `${label}:\n${cats}\n${metrics}`;
+    return `${deviceLabel}:\n${metrics}`;
   };
 
   const blocks: string[] = [];
@@ -1037,19 +1051,15 @@ function PageSpeedInsightsBlock({ data }: { data: AnalyzeResponse }) {
   }
   return (
     <div className="space-y-8">
-      {/* Single comparison chart row — five columns side by side:
-          Performance / Accessibility / Best Practices / SEO / Speed Index.
-          Each column has two vertical bars (Desktop / Mobile). */}
-      <PsiCategoryComparison desktop={desktop} mobile={mobile} />
+      {/* TEN bar-chart graphs in two rows of five, each comparing
+          Desktop vs Mobile. Row 1 is the 4 Lighthouse category scores
+          plus Speed Index; row 2 is the Core Web Vitals + Page Weight
+          (Largest Paint, First Paint, Layout Shift, Blocking Time,
+          Page Weight). All cards share the same chart layout. The
+          grid sits directly inside the PSI section — no wrapper. */}
+      <PsiMetricGrid desktop={desktop} mobile={mobile} />
 
-      {/* Per-strategy breakdown: 6 chips per device — Performance,
-          Accessibility, Best Practices, SEO, Speed Index, Page Weight. */}
-      <div className="grid gap-5 md:grid-cols-2">
-        {desktop && <PsiStrategyCard label="Desktop" device="desktop" data={desktop} />}
-        {mobile && <PsiStrategyCard label="Mobile" device="mobile" data={mobile} />}
-      </div>
-
-      {/* Bullet summary — what stood out across categories. */}
+      {/* Numbered summary — what stood out across the metrics. */}
       <PsiSummary desktop={desktop} mobile={mobile} />
     </div>
   );
@@ -1185,9 +1195,143 @@ const CHART_METRIC_CONFIGS: PsiChartMetricConfig[] = [
     formatValueLabel: (v) => (v == null ? "—" : `${v.toFixed(2)}s`),
     getColor: (v) => (v == null ? "#c4c0b6" : speedIndexBandColor(v)),
   },
+  {
+    // Largest Contentful Paint — time to paint the biggest visible
+    // element. Good ≤ 2.5s, poor > 4s (Core Web Vital).
+    key: "lcp",
+    title: "Largest Paint",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <circle cx="9" cy="11" r="1.5" />
+        <path d="M3 17l5-5 4 4 3-3 6 6" />
+      </svg>
+    ),
+    yMax: 12,
+    yTickFormat: (v) => (v === 0 ? "0" : `${Math.round(v)}s`),
+    getValue: (b) => (b?.lcpMs == null ? null : b.lcpMs / 1000),
+    formatValueLabel: (v) => (v == null ? "—" : `${v.toFixed(2)}s`),
+    getColor: (v) =>
+      v == null
+        ? "#c4c0b6"
+        : v <= 2.5
+        ? scoreColor(95)
+        : v > 4
+        ? scoreColor(30)
+        : scoreColor(60),
+  },
+  {
+    // First Contentful Paint — time to first piece of content appearing.
+    // Good ≤ 1.8s, poor > 3s (Lighthouse).
+    key: "fcp",
+    title: "First Paint",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
+      </svg>
+    ),
+    yMax: 6,
+    yTickFormat: (v) => (v === 0 ? "0" : `${v % 1 === 0 ? v : v.toFixed(1)}s`),
+    getValue: (b) => (b?.fcpMs == null ? null : b.fcpMs / 1000),
+    formatValueLabel: (v) => (v == null ? "—" : `${v.toFixed(2)}s`),
+    getColor: (v) =>
+      v == null
+        ? "#c4c0b6"
+        : v <= 1.8
+        ? scoreColor(95)
+        : v > 3
+        ? scoreColor(30)
+        : scoreColor(60),
+  },
+  {
+    // Cumulative Layout Shift — unitless score of visual stability.
+    // Good ≤ 0.1, poor > 0.25 (Core Web Vital).
+    key: "cls",
+    title: "Layout Shift",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <rect x="3" y="3" width="10" height="10" rx="1" />
+        <rect x="11" y="11" width="10" height="10" rx="1" />
+      </svg>
+    ),
+    yMax: 0.4,
+    yTickFormat: (v) => (v === 0 ? "0" : v.toFixed(2)),
+    getValue: (b) => (b?.cls == null ? null : b.cls),
+    formatValueLabel: (v) => (v == null ? "—" : v.toFixed(2)),
+    getColor: (v) =>
+      v == null
+        ? "#c4c0b6"
+        : v <= 0.1
+        ? scoreColor(95)
+        : v > 0.25
+        ? scoreColor(30)
+        : scoreColor(60),
+  },
+  {
+    // Total Blocking Time — main-thread blocking (lab proxy for INP).
+    // Good ≤ 200ms, poor > 600ms (Lighthouse).
+    key: "tbt",
+    title: "Blocking Time",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <rect x="6" y="4" width="4" height="16" rx="1" />
+        <rect x="14" y="4" width="4" height="16" rx="1" />
+      </svg>
+    ),
+    yMax: 2000, // milliseconds
+    yTickFormat: (v) => (v === 0 ? "0" : `${(v / 1000).toFixed(1)}s`),
+    getValue: (b) => (b?.tbtMs == null ? null : b.tbtMs),
+    formatValueLabel: (v) =>
+      v == null
+        ? "—"
+        : v >= 1000
+        ? `${(v / 1000).toFixed(2)}s`
+        : `${Math.round(v)}ms`,
+    getColor: (v) =>
+      v == null
+        ? "#c4c0b6"
+        : v <= 200
+        ? scoreColor(95)
+        : v > 600
+        ? scoreColor(30)
+        : scoreColor(60),
+  },
+  {
+    // Page Weight — total bytes transferred. Thresholds are pragmatic
+    // landing-page targets, not a Lighthouse band. Good ≤ 1.5MB,
+    // poor > 3MB.
+    key: "pageWeight",
+    title: "Page Weight",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <path d="M6 2h12l2 4-8 16L4 6z" />
+        <path d="M9 6l3 4 3-4" />
+      </svg>
+    ),
+    yMax: 10 * 1024 * 1024, // 10MB in bytes
+    yTickFormat: (v) => (v === 0 ? "0" : `${(v / 1024 / 1024).toFixed(0)}MB`),
+    getValue: (b) => (b?.totalByteWeight == null ? null : b.totalByteWeight),
+    formatValueLabel: (v) =>
+      v == null ? "—" : `${(v / 1024 / 1024).toFixed(1)}MB`,
+    getColor: (v) =>
+      v == null
+        ? "#c4c0b6"
+        : v <= 1.5 * 1024 * 1024
+        ? scoreColor(95)
+        : v > 3 * 1024 * 1024
+        ? scoreColor(30)
+        : scoreColor(60),
+  },
 ];
 
-function PsiCategoryComparison({
+/**
+ * The grid of 10 bar-chart cards rendered directly in the PSI section,
+ * no surrounding wrapper. Two rows of five on desktop. Each card
+ * compares Desktop vs Mobile for one metric: Performance,
+ * Accessibility, Best Practices, SEO, Speed Index, Largest Paint,
+ * First Paint, Layout Shift, Blocking Time, Page Weight.
+ */
+function PsiMetricGrid({
   desktop,
   mobile,
 }: {
@@ -1195,23 +1339,15 @@ function PsiCategoryComparison({
   mobile?: PsiBreakdown;
 }) {
   return (
-    <div className="rounded-card border border-beige-line bg-bg/40 px-5 py-4">
-      <div
-        className="text-[10px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.16em" }}
-      >
-        Desktop vs. Mobile
-      </div>
-      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {CHART_METRIC_CONFIGS.map((cfg) => (
-          <PsiBarChartCard
-            key={cfg.key}
-            config={cfg}
-            desktop={desktop}
-            mobile={mobile}
-          />
-        ))}
-      </div>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      {CHART_METRIC_CONFIGS.map((cfg) => (
+        <PsiBarChartCard
+          key={cfg.key}
+          config={cfg}
+          desktop={desktop}
+          mobile={mobile}
+        />
+      ))}
     </div>
   );
 }
@@ -1463,261 +1599,6 @@ function ScoreBar({ label, score }: { label: string; score: number | null }) {
   );
 }
 
-/**
- * Detail metrics rendered inside each Desktop / Mobile strategy card.
- * The four Lighthouse category scores (Performance / Accessibility /
- * Best Practices / SEO) already live in the comparison chart above, so
- * the strategy cards now surface the timing-and-weight metrics that
- * actually drive page experience: Core Web Vitals (LCP, CLS), the
- * supporting Lighthouse perf signals (Speed Index, FCP, TBT), and
- * total page weight. Thresholds follow Lighthouse's published bands.
- */
-interface StrategyMetric {
-  label: string;
-  icon: React.ReactNode;
-  getValue: (b: PsiBreakdown) => string;
-  isGood: (b: PsiBreakdown) => boolean;
-  isWarn: (b: PsiBreakdown) => boolean;
-}
-
-const STRATEGY_METRICS: StrategyMetric[] = [
-  {
-    // Speed Index: how quickly visible content paints during page load.
-    // Good ≤ 3.4s, poor > 5.8s (Lighthouse).
-    label: "Speed Index",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-        <circle cx="12" cy="13" r="8" />
-        <path d="M12 9v4l3 2" />
-        <path d="M9 2h6" />
-      </svg>
-    ),
-    getValue: (b) => fmtTime(b.speedIndexMs),
-    isGood: (b) => b.speedIndexMs != null && b.speedIndexMs <= 3400,
-    isWarn: (b) => b.speedIndexMs != null && b.speedIndexMs > 5800,
-  },
-  {
-    // Largest Contentful Paint: when the biggest visible element loads.
-    // Good ≤ 2.5s, poor > 4s (Core Web Vital).
-    label: "Largest Contentful Paint",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-        <rect x="3" y="5" width="18" height="14" rx="2" />
-        <circle cx="9" cy="11" r="1.5" />
-        <path d="M3 17l5-5 4 4 3-3 6 6" />
-      </svg>
-    ),
-    getValue: (b) => fmtTime(b.lcpMs),
-    isGood: (b) => b.lcpMs != null && b.lcpMs <= 2500,
-    isWarn: (b) => b.lcpMs != null && b.lcpMs > 4000,
-  },
-  {
-    // First Contentful Paint: when the FIRST piece of content appears.
-    // Good ≤ 1.8s, poor > 3s (Lighthouse).
-    label: "First Contentful Paint",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-        <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
-      </svg>
-    ),
-    getValue: (b) => fmtTime(b.fcpMs),
-    isGood: (b) => b.fcpMs != null && b.fcpMs <= 1800,
-    isWarn: (b) => b.fcpMs != null && b.fcpMs > 3000,
-  },
-  {
-    // Cumulative Layout Shift: visual stability score (unitless).
-    // Good ≤ 0.1, poor > 0.25 (Core Web Vital).
-    label: "Cumulative Layout Shift",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-        <rect x="3" y="3" width="10" height="10" rx="1" />
-        <rect x="11" y="11" width="10" height="10" rx="1" />
-      </svg>
-    ),
-    getValue: (b) => (b.cls == null ? "—" : b.cls.toFixed(2)),
-    isGood: (b) => b.cls != null && b.cls <= 0.1,
-    isWarn: (b) => b.cls != null && b.cls > 0.25,
-  },
-  {
-    // Total Blocking Time: how long JS blocks the main thread (lab
-    // proxy for INP). Good ≤ 200ms, poor > 600ms (Lighthouse).
-    label: "Total Blocking Time",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-        <rect x="6" y="4" width="4" height="16" rx="1" />
-        <rect x="14" y="4" width="4" height="16" rx="1" />
-      </svg>
-    ),
-    getValue: (b) => fmtTime(b.tbtMs),
-    isGood: (b) => b.tbtMs != null && b.tbtMs <= 200,
-    isWarn: (b) => b.tbtMs != null && b.tbtMs > 600,
-  },
-  {
-    // Page Weight: total bytes transferred. Thresholds are pragmatic
-    // landing-page targets, not a Lighthouse band. Good ≤ 1.5MB,
-    // poor > 3MB.
-    label: "Page Weight",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-        <path d="M6 2h12l2 4-8 16L4 6z" />
-        <path d="M9 6l3 4 3-4" />
-      </svg>
-    ),
-    getValue: (b) => fmtBytes(b.totalByteWeight),
-    isGood: (b) => b.totalByteWeight != null && b.totalByteWeight <= 1.5 * 1024 * 1024,
-    isWarn: (b) => b.totalByteWeight != null && b.totalByteWeight > 3 * 1024 * 1024,
-  },
-];
-
-function PsiStrategyCard({
-  label,
-  data,
-  device,
-}: {
-  label: string;
-  data: PsiBreakdown;
-  device: "desktop" | "mobile";
-}) {
-  // Six chips per strategy: Speed Index, LCP, FCP, CLS, TBT, Page
-  // Weight. The four Lighthouse category scores (Performance /
-  // Accessibility / Best Practices / SEO) are already shown in the
-  // comparison chart above — these cards surface the supporting
-  // timing-and-weight metrics so the user gets a complete picture of
-  // page experience.
-  //
-  // Visual pattern mirrors the Overview section: the outer card sits
-  // on the lighter (white) background, and the inner stat chips use
-  // the same translucent-beige bg as the Overview's per-dimension chips.
-  return (
-    <div className="rounded-card border border-beige-line bg-card shadow-card px-5 py-4">
-      <div
-        className="flex items-center gap-2 text-[12px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.18em" }}
-      >
-        <DeviceIcon device={device} />
-        {label}
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {STRATEGY_METRICS.map((m) => (
-          <PsiValueChip
-            key={m.label}
-            label={m.label}
-            value={m.getValue(data)}
-            icon={m.icon}
-            good={m.isGood(data)}
-            warn={m.isWarn(data)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DeviceIcon({ device }: { device: "desktop" | "mobile" }) {
-  if (device === "desktop") {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-        <rect x="2" y="4" width="20" height="13" rx="2" />
-        <path d="M8 21h8M12 17v4" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-      <rect x="7" y="2" width="10" height="20" rx="2" />
-      <path d="M11 18h2" />
-    </svg>
-  );
-}
-
-/**
- * A Speed Index / Page Weight chip in the same visual style as the
- * Lighthouse category chips, but showing a value (e.g. "2.4 s", "1.8 MB")
- * tinted green when in Google's "good" band and red when "poor".
- */
-function PsiValueChip({
-  label,
-  value,
-  icon,
-  good,
-  warn,
-}: {
-  label: string;
-  value: string;
-  icon: React.ReactNode;
-  good?: boolean;
-  warn?: boolean;
-}) {
-  const color = warn ? "#C44536" : good ? "#2F7D6F" : "#76A09C";
-  return (
-    <div className="flex flex-col items-center gap-1 rounded-card border border-beige-line bg-bg/40 px-3 py-3">
-      <div
-        className="flex h-7 w-7 items-center justify-center rounded-lg"
-        style={{ background: `${color}1a`, color }}
-      >
-        {icon}
-      </div>
-      <div
-        className="text-[16px] font-bold tabular-nums leading-none tracking-tight"
-        style={{ color }}
-      >
-        {value}
-      </div>
-      <div
-        className="text-center text-[10px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.08em" }}
-      >
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function MetricChip({
-  label,
-  value,
-  good,
-  warn,
-}: {
-  label: string;
-  value: string;
-  good?: boolean;
-  warn?: boolean;
-}) {
-  // Subtle accent on Core Web Vitals — green tint when within Google's
-  // "good" threshold, red tint when in the "poor" band.
-  const color = warn ? "#C44536" : good ? "#2F7D6F" : undefined;
-  return (
-    <div className="flex flex-col gap-1 rounded-card border border-beige-line bg-card px-3 py-2.5">
-      <div
-        className="text-[15px] font-bold tabular-nums leading-none tracking-tight"
-        style={{ color: color ?? "#1c1f1d" }}
-      >
-        {value}
-      </div>
-      <div
-        className="text-[9px] font-bold uppercase text-ink-soft"
-        style={{ letterSpacing: "0.1em" }}
-      >
-        {label}
-      </div>
-    </div>
-  );
-}
-
-function fmtTime(ms: number | null): string {
-  if (ms == null) return "—";
-  return ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${Math.round(ms)} ms`;
-}
-
-function fmtBytes(b: number | null): string {
-  if (b == null) return "—";
-  if (b >= 1024 * 1024) return `${(b / 1024 / 1024).toFixed(2)} MB`;
-  if (b >= 1024) return `${Math.round(b / 1024)} KB`;
-  return `${b} B`;
-}
-
 /** Auto-generated summary bullets used by BOTH the PSI section's UI and
  *  the clipboard-copy format. Extracted so the two stay in sync. */
 function computePsiSummaryBullets(
@@ -1803,17 +1684,19 @@ function PsiSummary({
       >
         Summary
       </div>
-      <ul className="m-0 mt-3 flex flex-col gap-2 list-none p-0">
+      <ol className="m-0 mt-3 flex flex-col gap-2 list-none p-0">
         {bullets.slice(0, 8).map((b, i) => (
           <li
             key={i}
-            className="flex items-start gap-2.5 text-[13px] font-medium leading-[1.55] text-ink"
+            className="flex items-center gap-3 text-[13px] font-medium leading-[1.55] text-ink"
           >
-            <span className="mt-[8px] inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" />
+            <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-bold tabular-nums text-white">
+              {i + 1}
+            </span>
             <span>{b}</span>
           </li>
         ))}
-      </ul>
+      </ol>
     </div>
   );
 }
