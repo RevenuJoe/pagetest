@@ -67,6 +67,24 @@ function bodyHasSocialProof(bodyText: string): boolean {
 // FILTERS
 // -----------------------------------------------------------------------
 
+/** "Page lacks a nav entirely" / "no navigation present" when the page
+ *  has top-area CTAs/links inside a <header> element. Modern sites
+ *  often use <header> directly without <nav>; if header has buttons,
+ *  the page has navigation, just not tagged semantically. */
+const filterNavMissingButHeaderHasContent: FilterRule = (note, _dim, ctx) => {
+  const said =
+    /\bpage\s+lacks\s+a\s+(<nav>|nav(igation)?)\s+(element\s+)?(entirely|altogether)\b/i.test(note) ||
+    /\b(no|missing)\s+nav(igation)?\s+(present|element|whatsoever)\b/i.test(note) ||
+    /\bpage\s+has\s+no\s+nav(igation)?\b/i.test(note) ||
+    /\b(zero|no)\s+(<nav>|nav)\s+elements?\b/i.test(note) ||
+    /\bno\s+logo[- ]left\s*\+\s*links[- ]middle\s*\+\s*cta[- ]right\b/i.test(note);
+  if (!said) return null;
+  if (ctx.structure.headerCtaTexts.length > 0) {
+    return `claims page has no navigation but <header> contains ${ctx.structure.headerCtaTexts.length} link(s)/button(s): ${ctx.structure.headerCtaTexts.slice(0, 4).join(", ")}`;
+  }
+  return null;
+};
+
 /** "Slim the nav" / "navigation is bulky" when the page has ≤4 nav
  *  links — verifiable false. Single nav (1 link) and zero nav (0 links)
  *  are different situations, not bulkiness. */
@@ -195,6 +213,7 @@ const filterNotIntegratedLayout: FilterRule = (note) => {
 // -----------------------------------------------------------------------
 
 const ALL_FILTERS: FilterRule[] = [
+  filterNavMissingButHeaderHasContent,
   filterNavBulky,
   filterAddSocialProof,
   filterAddBottomForm,

@@ -65,6 +65,12 @@ export interface PageStructure {
    *  page, which prevents "add a bottom CTA" hallucinations when the
    *  page already ends with a "Get started" section. */
   headings: string[];
+  /** Visible text of every <a> and <button> found inside a <header>
+   *  element. Many modern sites use <header> with buttons directly
+   *  and skip the <nav> tag entirely — this captures the top-area
+   *  navigation/CTA content so it's not mistaken for "page lacks
+   *  navigation". Dedup by text. */
+  headerCtaTexts: string[];
 }
 
 export interface FormFieldSummary {
@@ -271,6 +277,7 @@ function extractStructure(html: string): PageStructure {
   const navLinks = extractNavLinks(html);
   const ctaTexts = extractCtaTexts(html);
   const headings = extractHeadings(html);
+  const headerCtaTexts = extractHeaderCtaTexts(html);
 
   // Derive blunt yes/no signals for the most-hallucinated fields. Claude
   // gets these as ground truth so it can't claim "the form asks for a
@@ -308,6 +315,7 @@ function extractStructure(html: string): PageStructure {
     navLinks,
     ctaTexts,
     headings,
+    headerCtaTexts,
   };
 }
 
@@ -381,6 +389,45 @@ function extractCtaTexts(html: string): string[] {
     if (!isButtonish) continue;
     add(text);
     if (out.length >= 40) return out;
+  }
+  return out;
+}
+
+/**
+ * Visible text of every <a> and <button> found INSIDE a <header>
+ * element. Modern sites often use <header> directly with buttons
+ * (e.g. <header><img class="logo" /><a class="cta">Get a Demo</a></header>)
+ * with no <nav> tag at all. Without this, our nav signal can mislead
+ * Claude into saying "page lacks navigation" when the page clearly has
+ * a top-area CTA — the header just isn't tagged semantically.
+ *
+ * Deduped by text. Capped at 30 entries.
+ */
+function extractHeaderCtaTexts(html: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (raw: string): void => {
+    const text = cleanInlineText(raw);
+    if (!text || text.length > 60) return;
+    const key = text.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(text);
+  };
+  for (const headerMatch of html.matchAll(
+    /<header\b[^>]*>([\s\S]*?)<\/header>/gi,
+  )) {
+    const headerInner = headerMatch[1] ?? "";
+    for (const m of headerInner.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)) {
+      add(m[1] ?? "");
+      if (out.length >= 30) return out;
+    }
+    for (const m of headerInner.matchAll(
+      /<button\b[^>]*>([\s\S]*?)<\/button>/gi,
+    )) {
+      add(m[1] ?? "");
+      if (out.length >= 30) return out;
+    }
   }
   return out;
 }

@@ -354,6 +354,11 @@ function buildPromptText(input: ClaudeInput): string {
     s.navLinks.length > 0
       ? `- Nav link labels (verbatim): ${s.navLinks.map((l) => `"${l}"`).join(", ")}`
       : "- Nav link labels: (none)",
+    `- Number of links/buttons inside <header>: ${s.headerCtaTexts.length}`,
+    s.headerCtaTexts.length > 0
+      ? `- Header link/button labels (verbatim): ${s.headerCtaTexts.map((l) => `"${l}"`).join(", ")}`
+      : "- Header link/button labels: (none)",
+    "- IMPORTANT: many modern sites use <header> with buttons directly and skip the <nav> tag entirely. If 'Number of links inside <nav>' is 0 but 'Number of links/buttons inside <header>' is greater than 0, the page DOES HAVE top-area navigation/CTAs (logo + button in the header) — do NOT say 'the page lacks a navigation entirely' or 'no navigation present'. Treat the header buttons as the navigation.",
     "",
     `- Number of CTA-like buttons/links found: ${s.ctaTexts.length}`,
     s.ctaTexts.length > 0
