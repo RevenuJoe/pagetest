@@ -322,6 +322,18 @@ Score bands:
 
 HARD CEILING for non-interactive hero CTAs: if the page's hero / above-the-fold has ONLY buttons (no form, no dropdown, no tick boxes, no multi-step quiz, no calculator — just a "Get a Demo" or "Start Free Trial" button on its own), CAP the CRO score at 83 regardless of how many other criteria are met. An interactive hero widget (dropdown / tick boxes / multi-step quiz / form) is a near-prerequisite for top-tier CRO; pages that lead with just buttons are leaving conversion on the table even when the rest of the page is solid. Conversely, a hero with an interactive widget (tick boxes or dropdown for question-led entry) is a STRONG positive signal — score generously in that case.
 
+TOP + BOTTOM CONVERSION COMBO BONUS — +10 to the base CRO score (capped at 100) when the page has BOTH of these:
+    (a) A conversion widget visible ABOVE THE FOLD — a dropdown question, a one-field email input, a multiple tick-box widget, a multi-step quiz, or a calculator (anything more interactive than a standalone button); AND
+    (b) A bottom lead-gen form anywhere near the footer — a one-field email form, a multi-field form (name + company + email etc.), or any capture form that gives a second conversion opportunity after the visitor has scrolled.
+
+Both must be present visually (confirm in the full-page screenshot or in the per-<form> GROUND TRUTH list) for the bonus to fire.
+
+DISCLOSURE — always call this out in your notes either way:
+- IF THE BONUS APPLIES: write a positive note quoting the specific widgets you saw (e.g. "Hero has a multi-step dropdown form AND the bottom of the page has a one-field email capture — +10 CRO bonus applied").
+- IF THE BONUS DOES NOT APPLY: write a recommendation note saying what's missing and that adding it would unlock +10 (e.g. "Hero has a dropdown widget but there's no bottom lead-gen form — adding one (a one-field email or a full lead-gen form near the footer) would unlock another +10 on this score" OR "There's a bottom contact form but no hero conversion widget — adding a question-led hero would unlock another +10").
+
+This bonus stacks on top of the base score from the items-hit bands AND alongside the hard ceiling: a page that hits 6 of 7 criteria, has a dropdown hero AND a bottom form gets ~88 base + 10 bonus = 98. A page with a button-only hero is still capped at 83 even if it has a bottom form — the ceiling beats the bonus.
+
 If the page is doing most of this WELL and you only have one or two "could be better" notes, score in the 85-93 range — that's the right band for a page hitting the criteria. Do NOT default to the 70s out of caution. CRO scores in the 90s are appropriate for pages with a strong multi-step hero, two clear CTA types, mid-page CTAs at every section, and a bottom lead-gen form.
 
 Conversely: if the page only has one buried CTA, no conversion widget in the hero, and no mid-page CTAs, that's a low score — don't be generous out of habit.`;
@@ -383,7 +395,22 @@ Score bands map directly from items-hit:
 
 Reward what's there. Do NOT shave points imagining a sharper headline / nicer visual / extra CTA. If the existing element clears the bar, give it the points. Above-the-fold pages with strong execution should regularly score in the 90s — not default to the 70s out of caution.
 
-Always call out in the notes which of the 6 are present (positives) and which are missing (recommendations). A reader should be able to read the AtF notes and immediately know which of the 6 they have and which they don't.`;
+Always call out in the notes which of the 6 are present (positives) and which are missing (recommendations). A reader should be able to read the AtF notes and immediately know which of the 6 they have and which they don't.
+
+ABOVE-THE-FOLD BONUS POINTS — after picking your base score from the bands above, apply these bonuses for specific positive signals visible in the AtF screenshot. Add the points to your base, cap the total at 100. ALWAYS list every applied bonus in your notes as a separate observation so the reader sees why the score is what it is.
+
+    +10 bonus — Hero form is a DROPDOWN-led conversion widget (a <select> dropdown question like "How many providers are you scheduling?", "What's your team size?", etc. visible in the hero).
+    +10 bonus — Hero form uses TICK BOXES / radio-button-style interactive choices (visible in the AtF screenshot — checkboxes the visitor can tap to select an answer).
+    +5 bonus  — Hero form is a ONE-FIELD EMAIL form (just an email input + a "Get a Demo" / "Start Free" style button). Less interactive than dropdown / tick boxes but still better than no widget.
+    +5 bonus  — Social proof is VISIBLE in the AtF screenshot (logos, "Trusted by N" copy, ratings, badges, named-customer brands — even cropped at the bottom edge counts).
+    +5 bonus  — Bullet points or short feature pills are used in the hero (3-ish quick supporting items under or beside the headline).
+    +5 bonus  — A strong hero VISUAL is present (product screenshot, illustration, demo video, polished graphic — not blank or weak).
+
+Rules for the bonuses:
+- The hero-form bonuses (+10 dropdown, +10 tick boxes, +5 one-field email) are MUTUALLY EXCLUSIVE — pick the SINGLE highest-value pattern the hero matches. A multi-step form that starts with a dropdown counts as +10 (dropdown), not +10 + +5.
+- Each bonus that fires MUST appear in the notes as a separate positive observation, e.g. "+10 hero dropdown form ('How many providers are you scheduling?')" or "+5 social proof visible above the fold (Prisma Health, Beebe Healthcare logos)". Quote the specific evidence.
+- The base score + bonuses can take a page from a 75 to a 95 — that's correct. A page hitting all 6 core criteria PLUS having a dropdown form + social proof + bullets + visual is exceptional and the score should reflect that.
+- Score is still capped at 100. If the base + bonuses exceed 100, cap.`;
 
 /**
  * MOBILE LAYOUT — phone usability check.

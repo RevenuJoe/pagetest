@@ -520,38 +520,64 @@ function buildSpeedCheck(
     };
   }
   // Start with the average Lighthouse performance score across desktop
-  // and mobile — that's the holistic Lighthouse view. Then apply a
-  // bonus based on Speed Index (the metric closest to "did the page
-  // actually feel fast"). If BOTH desktop and mobile load quickly,
-  // boost the score so the dimension reflects real-world snappiness
-  // even when Lighthouse penalises the page on niche audits.
-  // Thresholds (doubled from earlier — Joe wants real-world speed to
-  // carry more weight in the score):
-  //   Worst-of-both Speed Index < 1.0s  → +30 (extraordinary)
-  //   < 2.0s                           → +20 (really, really good)
-  //   < 3.0s                           → +10 (good / okay)
-  //   ≥ 3.0s                           → no boost
-  // Capped at 100.
+  // and mobile — that's the holistic Lighthouse view. Then apply two
+  // separate Speed Index boosts so the score reflects real-world
+  // snappiness even when Lighthouse penalises the page on niche audits.
+  //
+  // Main boost — based on the AVERAGE of the two Speed Indexes:
+  //   Average Speed Index < 2.0s  → +30 (exceptional)
+  //   < 3.0s                     → +20 (really, really good)
+  //   < 4.0s                     → +10 (good / okay)
+  //   ≥ 4.0s                     → no main boost
+  //
+  // Per-device bonus — fires SEPARATELY and stacks on the main boost:
+  //   If desktop OR mobile Speed Index < 2.0s  → +5
+  //
+  // Total boost capped only by the final 100-ceiling on the score.
   const rawScore = desktop && mobile
     ? Math.round((desktop.performanceScore + mobile.performanceScore) / 2)
     : (desktop?.performanceScore ?? mobile?.performanceScore ?? 0);
-  let speedIndexBoost = 0;
-  let speedIndexBoostNote: string | null = null;
   const desktopSI = desktop?.speedIndexMs ?? null;
   const mobileSI = mobile?.speedIndexMs ?? null;
+  let mainBoost = 0;
+  let mainBoostNote: string | null = null;
+  // Use the average when we have both strategies; fall back to whichever
+  // single value exists otherwise (the dimension stays useful when one
+  // PSI run failed).
+  let averageSI: number | null = null;
   if (desktopSI != null && mobileSI != null) {
-    const worstSI = Math.max(desktopSI, mobileSI);
-    if (worstSI < 1000) {
-      speedIndexBoost = 30;
-      speedIndexBoostNote = `Both Desktop and Mobile load in under a second, which is exceptional and gives this score a +${speedIndexBoost} boost over the Lighthouse average.`;
-    } else if (worstSI < 2000) {
-      speedIndexBoost = 20;
-      speedIndexBoostNote = `Both Desktop and Mobile load in under 2 seconds, which is really strong and gives this score a +${speedIndexBoost} boost over the Lighthouse average.`;
-    } else if (worstSI < 3000) {
-      speedIndexBoost = 10;
-      speedIndexBoostNote = `Both Desktop and Mobile load in under 3 seconds, which is solid and gives this score a +${speedIndexBoost} boost over the Lighthouse average.`;
+    averageSI = (desktopSI + mobileSI) / 2;
+  } else if (desktopSI != null) {
+    averageSI = desktopSI;
+  } else if (mobileSI != null) {
+    averageSI = mobileSI;
+  }
+  if (averageSI != null) {
+    if (averageSI < 2000) {
+      mainBoost = 30;
+      mainBoostNote = `Average Speed Index is under 2 seconds (${(averageSI / 1000).toFixed(2)}s across Desktop and Mobile), which is exceptional and gives this score a +${mainBoost} boost over the Lighthouse average.`;
+    } else if (averageSI < 3000) {
+      mainBoost = 20;
+      mainBoostNote = `Average Speed Index is under 3 seconds (${(averageSI / 1000).toFixed(2)}s across Desktop and Mobile), which is really strong and gives this score a +${mainBoost} boost over the Lighthouse average.`;
+    } else if (averageSI < 4000) {
+      mainBoost = 10;
+      mainBoostNote = `Average Speed Index is under 4 seconds (${(averageSI / 1000).toFixed(2)}s across Desktop and Mobile), which is solid and gives this score a +${mainBoost} boost over the Lighthouse average.`;
     }
   }
+  // Per-device bonus: at least one device is genuinely snappy (<2s).
+  // Stacks on top of the main boost.
+  let deviceBonus = 0;
+  let deviceBonusNote: string | null = null;
+  const desktopUnder2s = desktopSI != null && desktopSI < 2000;
+  const mobileUnder2s = mobileSI != null && mobileSI < 2000;
+  if (desktopUnder2s || mobileUnder2s) {
+    deviceBonus = 5;
+    const fastDevices: string[] = [];
+    if (desktopUnder2s) fastDevices.push("Desktop");
+    if (mobileUnder2s) fastDevices.push("Mobile");
+    deviceBonusNote = `${fastDevices.join(" and ")} ${fastDevices.length === 1 ? "loads" : "both load"} in under 2 seconds individually, adding another +${deviceBonus} on top of the main boost.`;
+  }
+  const speedIndexBoost = mainBoost + deviceBonus;
   const score = Math.min(100, rawScore + speedIndexBoost);
 
   const notes: string[] = [];
@@ -594,9 +620,11 @@ function buildSpeedCheck(
   );
   if (otherObservation) notes.push(otherObservation);
 
-  // When the Speed Index boost fired, surface a note explaining the
-  // bump so the score's strength is justified to the reader.
-  if (speedIndexBoostNote) notes.push(speedIndexBoostNote);
+  // When either of the Speed Index boosts fired, surface notes
+  // explaining the bumps so the score's strength is justified to
+  // the reader. Both notes can appear together when both fire.
+  if (mainBoostNote) notes.push(mainBoostNote);
+  if (deviceBonusNote) notes.push(deviceBonusNote);
 
   const headline =
     score >= 90
@@ -607,10 +635,10 @@ function buildSpeedCheck(
       ? "Load speed is mediocre, visitors will feel the lag."
       : "Page is slow enough to hurt conversions.";
 
-  // Up to 8 bullets: 2 scores + 2 speed-index + image count + image
-  // commentary + one other observation + (optional) speed-boost note.
-  // Cap defensively.
-  return { score, headline, notes: notes.slice(0, 8) };
+  // Up to 9 bullets: 2 scores + 2 speed-index + image count + image
+  // commentary + one other observation + (optional) main-boost note
+  // + (optional) per-device bonus note. Cap defensively.
+  return { score, headline, notes: notes.slice(0, 9) };
 }
 
 /**
