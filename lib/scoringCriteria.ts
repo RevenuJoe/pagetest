@@ -143,6 +143,28 @@ A specific, benefit-led promise (what the visitor GETS), not a generic feature l
 
 If the page misses Problem / Social proof / FAQ / Product / Stats, those misses ARE the most important notes to surface.
 
+SCORING GUIDANCE — Content is judged on these 7 criteria:
+    1. NO em dashes / AI-flavoured prose.
+    2. Clear, specific value proposition in the first 100 words.
+    3. The PROBLEM is named (the pain the product solves).
+    4. SOCIAL PROOF is present (customer logos, case studies, ratings).
+    5. FAQ section present (answering objections).
+    6. PRODUCT explanation is clear (what it actually does).
+    7. COMPARISON framing OR concrete stats (numbers, named customers).
+
+Score bands:
+    • Hits 6-7 of 7 cleanly → 88-95 (really good content — call this out)
+    • Hits 5 of 7 → 78-86
+    • Hits 4 of 7 → 65-75 (a couple of sections to improve — Joe's "60 or 70")
+    • Hits 3 of 7 → 52-63
+    • Hits 1-2 of 7 → 35-50
+    • Hits 0 → below 35
+
+In your notes, ALWAYS:
+- Call out which of the 7 criteria are HIT successfully (positive observations naming specific things on the page).
+- Name explicitly which of the 7 are MISSING from the scoring criteria (recommendations).
+- A reader of the Content notes should immediately know which of the 7 they have and which they don't.
+
 ANTI-HALLUCINATION ANCHORS — read these BEFORE writing any Content note that touches FAQ length, headings, CTAs, social proof, or forms. The same GROUND TRUTH facts other dimensions use apply here too, so Content must not contradict them:
 
   • SOCIAL PROOF on the page. Check the GROUND TRUTH "Social proof throughout the page (full-site HTML scan): YES/NO" flag. If YES, social proof IS present — do NOT say "no social proof", "social proof is missing", "needs customer logos" etc. The screenshot is also fair to use, especially for above-the-fold judgements. If you write a positive note about social proof, name what you actually see (specific customer logos, the "Trusted by N hospitals" stat, a named review badge) — do not write generic praise.
@@ -188,7 +210,29 @@ Could a busy reader understand the page in 10 seconds by reading just headings a
 6. FAQ answer length.
 Each FAQ answer should be 75 WORDS OR FEWER as a best practice — readers come to an FAQ to find a quick fact, not to read a paragraph. Use the GROUND TRUTH "FAQ-style Q/A pairs detected" block to read each answer's actual word count. ANY answer with "← OVER 75 words" next to it FAILS this checkpoint and should be flagged in your notes with the specific word count (e.g. "the combinatorial-optimisation FAQ answer runs 128 words"). Recommend tightening to 75 words or fewer, or splitting the answer into bullet points. Do NOT write generic praise like "the FAQ uses tight Q&A pairs with short answers" when one or more answers exceed 75 words — that's a hallucination contradicted by the data above.
 
-7. Navigation. Working header + footer navigation, sensible structure.`;
+7. Navigation. Working header + footer navigation, sensible structure.
+
+SCORING GUIDANCE — digestibility is judged on these 6 criteria:
+    1. Clear visible section headers on every major section.
+    2. Section headings 10 WORDS OR FEWER (read the GROUND TRUTH count).
+    3. Non-FAQ paragraphs 50 WORDS OR FEWER (read the GROUND TRUTH count).
+    4. FAQ answers 75 WORDS OR FEWER (read the GROUND TRUTH FAQ block).
+    5. Good use of bullet points where bullets would beat prose.
+    6. No walls of text (more than 3 paragraphs in one section).
+
+Long paragraphs and long section headings are quite bad for digestibility — they actively make the page harder to scan. PUNISH them in the score. Specifically:
+    • If MORE THAN 3 section headings exceed 10 words, drop a band.
+    • If MORE THAN 4 non-FAQ paragraphs exceed 50 words, drop a band.
+    • If MORE THAN 2 FAQ answers exceed 75 words, drop a band.
+
+Score bands (after the long-paragraph / long-heading penalties applied):
+    • Hits 5-6 of 6 cleanly → 88-95
+    • Hits 4 of 6 → 75-85
+    • Hits 3 of 6 → 60-72
+    • Hits 2 of 6 → 45-58
+    • Hits 0-1 of 6 → below 45
+
+If the GROUND TRUTH shows zero or very few headings/paragraphs/FAQ answers exceeding the caps AND the page has clear headers + good bullet usage, that's a high-digestibility page — score 88+. If lots are over the caps, push toward the low end.`;
 
 /**
  * CRO — the most important dimension and the strictest checklist.
@@ -257,7 +301,30 @@ Look for:
 When making recommendations:
 - If the page has only one CTA, suggest adding a clear secondary CTA alongside it (e.g. add "Get started for free" next to the existing "Book a demo").
 - If specific sections have no CTA, name those sections and suggest adding one.
-- If CTA copy is generic, suggest specific replacement copy that promises an outcome.`;
+- If CTA copy is generic, suggest specific replacement copy that promises an outcome.
+
+SCORING GUIDANCE — CRO is judged on these 7 main criteria. CRO has historically been scored too harshly; be MORE GENEROUS when the page is doing most of these right:
+    1. CTAs through the page — a CTA in or after every major content section.
+    2. At least TWO distinct conversion paths (book-time CTA + immediate-action CTA, ideally paired mid-page).
+    3. A clear conversion widget above the fold (form, multi-step quiz, or prominent primary CTA).
+    4. The IDEAL HERO FORM pattern: question-led multi-step with preset dropdown / tick-box answers BEFORE the email capture.
+    5. Different form types top vs bottom of page (top small / question-led, bottom full lead-gen — they should NOT match).
+    6. CTA copy is outcome-led ("Book a demo", "Start free trial", "Get a quote") rather than vague ("Submit", "Learn more").
+    7. No anti-patterns: sign-in/log-in CTAs prominent in conversion slots, two competing forms (multi-step counts as ONE), or buttons claimed as "not integrated" with the form.
+
+Score bands:
+    • Hits 6-7 of 7 cleanly → 90-97
+    • Hits 5 of 7 → 82-89
+    • Hits 4 of 7 → 72-81
+    • Hits 3 of 7 → 60-71
+    • Hits 1-2 of 7 → 40-59
+    • Hits 0 → below 40
+
+HARD CEILING for non-interactive hero CTAs: if the page's hero / above-the-fold has ONLY buttons (no form, no dropdown, no tick boxes, no multi-step quiz, no calculator — just a "Get a Demo" or "Start Free Trial" button on its own), CAP the CRO score at 83 regardless of how many other criteria are met. An interactive hero widget (dropdown / tick boxes / multi-step quiz / form) is a near-prerequisite for top-tier CRO; pages that lead with just buttons are leaving conversion on the table even when the rest of the page is solid. Conversely, a hero with an interactive widget (tick boxes or dropdown for question-led entry) is a STRONG positive signal — score generously in that case.
+
+If the page is doing most of this WELL and you only have one or two "could be better" notes, score in the 85-93 range — that's the right band for a page hitting the criteria. Do NOT default to the 70s out of caution. CRO scores in the 90s are appropriate for pages with a strong multi-step hero, two clear CTA types, mid-page CTAs at every section, and a bottom lead-gen form.
+
+Conversely: if the page only has one buried CTA, no conversion widget in the hero, and no mid-page CTAs, that's a low score — don't be generous out of habit.`;
 
 /**
  * ABOVE THE FOLD — judged purely from screenshots. Detailed criteria from Joe.
@@ -298,7 +365,25 @@ Look for:
    Worked failure mode you must avoid: an AtF screenshot shows a logo strip with 6-8 customer logos along the bottom edge of the hero. The HTML-position heuristic flag says LIKELY NO because the logos are deep in the DOM. Claude writes "Social proof appears below the fold, move it into the hero." That is WRONG — the screenshot wins. The logos are in the AtF viewport so they are above the fold by definition. Score the page positively for the social proof being where it is.
 - As many of the above as possible should also be visible on the MOBILE above-the-fold screenshot, not just desktop. Mobile compromise (e.g. losing the form to a "tap to expand") is a negative.
 
-Comment specifically on which elements are present and which are missing. Reward pages that hit most criteria well even if one is imperfect; mark down pages that miss the basics.`;
+SCORING GUIDANCE — above-the-fold is scored on these 6 core criteria. Score is determined by how many are PRESENT and DONE WELL in the AtF screenshots:
+    1. A clear, dominant HEADLINE.
+    2. THREE supporting bullet points (or a short supporting line if not bullets).
+    3. A strong product / illustration / demo IMAGE.
+    4. A clear CONVERSION WIDGET in the hero (form, multi-step quiz, calculator, or a prominent primary CTA — see the conversion-widget checklist above).
+    5. Visible LOGOS / trust markers above the fold (named customer logos, "Trusted by N" copy, ratings, badges — even a logo strip cropped at the bottom edge of the AtF viewport counts).
+    6. A NICE NAV (logo + 3-4 text links + 1-2 conversion buttons in the screenshot, per the nav checklist above).
+
+Score bands map directly from items-hit:
+    • Hits 6 of 6 cleanly → 92-97
+    • Hits 5 of 6 → 85-90
+    • Hits 4 of 6 → 76-84
+    • Hits 3 of 6 → 66-75
+    • Hits 2 of 6 → 50-64
+    • Hits 0-1 of 6 → below 50
+
+Reward what's there. Do NOT shave points imagining a sharper headline / nicer visual / extra CTA. If the existing element clears the bar, give it the points. Above-the-fold pages with strong execution should regularly score in the 90s — not default to the 70s out of caution.
+
+Always call out in the notes which of the 6 are present (positives) and which are missing (recommendations). A reader should be able to read the AtF notes and immediately know which of the 6 they have and which they don't.`;
 
 /**
  * MOBILE LAYOUT — phone usability check.
@@ -311,20 +396,38 @@ Look for:
 - Font sizes legible without zoom (body copy ~16px equivalent).
 - No horizontal overflow.
 - No important content hidden behind a "tap to expand" or hamburger that buries the CTA.
-- Primary CTA still clearly visible above the mobile fold.`;
+- Primary CTA still clearly visible above the mobile fold.
+
+SCORING GUIDANCE — mobile layout is judged on these 5 criteria above. The bar is straightforward: a page where everything is LEGIBLE, TAPPABLE, and LOOKS NICE on mobile is a strong mobile page — it deserves to score in the 90s. A page where things are hard to click or hard to read deserves a low score. Don't be cautious.
+
+Score bands map directly from items-hit in the mobile screenshots:
+    • All 5 clean → 90-97 (legible + tappable + no overflow + nothing hidden + primary CTA visible)
+    • 4 of 5 → 80-88
+    • 3 of 5 → 65-78
+    • 2 of 5 → 50-62
+    • 0-1 of 5 → below 50
+
+Reward what's there. If the mobile screenshot shows clean typography, well-spaced buttons, a visible primary CTA, and content stacking properly with no horizontal scroll — that's a 92-95, not a 78. Conversely, if buttons are cramped or text needs zoom, push the score down.`;
 
 // ---------------------------------------------------------------------------
 // RUBRIC
 // ---------------------------------------------------------------------------
 
 export const RUBRIC = `Scoring rubric (applied to every dimension above):
-- 90 to 100: Exceptional. Hits virtually every criterion. A reference example.
-- 75 to 89:  Strong. Hits most criteria; a few minor gaps.
-- 60 to 74:  Solid baseline. Real opportunities to improve, several criteria missed.
+- 90 to 100: Strong on every checklist item, or only a single minor gap. The page is doing the right things.
+- 75 to 89:  Strong on most items; one or two clear gaps that lift the score with small fixes.
+- 60 to 74:  Solid baseline. Several criteria missed; meaningful opportunities to improve.
 - 40 to 59:  Weak. Significant gaps that likely cost conversions.
 - 0 to 39:   Poor. Major issues across most criteria, urgent fixes needed.
 
-Be generous when the page genuinely demonstrates the criteria. A page with strong content, a clear hero, lean nav, two CTAs, a question-led form, and visible logos should score 80+ on CRO and aboveTheFold, not 60.`;
+SCORING DISCIPLINE — read this carefully, it is the single most-corrected rule in the rubric. The intuition is simple: when a page is doing a lot of things RIGHT, give it a high score (90s territory). When it's doing a lot of things WRONG, give it a low score. Don't crowd everything into a "safe" 70s zone. Specific guardrails:
+- Map directly from the checklist to the band. Each dimension's criterion has a SCORING GUIDANCE section telling you exactly how many items-hit maps to which band. Use it.
+- Do NOT shave points for being able to imagine a sharper headline / nicer visual / extra CTA you'd add. If the existing element clears the bar, give it the points. The fix recommendations live in the notes, not the score.
+- Do NOT default to "the safe 72" because Lighthouse showed some opportunities or because you can think of polish improvements. The dimensions are scored on their own checklists, not on Lighthouse.
+- A page with a clear dominant headline, a strong hero visual, a conversion widget in the hero, visible social proof above the fold, and a clean nav is hitting most above-the-fold criteria — that's a 92-95, not a 75.
+- A page with a multi-step hero form opening with a qualifying question, two CTAs, a bottom form, and CTAs scattered through mid-page sections is hitting most CRO criteria — that's a 88-93, not a 78.
+
+When the page genuinely demonstrates the criteria, REWARD it. When it misses the criteria, PUNISH it. The user knows their page has issues if they're reading the report — they're looking for an honest read on what's working AND what's not, not a deflated score on a strong page (or an inflated score on a weak one).`;
 
 // ---------------------------------------------------------------------------
 // OUTPUT FORMAT + STYLE
