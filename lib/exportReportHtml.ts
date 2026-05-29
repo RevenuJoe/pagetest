@@ -23,10 +23,10 @@
 /**
  * Force the TOP-LEVEL <details> open inside `root`, but leave any
  * nested <details> at their current state. This means each report
- * section (Overview, Key Takeaways, Analysis, Above-the-Fold Screenshots,
- * PageSpeed Insights, Technical Improvements) opens by default — but
- * the expandable per-improvement rows inside Technical Improvements
- * stay closed so the reader can choose which ones to open.
+ * section (Overview, Key Recommendations, Analysis, Above-the-Fold
+ * Screenshots, PageSpeed Insights, Technical Improvements) opens by
+ * default — but the expandable per-improvement rows inside Technical
+ * Improvements stay closed so the reader can choose which ones to open.
  *
  * Returns a restore function that puts every touched element back to
  * its previous open/closed state.

@@ -18,7 +18,7 @@ Every audit takes 1 to 2 minutes and returns:
    - 40-59 orange
    - Below 40 red
 3. For each dimension: a one-line verdict and 2 to 4 concrete observations specific to the analysed page.
-4. **5 to 8 Key Takeaways** — prioritised, page-specific recommendations, highest impact first, each one a concrete action (what to do, not what's wrong).
+4. **5 to 8 Key Recommendations** — prioritised, page-specific recommendations, highest impact first, each one a concrete action (what to do, not what's wrong).
 5. **Two screenshots** — desktop and mobile above-the-fold captures from PageSpeed Insights, displayed at matched height so the desktop view is wider and the mobile view is narrower but sharper.
 
 ## The six dimensions
@@ -51,7 +51,7 @@ In order:
 4. Speed check is built deterministically from PSI's Lighthouse numbers.
 5. Claude is called once with: URL, the page's <title> and meta description, a structural summary (H1/H2/H3 counts, paragraph count, image count and alt-missing count, link/button/form counts, nav and footer presence, word count), the body text (capped at 12k characters), and both above-the-fold screenshots.
 6. Claude returns scored JSON for content, digestibility, CRO, aboveTheFold, mobile, plus the keyTakeaways array.
-7. The combined response is rendered as a six-section collapsible report: Overview, Key Takeaways, Analysis, Above-the-Fold Screenshots, PageSpeed Insights, Technical Improvements.
+7. The combined response is rendered as a six-section collapsible report: Overview, Key Recommendations, Analysis, Above-the-Fold Screenshots, PageSpeed Insights, Technical Improvements.
 8. The report auto-saves to the user's browser (localStorage) and appears in /reports.
 
 ## Saved reports

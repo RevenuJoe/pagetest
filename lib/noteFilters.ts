@@ -144,6 +144,37 @@ const filterNavBulky: FilterRule = (note, _dim, ctx) => {
 
 /** Recommending a bottom / final / footer form when the page has 2+
  *  forms (so one is almost certainly the bottom one). */
+/**
+ * "Social proof appears below the fold" / "move logos into the hero"
+ * style claims. These contradict the AtF screenshot whenever the page
+ * has any trust markers visible at the bottom of the hero (a logo
+ * strip cropped at the edge is the worst offender — Claude reads the
+ * HTML-position heuristic as authoritative and says move-it, even
+ * though the screenshot clearly shows the logos in the AtF viewport).
+ *
+ * We fire this filter when:
+ *   - the note matches one of the "below the fold" / "move ... above
+ *     the fold" / "move into hero" patterns about social proof, AND
+ *   - GROUND TRUTH says the page DOES have social proof (so it's not
+ *     a legitimate "page is missing social proof entirely" note).
+ *
+ * The risk is that on a page where social proof is GENUINELY below
+ * the fold (and visually absent from the AtF screenshot), we'd drop
+ * a legitimate "move it up" note. We accept that trade-off because
+ * the contradicting-screenshot hallucination is much more harmful
+ * than missing one valid placement note.
+ */
+const filterSocialProofBelowFoldClaim: FilterRule = (note, _dim, ctx) => {
+  if (!ctx.structure.socialProofPresent) return null;
+  const matchesBelowFoldClaim =
+    /\bsocial\s+proof\b[^.]{0,80}\b(appears?|is)\b[^.]{0,40}\bbelow\s+the\s+fold\b/i.test(note) ||
+    /\b(trust\s+(line|signals|markers)|customer\s+logos|logos|logo\s+strip)\b[^.]{0,80}\b(appears?|is|are|sit|sits|live|lives)\b[^.]{0,40}\bbelow\s+the\s+fold\b/i.test(note) ||
+    /\bmov(e|ing)\b[^.]{0,80}\b(trust\s+(line|signals|markers)|social\s+proof|customer\s+logos|logo\s+strip|logos|hospital\s+(logos|names)|named\s+customers?)\b[^.]{0,80}\b(into|to|above)\b[^.]{0,40}\b(hero|above\s+the\s+fold)\b/i.test(note) ||
+    /\b(promote|surface|hoist|pull|bring)\b[^.]{0,80}\b(trust\s+(line|signals|markers)|social\s+proof|customer\s+logos|logo\s+strip|logos)\b[^.]{0,80}\b(into|above)\b[^.]{0,40}\b(hero|above\s+the\s+fold|fold)\b/i.test(note);
+  if (!matchesBelowFoldClaim) return null;
+  return "social-proof location claim contradicts screenshot — page has social proof on it (GROUND TRUTH) and the AtF screenshot is authoritative for fold position";
+};
+
 const filterAddBottomForm: FilterRule = (note, _dim, ctx) => {
   const said =
     /(add|missing|lack|need|no)\b[^.]{0,80}\b(bottom|final|footer|second|closing)\s+(form|cta\b|conversion widget)\b/i.test(
@@ -263,6 +294,7 @@ const ALL_FILTERS: FilterRule[] = [
   filterAnyNavCommentary,
   filterNavMissingButHasContent,
   filterNavBulky,
+  filterSocialProofBelowFoldClaim,
   filterAddBottomForm,
   filterSignInRecommendation,
   filterPhoneFieldGhost,

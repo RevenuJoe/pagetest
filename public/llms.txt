@@ -15,7 +15,7 @@ Every test returns an overall 0-100 score plus six dimensions, each 0-100:
 
 Each dimension also returns a one-line verdict plus 2-4 concrete observations or recommendations specific to that page.
 
-The report also includes 5-8 prioritised "Key Takeaways" — concrete actions ranked by impact.
+The report also includes 5-8 prioritised "Key Recommendations" — concrete actions ranked by impact.
 
 ## Pages
 

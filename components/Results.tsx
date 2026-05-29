@@ -3,7 +3,7 @@
  * /reports (when opening a saved report).
  *
  *   1. Overview                     — overall ring + Report name/URL/Analysed + mini scores
- *   2. Key Takeaways                — numbered list from Claude
+ *   2. Key Recommendations          — numbered list from Claude
  *   3. Analysis                     — six ScoreCards (one per dimension)
  *   4. Above-the-Fold Screenshots   — desktop + mobile at matched height
  *   5. PageSpeed Insights           — Desktop vs Mobile comparison + per-strategy chips
@@ -73,7 +73,7 @@ export default function Results({
       key: "takeaways",
       node: (
         <Section
-          title="Key Takeaways"
+          title="Key Recommendations"
           icon={<IconBulb />}
           defaultOpen={false}
           headerAction={
@@ -348,18 +348,25 @@ function formatPsiForClipboard(data: AnalyzeResponse): string {
 }
 
 function formatTakeawaysForClipboard(data: AnalyzeResponse): string {
-  const items = (data.keyTakeaways ?? []).slice(0, 5);
+  // Up to 6 items: 5 from Claude + the deterministic Technical
+  // Improvements pointer always appended last.
+  const items = (data.keyTakeaways ?? []).slice(0, 6);
   if (items.length === 0) return "";
   const header =
-    `Key Takeaways — ${displayName(data)}\n` +
+    `Key Recommendations — ${displayName(data)}\n` +
     `${data.url}\n` +
     `${new Date(data.analyzedAt).toLocaleString()}\n` +
     `\n`;
   const body = items
     .map((it, i) => {
       const text = typeof it === "string" ? it : it.text;
-      const tag = typeof it === "string" ? "" : `${CHECK_META[it.category].title}: `;
-      return `${i + 1}. ${tag}${text}`;
+      // Use displayLabel when set (e.g. "Technical:") otherwise fall
+      // back to the category title.
+      const label =
+        typeof it === "string"
+          ? ""
+          : `${it.displayLabel ?? CHECK_META[it.category].title}: `;
+      return `${i + 1}. ${label}${text}`;
     })
     .join("\n");
   return header + body + "\n";
@@ -743,11 +750,13 @@ function CarouselArrow({
 }
 
 function KeyTakeawaysBlock({ data }: { data: AnalyzeResponse }) {
-  const items = (data.keyTakeaways ?? []).slice(0, 5);
+  // Up to 6 items: 5 from Claude (after image-format prepend cap) + the
+  // deterministic Technical Improvements pointer always appended last.
+  const items = (data.keyTakeaways ?? []).slice(0, 6);
   if (items.length === 0) {
     return (
       <p className="text-sm font-medium text-ink-soft">
-        No takeaways were returned for this run.
+        No recommendations were returned for this run.
       </p>
     );
   }
@@ -758,7 +767,16 @@ function KeyTakeawaysBlock({ data }: { data: AnalyzeResponse }) {
         const text = typeof item === "string" ? item : item.text;
         const category =
           typeof item === "string" ? undefined : item.category;
-        const tag = category ? CHECK_META[category].title : null;
+        // displayLabel overrides the category title (e.g. "Technical:")
+        // for synthetic items appended outside the scored-dimension
+        // set. Falls back to the category title otherwise.
+        const displayLabel =
+          typeof item === "string" ? undefined : item.displayLabel;
+        const tag = displayLabel
+          ? displayLabel
+          : category
+          ? CHECK_META[category].title
+          : null;
         return (
           <li
             key={i}

@@ -14,6 +14,13 @@ export type CheckKey =
 export interface KeyTakeaway {
   category: CheckKey;
   text: string;
+  /** Optional label override for display purposes. When set, the UI
+   *  shows this string as the prefix (e.g. "Technical:") instead of
+   *  the category's normal title. Used for synthetic items appended
+   *  outside the Claude-scored category set — currently only the
+   *  deterministic "implement Technical Improvements" item that
+   *  always closes the recommendations list. */
+  displayLabel?: string;
 }
 
 export interface CheckResult {

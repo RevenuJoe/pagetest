@@ -260,9 +260,8 @@ export async function POST(req: NextRequest) {
     // priority #1 — this is the single most impactful speed win on most
     // landing pages, and we don't want to leave it to Claude to remember.
     // SVG isn't included (vector format, conversion not appropriate).
-    const keyTakeaways = prependImageFormatTakeaway(
-      ai.keyTakeaways,
-      imageFormats,
+    const keyTakeaways = appendTechnicalImprovementsTakeaway(
+      prependImageFormatTakeaway(ai.keyTakeaways, imageFormats),
     );
 
     const response: AnalyzeResponse = {
@@ -413,8 +412,46 @@ function prependImageFormatTakeaway(
     return !/\b(webp|avif|png|jpe?g|gif)\b/i.test(body);
   });
 
-  // Cap at 5 total. Synthetic at #1, then up to 4 from Claude.
+  // Cap at 5 total at this stage. The deterministic Technical
+  // Improvements pointer is appended after this (taking the list to
+  // a final maximum of 6).
   return [synthetic, ...filtered].slice(0, 5);
+}
+
+/**
+ * Always append a fixed final recommendation pointing the reader at
+ * the Technical Improvements section below. Slot is the LAST item in
+ * the list, regardless of how many Claude returned:
+ *
+ *   - If the list (after prependImageFormatTakeaway) has 5 items, this
+ *     becomes #6.
+ *   - If it has 4, this becomes #5. Etc.
+ *
+ * Final list is capped at 6 (5 from Claude + image-format + this one,
+ * but the image-format step already caps at 5 so we just append).
+ *
+ * The displayLabel is set to "Technical" so the UI shows "Technical:"
+ * as the prefix instead of "Speed:". The category stays "speed" for
+ * type-compat with KeyTakeaway, since "Technical" isn't a scored
+ * dimension.
+ */
+function appendTechnicalImprovementsTakeaway(
+  takeaways: Array<KeyTakeaway | string>,
+): Array<KeyTakeaway | string> {
+  const synthetic: KeyTakeaway = {
+    category: "speed",
+    displayLabel: "Technical",
+    text: "Increase page speed and health by implementing the technical improvements below.",
+  };
+  // Drop any earlier copy of this item if it somehow already appears
+  // (defensive — shouldn't happen in practice).
+  const filtered = takeaways.filter((t) => {
+    const body = typeof t === "string" ? t : t.text;
+    return !/implementing the technical improvements below/i.test(body);
+  });
+  // The list arriving here is already capped at 5 by
+  // prependImageFormatTakeaway. Append → up to 6.
+  return [...filtered, synthetic].slice(0, 6);
 }
 
 /**
