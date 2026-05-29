@@ -24,6 +24,7 @@ import { fetchMicrolinkScreenshot } from "@/lib/screenshot";
 import type {
   AnalyzeResponse,
   CheckResult,
+  KeyTakeaway,
   PsiBreakdown,
   PsiInsightsBundle,
   TechnicalImprovement,
@@ -182,6 +183,16 @@ export async function POST(req: NextRequest) {
       mobile: mobile ? psiToBreakdown(mobile) : undefined,
     };
 
+    // Image-format takeaway. When the HTML scan found any PNG/JPEG/GIF
+    // images, we prepend a deterministic "convert to WebP" takeaway as
+    // priority #1 — this is the single most impactful speed win on most
+    // landing pages, and we don't want to leave it to Claude to remember.
+    // SVG isn't included (vector format, conversion not appropriate).
+    const keyTakeaways = prependImageFormatTakeaway(
+      ai.keyTakeaways,
+      imageFormats,
+    );
+
     const response: AnalyzeResponse = {
       url,
       // Cleaned <title> from the scanned page (when present). The saved-reports
@@ -191,7 +202,7 @@ export async function POST(req: NextRequest) {
       analyzedAt: new Date().toISOString(),
       overall,
       checks,
-      keyTakeaways: ai.keyTakeaways,
+      keyTakeaways,
       technicalImprovements,
       // For the displayed screenshots, prefer the Microlink CDN URL
       // (crisp 2× DPR above-the-fold capture) when available. Fall back
@@ -378,6 +389,47 @@ function buildImageFormatBullets(b: ImageFormatBreakdown): string[] {
   }
 
   return [countBullet, commentary];
+}
+
+/**
+ * Prepend a deterministic "convert images to WebP" takeaway as priority
+ * #1 in the Key Takeaways list when the HTML scan found any legacy
+ * raster images (PNG / JPEG / GIF). This is the single most impactful
+ * speed win on most landing pages so we don't leave it to Claude to
+ * remember.
+ *
+ * If Claude already wrote a takeaway about image formats, we strip it
+ * to avoid duplication. The final list is capped at 5 takeaways.
+ *
+ * Returns the original list unchanged when the page has no legacy
+ * raster images (e.g. all WebP/AVIF, or SVG-only pages).
+ */
+function prependImageFormatTakeaway(
+  takeaways: Array<KeyTakeaway | string>,
+  imageFormats: ImageFormatBreakdown,
+): Array<KeyTakeaway | string> {
+  if (imageFormats.legacyRaster === 0) return takeaways;
+
+  // Build the parts list — only formats actually present in the page.
+  const parts: string[] = [];
+  if (imageFormats.png > 0) parts.push(`${imageFormats.png} PNG${imageFormats.png === 1 ? "" : "s"}`);
+  if (imageFormats.jpeg > 0) parts.push(`${imageFormats.jpeg} JPEG${imageFormats.jpeg === 1 ? "" : "s"}`);
+  if (imageFormats.gif > 0) parts.push(`${imageFormats.gif} GIF${imageFormats.gif === 1 ? "" : "s"}`);
+
+  // Keep it tight — the takeaway text rule is max 14 words.
+  const text = `Convert ${parts.join(", ")} to WebP for major speed gain.`;
+
+  const synthetic: KeyTakeaway = { category: "speed", text };
+
+  // Drop any Claude-written takeaway that touches the same topic so we
+  // don't end up with two image-format items in the list.
+  const filtered = takeaways.filter((t) => {
+    const body = typeof t === "string" ? t : t.text;
+    return !/\b(webp|avif|png|jpe?g|gif)\b/i.test(body);
+  });
+
+  // Cap at 5 total. Synthetic at #1, then up to 4 from Claude.
+  return [synthetic, ...filtered].slice(0, 5);
 }
 
 /**
