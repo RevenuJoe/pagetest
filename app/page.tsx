@@ -22,6 +22,9 @@ import { analysisStore } from "@/lib/analysisStore";
 import { savedStore } from "@/lib/savedStore";
 import { useActiveRun, useSavedReports } from "@/lib/storeHooks";
 import type { AnalyzeResponse } from "@/lib/types";
+import DownloadModal, { type DownloadState } from "@/components/DownloadModal";
+import { renderReportToHtml, triggerHtmlDownload } from "@/lib/exportReportHtml";
+import { displayName } from "@/lib/nameUtil";
 
 interface LoadingStep {
   text: string;
@@ -67,6 +70,9 @@ function Home() {
   const [error, setError] = useState<string | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const resultsRef = useRef<HTMLDivElement>(null);
+  // Outer page wrapper — used when capturing the full page for the HTML
+  // download (Header + main + footer all included).
+  const pageRef = useRef<HTMLDivElement>(null);
 
   // Subscribe to savedStore and active runs so the UI reacts when an
   // analysis kicked off from anywhere completes.
@@ -181,8 +187,52 @@ function Home() {
     analysisStore.start(focusUrl, { preserveName: existing?.name });
   }
 
+  // Download state machine for the freshly-rendered report. Mirrors
+  // /report. State flow: null → preparing → ready → null.
+  const [downloadState, setDownloadState] = useState<DownloadState | null>(null);
+  const [exportBlob, setExportBlob] = useState<Blob | null>(null);
+  const [exportFilename, setExportFilename] = useState<string>("report");
+  const [downloadError, setDownloadError] = useState<string | undefined>(undefined);
+
+  async function startDownload() {
+    if (!focusResult) return;
+    const target = pageRef.current;
+    if (!target) return;
+    setDownloadState("preparing");
+    setDownloadError(undefined);
+    const safe = displayName(focusResult)
+      .replace(/[^a-z0-9\-_.\s]/gi, "")
+      .replace(/\s+/g, "-")
+      .slice(0, 80) || "report";
+    setExportFilename(safe);
+    try {
+      const blob = await renderReportToHtml({
+        target,
+        documentTitle: displayName(focusResult),
+      });
+      setExportBlob(blob);
+      setDownloadState("ready");
+    } catch (err) {
+      console.error("HTML export failed", err);
+      setDownloadError(err instanceof Error ? err.message : String(err));
+      setDownloadState("error");
+    }
+  }
+
+  function onDownloadClick() {
+    if (!exportBlob) return;
+    triggerHtmlDownload(exportBlob, exportFilename);
+  }
+
+  function closeDownloadModal() {
+    setDownloadState(null);
+    setExportBlob(null);
+    setDownloadError(undefined);
+  }
+
   return (
-    <div className="relative flex min-h-screen flex-col overflow-x-hidden">
+    <>
+    <div ref={pageRef} className="relative flex min-h-screen flex-col overflow-x-hidden">
       {/* Page-specific JSON-LD: WebPage + FAQPage. Helps Google and AI search
           parsers understand the page's intent and surface answers directly. */}
       <script
@@ -462,16 +512,52 @@ function Home() {
             in from the left in sequence with page scroll following along,
             then a glide back up to the Overview at the end. */}
         {phase === "showing" && focusResult && (
-          <section
-            ref={resultsRef}
-            className="mt-12 scroll-mt-12"
-          >
-            <Results
-              data={focusResult}
-              onRerun={rerun}
-              rerunning={false}
-            />
-          </section>
+          <>
+            {/* Rerun + Download row — same pattern as /report. Tagged with
+                pdf-hide so the row is removed from the HTML export. */}
+            <section className="pdf-hide mx-auto mt-12 flex w-full max-w-[1180px] items-center justify-end gap-2 px-6 sm:px-14">
+              <button
+                type="button"
+                onClick={rerun}
+                className="whitespace-nowrap rounded-full border border-beige-line bg-card px-4 py-1.5 text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent"
+              >
+                Rerun this report
+              </button>
+              <button
+                type="button"
+                onClick={startDownload}
+                aria-label="Download report"
+                title="Download report"
+                className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-4 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-dark"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-3.5 w-3.5"
+                  aria-hidden
+                >
+                  <path d="M12 3v12" />
+                  <path d="M7 10l5 5 5-5" />
+                  <path d="M5 21h14" />
+                </svg>
+                Download
+              </button>
+            </section>
+            <section
+              ref={resultsRef}
+              className="mt-4 scroll-mt-12"
+            >
+              <Results
+                data={focusResult}
+                onRerun={rerun}
+                rerunning={false}
+              />
+            </section>
+          </>
         )}
 
         {/* my-auto centres the marquee block vertically inside main —
@@ -502,6 +588,20 @@ function Home() {
         </div>
       </footer>
     </div>
+
+      {/* Branded download modal. Mounted OUTSIDE the pageRef wrapper so
+          it's not captured into the HTML export. State is null when no
+          download is in flight; otherwise "preparing", "ready", or
+          "error". */}
+      {downloadState && (
+        <DownloadModal
+          state={downloadState}
+          onClose={closeDownloadModal}
+          onDownload={onDownloadClick}
+          errorMessage={downloadError}
+        />
+      )}
+    </>
   );
 }
 
