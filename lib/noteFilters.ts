@@ -86,7 +86,13 @@ function bodyHasSocialProof(bodyText: string): boolean {
  * sense (e.g. "users navigate to the form"), because the patterns are
  * anchored to the noun forms / common nav phrasings.
  */
-const filterAnyNavCommentary: FilterRule = (note) => {
+const filterAnyNavCommentary: FilterRule = (note, dim) => {
+  // Above-the-fold is the ONE dimension allowed to comment on the nav
+  // (judged from the AtF screenshot). All other dimensions still treat
+  // nav as off-limits because nav-link detection from raw HTML is
+  // unreliable and we don't want nav opinions creeping into Content /
+  // Digestibility / CRO / Mobile notes.
+  if (dim === "aboveTheFold") return null;
   const said =
     /\bnav(igation)?\s+(is|has|carries|contains|holds|provides|offers|appears)\b/i.test(note) ||
     /\b(the|a|page'?s?)\s+nav(igation)?\b[^.]{0,30}\b(is|has|with|of|in)\b/i.test(note) ||
@@ -104,7 +110,10 @@ const filterAnyNavCommentary: FilterRule = (note) => {
 /** Legacy filter kept for compatibility — superseded by
  *  filterAnyNavCommentary above, which catches the same cases plus
  *  positive nav commentary. */
-const filterNavMissingButHasContent: FilterRule = (note, _dim, ctx) => {
+const filterNavMissingButHasContent: FilterRule = (note, dim, ctx) => {
+  // Above-the-fold gets to comment on nav from the screenshot — skip
+  // this HTML-vs-claim contradiction filter for that dim.
+  if (dim === "aboveTheFold") return null;
   const said =
     /\bpage\s+lacks\s+a\s+(<nav>|nav(igation)?)\s+(element\s+)?(entirely|altogether)\b/i.test(note) ||
     /\b(no|missing)\s+nav(igation)?\s+(present|element|whatsoever)\b/i.test(note) ||
@@ -127,7 +136,11 @@ const filterNavMissingButHasContent: FilterRule = (note, _dim, ctx) => {
 /** "Slim the nav" / "navigation is bulky" when the page has ≤4 nav
  *  links — verifiable false. Single nav (1 link) and zero nav (0 links)
  *  are different situations, not bulkiness. */
-const filterNavBulky: FilterRule = (note, _dim, ctx) => {
+const filterNavBulky: FilterRule = (note, dim, ctx) => {
+  // Above-the-fold judges nav from the screenshot, where "bulky" is
+  // an actual visual call. Skip the HTML-link-count contradiction
+  // check for AtF and let the dim use its own criteria.
+  if (dim === "aboveTheFold") return null;
   const said =
     /\bnav(igation)?\s+is\s+bulky\b/i.test(note) ||
     /\bbulky\s+nav(igation)?\b/i.test(note) ||
