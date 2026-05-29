@@ -18,6 +18,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Header from "@/components/Header";
 import Results from "@/components/Results";
+import DownloadModal, {
+  type DownloadState,
+  type DownloadFormat,
+} from "@/components/DownloadModal";
+import { renderReportToPdf, triggerDownload } from "@/lib/exportReport";
+import { renderReportToHtml, triggerHtmlDownload } from "@/lib/exportReportHtml";
+import { displayName } from "@/lib/nameUtil";
 import {
   Spinner,
   IconSearch,
@@ -122,6 +129,74 @@ function ReportView() {
     analysisStore.start(queryUrl, { preserveName: existing?.name });
   }
 
+  // Download state machine. Five-step lifecycle:
+  //   null      — no modal
+  //   "select"  — modal asking which format (PDF / HTML)
+  //   "preparing" — modal showing spinner while the file is rendered
+  //   "ready"   — modal with the "Download" button
+  //   "error"   — modal showing a failure message
+  // The generated blob + filename + format are stashed so the
+  // "Download" button on the ready modal can save the file directly.
+  const [downloadState, setDownloadState] = useState<DownloadState | null>(null);
+  const [exportBlob, setExportBlob] = useState<Blob | null>(null);
+  const [exportFilename, setExportFilename] = useState<string>("report");
+  const [exportFormat, setExportFormat] = useState<DownloadFormat>("pdf");
+  const [downloadError, setDownloadError] = useState<string | undefined>(undefined);
+
+  /** Open the modal to let the user pick PDF or HTML. */
+  function openDownloadPicker() {
+    if (!focusResult) return;
+    setDownloadError(undefined);
+    setExportBlob(null);
+    setDownloadState("select");
+  }
+
+  /** User picked a format — start the actual render. */
+  async function startDownload(format: DownloadFormat) {
+    if (!focusResult) return;
+    const target = resultsRef.current;
+    if (!target) return;
+    setExportFormat(format);
+    setDownloadState("preparing");
+    setDownloadError(undefined);
+    // Build a safe filename from the report's display name.
+    const safe = displayName(focusResult)
+      .replace(/[^a-z0-9\-_.\s]/gi, "")
+      .replace(/\s+/g, "-")
+      .slice(0, 80) || "report";
+    setExportFilename(safe);
+    try {
+      const blob =
+        format === "pdf"
+          ? await renderReportToPdf({ target, filename: safe })
+          : await renderReportToHtml({
+              target,
+              documentTitle: displayName(focusResult),
+            });
+      setExportBlob(blob);
+      setDownloadState("ready");
+    } catch (err) {
+      console.error(`${format.toUpperCase()} export failed`, err);
+      setDownloadError(err instanceof Error ? err.message : String(err));
+      setDownloadState("error");
+    }
+  }
+
+  function onDownloadClick() {
+    if (!exportBlob) return;
+    if (exportFormat === "pdf") {
+      triggerDownload(exportBlob, exportFilename);
+    } else {
+      triggerHtmlDownload(exportBlob, exportFilename);
+    }
+  }
+
+  function closeDownloadModal() {
+    setDownloadState(null);
+    setExportBlob(null);
+    setDownloadError(undefined);
+  }
+
   // No URL: show a friendly empty state.
   if (!queryUrl) {
     return (
@@ -163,7 +238,10 @@ function ReportView() {
 
       <main className="mx-auto max-w-[1180px] px-6 pb-24 sm:px-14">
         <section className="pt-10 md:pt-14">
-          <div className="flex items-center justify-between gap-4">
+          {/* Back link on the left; rerun + download pair on the right.
+              Wrapped with `pdf-hide` so this row is removed from the
+              exported PDF (it's UI chrome, not part of the report). */}
+          <div className="pdf-hide flex items-center justify-between gap-4">
             <Link
               href="/reports"
               className="whitespace-nowrap text-[13px] font-semibold text-ink-soft hover:text-ink"
@@ -171,13 +249,38 @@ function ReportView() {
               ← Back to saved reports
             </Link>
             {focusResult && !isLoading && (
-              <button
-                type="button"
-                onClick={rerun}
-                className="whitespace-nowrap rounded-full border border-beige-line bg-card px-4 py-1.5 text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent"
-              >
-                Rerun this report
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={rerun}
+                  className="whitespace-nowrap rounded-full border border-beige-line bg-card px-4 py-1.5 text-[12px] font-semibold text-ink-soft transition hover:border-accent hover:text-accent"
+                >
+                  Rerun this report
+                </button>
+                <button
+                  type="button"
+                  onClick={openDownloadPicker}
+                  aria-label="Download report"
+                  title="Download report"
+                  className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-4 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-dark"
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="h-3.5 w-3.5"
+                    aria-hidden
+                  >
+                    <path d="M12 3v12" />
+                    <path d="M7 10l5 5 5-5" />
+                    <path d="M5 21h14" />
+                  </svg>
+                  Download
+                </button>
+              </div>
             )}
           </div>
         </section>
@@ -247,6 +350,19 @@ function ReportView() {
       </main>
 
       <Footer />
+
+      {/* Branded download modal. Mounted at the page root so the dark
+          backdrop covers everything. State is null when no download is
+          in flight; otherwise "preparing", "ready", or "error". */}
+      {downloadState && (
+        <DownloadModal
+          state={downloadState}
+          onClose={closeDownloadModal}
+          onDownload={onDownloadClick}
+          onChooseFormat={startDownload}
+          errorMessage={downloadError}
+        />
+      )}
     </div>
   );
 }

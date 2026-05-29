@@ -664,7 +664,9 @@ function BreakdownBlock({ data }: { data: AnalyzeResponse }) {
         // The cursor flips to grabbing while dragging via inline style; the
         // base cursor signals the card row is draggable. No scroll-snap:
         // the row scrolls freely so the user can park it anywhere.
-        className="flex gap-4 overflow-x-auto cursor-grab select-none scroll-smooth pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+        // pdf-breakdown-carousel — when body.pdf-printing is set, this
+        // row collapses to a static grid so the PDF shows all 6 cards.
+        className="pdf-breakdown-carousel flex gap-4 overflow-x-auto cursor-grab select-none scroll-smooth pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
       >
         {order.map((k) => (
           <div

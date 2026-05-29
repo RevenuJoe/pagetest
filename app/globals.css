@@ -41,3 +41,30 @@ body {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }
 }
+
+/* PDF export mode. When the user clicks "Download report", the export
+   helper adds `pdf-printing` to <body>, opens every <details>, and
+   then html2canvas snapshots the DOM. The rules below hide UI chrome
+   that doesn't make sense in a static PDF (carousel arrows, copy
+   buttons, the rerun/download row, drag-grab cursors) and forces the
+   Breakdown carousel to lay out as a static grid instead of a single
+   horizontal scroll row. */
+body.pdf-printing [data-pdf-hide],
+body.pdf-printing .pdf-hide,
+body.pdf-printing button[aria-label^="Copy"],
+body.pdf-printing button[aria-label="Previous cards"],
+body.pdf-printing button[aria-label="Next cards"] {
+  display: none !important;
+}
+
+body.pdf-printing .pdf-breakdown-carousel {
+  /* Stack the six cards as a grid so all are visible in the PDF. */
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  overflow: visible !important;
+  cursor: default !important;
+}
+body.pdf-printing .pdf-breakdown-carousel > div {
+  width: 100% !important;
+}
