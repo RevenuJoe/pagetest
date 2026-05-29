@@ -231,6 +231,31 @@ const filterMissingCtaButton: FilterRule = (note, _dim, ctx) => {
   return null;
 };
 
+/**
+ * "Two competing forms" / "multiple competing forms" / "hero form
+ * competes with supporting content" / "hero contains two forms" — a
+ * common hallucination where Claude mistakes a multi-step form's
+ * sequential steps for two separate forms, or mistakes an unrelated
+ * <form>-tagged account button for a competing conversion form.
+ *
+ * Our criteria don't say multiple forms are a problem — the opposite,
+ * they say the hero form + bottom form (the ideal pattern) are
+ * deliberately different. So any note framing "competing forms" as a
+ * negative is a fabrication.
+ */
+const filterCompetingForms: FilterRule = (note) => {
+  const said =
+    /\b(two|multiple|competing|duplicate)\s+(competing\s+)?forms\b/i.test(note) ||
+    /\bforms?\s+(?:are\s+)?competing\b/i.test(note) ||
+    /\bforms?\s+competes?\s+with\b/i.test(note) ||
+    /\bhero\s+(?:has|contains|includes)\s+(?:two|multiple)\s+[^.]{0,30}\bforms?\b/i.test(note) ||
+    /\bforms?\s+side[- ]by[- ]side\b/i.test(note) ||
+    /\b(remove|collapse|consolidate)\s+one\s+of\s+the\s+(?:two\s+)?forms?\b/i.test(note) ||
+    /\bdivides?\s+attention\b[^.]{0,80}\bforms?\b/i.test(note);
+  if (!said) return null;
+  return "competing-forms claim (multi-step form is ONE form; account-button <form> isn't a competing conversion form)";
+};
+
 /** "CTA not integrated with form" / "button is separate from form" /
  *  "button below the dropdown" framed as a negative. We never want to
  *  flag a stacked layout as a problem unless it genuinely hurts UX,
@@ -263,6 +288,7 @@ const ALL_FILTERS: FilterRule[] = [
   filterSignInRecommendation,
   filterPhoneFieldGhost,
   filterBottomFormShouldRepeat,
+  filterCompetingForms,
   filterMissingCtaButton,
   filterNotIntegratedLayout,
 ];
