@@ -447,34 +447,27 @@ async function runCriticPass(
 
   let verdicts: CriticVerdict[] = [];
   try {
-    // Extended thinking is enabled here. The critic's job ("is each
-    // claim supported by the evidence?") is a reasoning task — letting
-    // the model produce up to 5000 tokens of private chain-of-thought
-    // before committing to verdicts catches mistakes that a one-shot
-    // pass would miss. Trade-offs:
-    //   - temperature MUST be 1 with extended thinking enabled (the
-    //     Anthropic API rejects temperature 0 + thinking). The variance
-    //     this introduces is more than offset by the model's ability to
-    //     self-correct through the thinking pass.
-    //   - max_tokens must accommodate thinking budget + actual output.
-    //     5000 (thinking) + 4000 (output JSON) = 9000.
-    //   - Wall-clock latency on the critic grows ~10-20s; runs in
-    //     parallel with the Takeaways call so net report-time impact is
-    //     usually small (the dimensions-critic was already the slow
-    //     half of the parallel pair).
-    // SDK 0.27 doesn't type the `thinking` field — we pass it via a
-    // typed cast. Runtime API supports it on Claude Sonnet 4-5.
+    // max_tokens 4000 fits the full verdict JSON even when the candidate
+    // list is large (5 dims × headline + ~5 notes + 5 takeaways = ~35
+    // verdicts; each verdict is ~50-80 tokens with a reason). 2000 was
+    // overflowing on big reports, which silently truncated the JSON and
+    // tripped the parse-failure fallback (everything defaults to KEEP).
+    //
+    // Extended thinking was briefly enabled on this call but it roughly
+    // doubled the critic's wall-clock latency — and because both the
+    // dimensions-critic and takeaways-critic pass through this same
+    // function, the cost compounded across both. Rolled back to plain
+    // temperature-0 critic. If we want to revisit, the smarter shape
+    // is probably thinking on one critic pass only (the dims-critic,
+    // which has the larger candidate list) with a smaller budget.
     const response = await createWithRetry(
       client,
       {
         model: MODEL,
-        max_tokens: 9000,
-        temperature: 1,
-        thinking: { type: "enabled", budget_tokens: 5000 },
+        max_tokens: 4000,
+        temperature: 0,
         system,
         messages: [{ role: "user", content: userBlocks }],
-      } as Parameters<Anthropic["messages"]["create"]>[0] & {
-        thinking: { type: "enabled"; budget_tokens: number };
       },
       `critic:${scope}`,
     );
