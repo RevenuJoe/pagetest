@@ -229,6 +229,7 @@ function ReportRow({
       <Section
         title={displayName(report)}
         defaultOpen={false}
+        compact
         headerAction={
           <HeaderActions
             running={running}
@@ -284,10 +285,11 @@ function HeaderActions({
       handler();
     };
   }
-  // Mobile: wider gap (gap-3) between the three icon buttons so Open,
-  // Rerun and Trash sit evenly spaced. Desktop keeps the tighter gap-2.
+  // Mobile gap tightened to gap-2 (8px, ~30% less than the previous
+  // gap-3 = 12px) so the three icon buttons sit closer together near
+  // the right edge. Desktop keeps the same gap-2.
   return (
-    <div className="flex items-center gap-3 sm:gap-2">
+    <div className="flex items-center gap-2">
       {/* Rename pencil — hidden on mobile to give the title more room.
           Users can still rename by opening the report and editing there. */}
       <button

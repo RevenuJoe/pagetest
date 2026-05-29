@@ -9,6 +9,7 @@ export default function Section({
   icon,
   defaultOpen = true,
   headerAction,
+  compact = false,
   children,
 }: {
   title: string;
@@ -22,15 +23,25 @@ export default function Section({
    *  handler — clicking anywhere in a native <summary> toggles the
    *  <details> by default. */
   headerAction?: React.ReactNode;
+  /** Mobile-only spacing reduction. The saved-report row uses this so the
+   *  three header-action icons (Open, Rerun, Trash) sit closer to the
+   *  right edge and the title can use more of the available width. */
+  compact?: boolean;
   children: React.ReactNode;
 }) {
+  // Saved-report rows ("compact") shrink the summary padding on mobile:
+  // left + right go from px-7 (28px) to px-3.5 (14px), top + bottom from
+  // py-5 (20px) to py-3 (12px). Desktop keeps the original spacing.
+  const summaryPadding = compact
+    ? "px-3.5 py-3 sm:px-7 sm:py-5"
+    : "px-7 py-5";
   return (
     <details
       open={defaultOpen}
       className="group rounded-[24px] border border-beige-line bg-card shadow-card overflow-hidden"
     >
       <summary
-        className="flex cursor-pointer list-none items-center justify-between px-7 py-5"
+        className={`flex cursor-pointer list-none items-center justify-between ${summaryPadding}`}
         style={{ outline: "none" }}
       >
         <div className="flex min-w-0 flex-1 items-center gap-3">
