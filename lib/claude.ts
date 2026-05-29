@@ -565,6 +565,8 @@ function buildCriticPrompt(): string {
     "  - DROP any item that claims the page has 'two competing forms' or 'forms competing' — a multi-step form is ONE form.",
     "  - DROP any item recommending sign-in / log-in / create-account CTAs.",
     "  - DROP any item claiming 'social proof appears below the fold' or recommending 'move the trust line / logo strip / social proof into the hero / above the fold' UNLESS the above-the-fold screenshot is genuinely empty of logos, trust markers, ratings, badges, named-customer brands, and 'Trusted by N' copy. A logo strip cropped at the bottom edge of the AtF viewport STILL COUNTS as above the fold — that is not 'below the fold'. The screenshot is the only authority for fold position.",
+    "  - DROP or REWRITE any item that quotes a SPECIFIC hero headline when the quoted text is NOT the headline visible at the top of the above-the-fold screenshot. The page may have many <h1> elements in different sections; the hero headline is only the one rendered AT THE TOP of the AtF viewport. If the candidate quotes one of the other <h1>s (e.g. the bottom CTA section's heading) as the hero, that's a hallucination — drop the quote or rewrite to describe the hero without a specific quote.",
+    "  - HEADLINE-MUST-SUMMARISE-NOTES check: when auditing a HEADLINE candidate, look at all the NOTE candidates from the SAME dimension. Every topic mentioned in the headline must be supported by at least one note. If the headline mentions a topic (e.g. 'bottom CTA', 'mid-page conversion paths', 'social proof', 'mobile layout') that NO note in the same dimension discusses, REWRITE the headline to remove that clause. The headline is a summary of the notes, not a standalone claim. Worked failure mode: headline says 'Strong hero form and bottom CTA, but mid-page conversion paths are sparse' while the notes only discuss the hero form and the dropdown — 'bottom CTA' and 'mid-page conversion paths' have no supporting note. Rewrite to drop those unsupported clauses.",
     "",
     "Return ONLY valid JSON, no markdown fences, no preamble, in this exact shape:",
     "",
@@ -849,20 +851,19 @@ function buildPromptText(input: ClaudeInput, bodyTextCharLimit = 60_000): string
           ? `\n  ...and ${s.formFields.length - 25} more`
           : "");
 
-  // Short-option dropdowns: any <select> with 2–5 options is a candidate
-  // for replacing with a visible radio-button / tick-box group, which
-  // exposes all the choices without the user having to click open the
-  // dropdown. 3–4 options is the sweet spot. We surface these
-  // separately in GROUND TRUTH so Claude flags them — specifically when
-  // they appear in the HERO / above-the-fold form, which is where the
-  // friction matters most.
+  // Hero-form dropdowns: ANY <select> on the page is a candidate for
+  // replacing with visible TICK BOXES in the hero form. The
+  // recommendation is independent of how many options the source
+  // dropdown has — the IMPLEMENTATION (the tick-box set the marketer
+  // ships) is what's capped at 4. So even an 8-option dropdown can
+  // become "tick boxes showing the 4 most relevant choices". 2 is the
+  // minimum because a 1-option dropdown isn't really a choice.
   const shortDropdowns = s.formFields.filter(
     (f) =>
       f.tag === "select" &&
       typeof f.optionCount === "number" &&
       f.optionCount !== null &&
-      f.optionCount >= 2 &&
-      f.optionCount <= 5,
+      f.optionCount >= 2,
   );
   const shortDropdownsBlock = shortDropdowns
     .slice(0, 6)
@@ -912,6 +913,62 @@ function buildPromptText(input: ClaudeInput, bodyTextCharLimit = 60_000): string
     })
     .join("\n");
 
+  // Section-heading length check (digestibility). Best practice is
+  // section headlines (H1/H2/H3) of 10 words or fewer — anything
+  // longer scans poorly. We list every offending heading with its
+  // word count so Claude can quote concrete examples instead of
+  // wave-handing "some headlines run long".
+  const HEADING_WORD_CAP = 10;
+  const headingsWithCounts = s.headings.map((text) => ({
+    text,
+    wordCount: text.trim().split(/\s+/).filter(Boolean).length,
+  }));
+  const longHeadings = headingsWithCounts.filter(
+    (h) => h.wordCount > HEADING_WORD_CAP,
+  );
+  const longHeadingsBlock = longHeadings
+    .slice(0, 12)
+    .map((h) => `    • ${h.wordCount} words: "${h.text}"`)
+    .join("\n");
+
+  // CTA classification (CRO). The page's CTAs are split into two
+  // buckets that fulfil different user intents:
+  //   - "book-time" — high-commitment, schedule-something CTAs like
+  //     "Book a Demo", "Schedule a Call", "Talk to Sales".
+  //   - "immediate" — low-commitment, do-it-now CTAs like
+  //     "Start free trial", "Sign up", "View Pricing", "Get a Quote".
+  // The ideal landing page pairs ONE of each side by side so visitors
+  // can pick whichever matches their intent. Solo primary CTAs lose
+  // the visitors who would have clicked the other variant. Surfaced
+  // in GROUND TRUTH so Claude can recommend testing a secondary CTA
+  // when a single CTA type dominates.
+  const BOOK_TIME_RE =
+    /\b(book|schedule|set\s*up|reserve|request|talk\s*to|chat\s*with|meet\s*with|speak\s*to|contact)\b[^.]{0,25}\b(demo|call|sales|meeting|consultation|expert|specialist|chat|us|team)\b/i;
+  const BOOK_TIME_EXACT_RE =
+    /^(get\s+a\s+demo|book\s+a\s+demo|book\s+demo|schedule\s+demo|request\s+a\s+demo|see\s+a\s+demo|talk\s+to\s+sales|contact\s+sales|book\s+a\s+meeting)$/i;
+  const IMMEDIATE_RE =
+    /\b(start|try|begin|launch|free\s*trial|sign\s*up|create\s*(an?\s*)?account|get\s*started|view\s*pricing|see\s*pricing|check\s*pricing|get\s*pricing|get\s*a\s*quote|get\s*your\s*quote|get\s*quote|build\s*your\s*own|join\s*free|join\s*now|download)\b/i;
+  const classifyCta = (label: string): "book-time" | "immediate" | "neither" => {
+    const trimmed = label.trim();
+    if (!trimmed) return "neither";
+    if (BOOK_TIME_EXACT_RE.test(trimmed) || BOOK_TIME_RE.test(trimmed)) return "book-time";
+    if (IMMEDIATE_RE.test(trimmed)) return "immediate";
+    return "neither";
+  };
+  const ctaBuckets = { bookTime: [] as string[], immediate: [] as string[], other: [] as string[] };
+  for (const t of s.ctaTexts) {
+    const b = classifyCta(t);
+    if (b === "book-time") ctaBuckets.bookTime.push(t);
+    else if (b === "immediate") ctaBuckets.immediate.push(t);
+    else ctaBuckets.other.push(t);
+  }
+  // Dedupe (a "Get a Demo" button often appears 5-8 times on a page).
+  const dedupe = (arr: string[]) =>
+    Array.from(new Set(arr.map((s) => s.trim()))).slice(0, 12);
+  const bookTimeUnique = dedupe(ctaBuckets.bookTime);
+  const immediateUnique = dedupe(ctaBuckets.immediate);
+  const otherUnique = dedupe(ctaBuckets.other);
+
   return [
     `URL: ${input.url}`,
     `Title: ${input.title ?? "(none)"}`,
@@ -941,9 +998,11 @@ function buildPromptText(input: ClaudeInput, bodyTextCharLimit = 60_000): string
     "- IMPORTANT — anti-hallucination rule for forms:",
     "    When describing what fields a SPECIFIC form has (hero form, bottom form, footer form, etc.), the fields you name MUST appear in the per-<form> breakdown above for that form's position. Do NOT invent fields like 'first name', 'last name', 'company name', 'phone' if those fields aren't listed for the form you're describing. If the bottom form has 1 email input, say 'a one-field email form', not 'a full lead-gen form with first name, last name, company, and email'. If the page has zero <form> tags but you can clearly see a form in the screenshot, describe it from the screenshot but flag that the HTML couldn't confirm it.",
     "",
-    `- Short-option dropdowns found on the page (2–5 options each): ${shortDropdowns.length}`,
+    `- Hero-form dropdown candidates for tick-box conversion (any <select> with 2+ options): ${shortDropdowns.length}`,
     shortDropdowns.length > 0 ? shortDropdownsBlock : "  (none)",
-    "- NOTE: any recommendation about converting a short-option dropdown into a visible radio-button / tick-box group belongs in the CRO dimension only, NOT in Above-the-fold. The CRO criteria document explains when this applies.",
+    "- NOTE: any recommendation about converting a hero-form dropdown into visible TICK BOXES belongs in the CRO dimension only, NOT in Above-the-fold. The CRO criteria document explains when this applies.",
+    "  Always use the phrase 'tick boxes' for this conversion. Do NOT say 'radio buttons', 'radio-button group', 'chips', or 'pills'.",
+    "  Always phrase the recommendation as 'display 4 or fewer tick boxes' — this is the IMPLEMENTATION cap, independent of how many options the source dropdown has. If the dropdown has 3 options, recommend 3 tick boxes. If it has 8 options, recommend 4 tick boxes showing the most useful choices (or restructuring the question to reduce the option set to 4). Never recommend more than 4 tick boxes in the hero form, no matter how many options the source dropdown has.",
     "",
     "- Navigation: DO NOT comment on, count, list, praise, or recommend changes to the page's navigation. Navigation analysis is OFF-LIMITS because static HTML extraction of nav links is unreliable on modern landing pages. Skip the topic entirely in every dimension — including Above-the-fold.",
     "",
@@ -980,13 +1039,74 @@ function buildPromptText(input: ClaudeInput, bodyTextCharLimit = 60_000): string
       ? `- CTA labels (verbatim, up to 20 shown): ${s.ctaTexts.slice(0, 20).map((t) => `"${t}"`).join(", ")}`
       : "- CTA labels: (none)",
     "",
+    "- CTA intent classification (the page is split into two buckets that serve different user intents):",
+    `    Book-time CTAs (high-commitment, e.g. 'Get a Demo' / 'Book a Demo' / 'Talk to Sales'): ${bookTimeUnique.length} unique label${bookTimeUnique.length === 1 ? "" : "s"}`,
+    bookTimeUnique.length > 0
+      ? `      labels: ${bookTimeUnique.map((t) => `"${t}"`).join(", ")}`
+      : "      (none — no book-a-time CTAs detected)",
+    `    Immediate-action CTAs (low-commitment do-it-now, e.g. 'Start free trial' / 'View pricing' / 'Get a quote' / 'Sign up'): ${immediateUnique.length} unique label${immediateUnique.length === 1 ? "" : "s"}`,
+    immediateUnique.length > 0
+      ? `      labels: ${immediateUnique.map((t) => `"${t}"`).join(", ")}`
+      : "      (none — no immediate-action CTAs detected)",
+    `    Other CTAs (don't fit either bucket cleanly): ${otherUnique.length} unique label${otherUnique.length === 1 ? "" : "s"}`,
+    otherUnique.length > 0
+      ? `      labels (up to 12 shown): ${otherUnique.map((t) => `"${t}"`).join(", ")}`
+      : "      (none)",
+    "- IMPORTANT — SECONDARY-CTA PAIRING RULE (CRO, mid-page focus):",
+    "    Ideal landing pages pair ONE book-time CTA with ONE immediate-action CTA side by side so the visitor can pick whichever matches their intent. Two CTAs work HARDER than one — they don't compete, they capture different segments.",
+    "    SCOPE: This recommendation is specifically about MID-PAGE CTAs — the buttons sitting after content sections (feature blocks, stats blocks, FAQ section, role-tabs, etc.) BETWEEN the hero and the footer. Do NOT apply it to:",
+    "      • the navigation / header CTA (usually a single 'Get a Demo' top-right — that's the expected pattern, don't recommend a second one there);",
+    "      • the hero / above-the-fold CTA (often paired with a form or qualifying widget — different criterion applies, see the hero-form patterns above);",
+    "      • CTAs inside a form (Submit / Next / Continue buttons aren't standalone CTAs).",
+    "    HOW TO JUDGE THIS — rely MAINLY on the FULL-PAGE SCREENSHOT, not the HTML CTA list above. The HTML count tells you how many CTAs exist and what labels they use, but it CANNOT tell you whether they're rendered SOLO (one button alone at the end of a section) or PAIRED (two buttons side by side). Only the screenshot shows visual layout, so the screenshot is the authority for this rule. Use the HTML CTA labels above as a HINT for what intents the page currently covers, then look at the full-page screenshot to identify which mid-page CTAs are solo and which are already paired.",
+    "    If most of the mid-page CTAs appear solo in the screenshot, AND the page's CTA set leans heavily on one intent bucket (only book-time CTAs, or only immediate-action), recommend TESTING a SECONDARY CTA alongside the mid-page primary. Good secondary CTAs to suggest:",
+    "      • If the page already has 'Get a Demo' / 'Book a Demo' style CTAs → suggest pairing with an immediate-action CTA: 'Start free trial', 'View pricing', 'Get a quote', or 'Sign up'.",
+    "      • If the page only has immediate-action CTAs → suggest pairing with a book-time CTA: 'Book a demo' or 'Talk to sales'.",
+    "    Phrase the recommendation as a TEST (not a definitive change). Make it PROMINENT when many of the MID-PAGE CTAs are solo — this is one of the highest-impact tweaks a marketing page can make.",
+    "",
     `- Total headings (H1/H2/H3) on the page: ${s.headings.length}`,
-    s.headings.length > 0
-      ? `- First heading on the page: "${s.headings[0]}"`
-      : "",
-    s.headings.length > 1
-      ? `- Last heading on the page: "${s.headings[s.headings.length - 1]}"`
-      : "",
+    `- Total <h1> elements on the page: ${s.h1Texts.length}`,
+    s.h1Texts.length > 0
+      ? `- All <h1> elements in HTML SOURCE order (NOT necessarily visual order — see rule below):\n${s.h1Texts.map((t, i) => `    ${i + 1}. "${t}"`).join("\n")}`
+      : "- All <h1> elements: (none)",
+    "- IMPORTANT — HERO HEADLINE RULE:",
+    "    The H1 list above is in HTML SOURCE order, NOT visual page order. On pages where CSS reorders sections (very common on modern landing-page builders, Webflow, Framer, etc.), the FIRST <h1> in the source can actually render at the BOTTOM of the page, and a later <h1> can be the visual hero. The hero headline is whichever heading you can see at the TOP of the above-the-fold screenshot.",
+    "    When you quote the hero headline in a note, the quoted text MUST exactly match what is visible at the top of the AtF screenshot. Do NOT use the first <h1> from the list above as a shortcut — verify visually first. If the screenshot is ambiguous, do NOT quote a specific hero headline at all; describe the hero without quoting.",
+    "    Worked failure mode you must avoid: a page has 10 <h1>s. The FIRST in source order is the bottom-of-page CTA section's heading. The visual hero is the 4th <h1> in source order, which is what the AtF screenshot shows at the top. Quoting the 1st <h1> as the hero headline is WRONG. Always read the hero headline from the screenshot.",
+    "",
+    `- Section headings (H1/H2/H3) longer than ${HEADING_WORD_CAP} words, parsed from HTML: ${longHeadings.length} out of ${s.headings.length} total`,
+    longHeadings.length > 0
+      ? longHeadingsBlock
+      : "    (none — every heading parsed from the HTML is within the 10-word best practice)",
+    "- IMPORTANT — SECTION-HEADING LENGTH RULE (digestibility):",
+    "    Best practice is section headings of 10 WORDS OR FEWER. Anything longer scans badly — readers can't grasp the section's point at a glance.",
+    "    The count above is parsed from HTML <h1>/<h2>/<h3> tags. THE FULL-PAGE SCREENSHOT IS THE AUTHORITY. Many pages style <div> elements to look like section headings (or label real headings with the wrong level), so HTML tag count can be misleading. Cross-reference: look at the full-page screenshot and confirm each long heading from the list actually renders as a visible section heading. Conversely, if the screenshot shows visible section headings that AREN'T in this list (because they're styled <div>s), count those too and add them to your assessment.",
+    "    When reporting in the digestibility notes, say HOW MANY section headings exceed 10 words and quote 1-2 of the longest as examples (e.g. '4 section headings run longer than 10 words; the worst at 17 words is \"...\"'). Do NOT vaguely say 'some headlines are long' — give the count.",
+    "",
+    `- Paragraphs (<p> elements outside FAQ blocks): ${s.paragraphWordCounts.length} total, ${s.longParagraphs.length} exceed 50 words`,
+    s.longParagraphs.length > 0
+      ? s.longParagraphs
+          .slice(0, 8)
+          .map((p) => `    • ${p.wordCount} words: "${p.snippet}…"`)
+          .join("\n")
+      : "    (none — every paragraph is within the 50-word digestibility best practice)",
+    "- IMPORTANT — PARAGRAPH-LENGTH RULE (digestibility):",
+    "    Non-FAQ paragraphs should average 50 words or fewer. FAQ answers have their own 75-word cap (see the FAQ block below) and are judged SEPARATELY — do NOT add FAQ answers to the paragraph count. When reporting in the digestibility notes, quote the exact count from the GROUND TRUTH line above (e.g. '4 of 12 paragraphs exceed 50 words') and quote 1-2 of the longest as examples with their word counts. Do NOT vague-wave with 'some paragraphs run long' — give the count.",
+    "    The full-page screenshot is helpful for verifying which long-paragraph blocks visually feel like walls of text on the page. If the screenshot shows a section that LOOKS like a wall of text but doesn't appear in the long-paragraph list (e.g. it's a styled <div> not a <p>), count it too.",
+    "",
+    `- FAQ-style Q/A pairs detected on the page (via <details>/<summary> or faq-class patterns): ${s.faqAnswers.length}`,
+    s.faqAnswers.length > 0
+      ? s.faqAnswers
+          .slice(0, 12)
+          .map((f) => {
+            const tooLong = f.answerWordCount > 75 ? "  ← OVER 75 words" : "";
+            return `    • Q: "${f.question}" — answer is ${f.answerWordCount} words${tooLong}`;
+          })
+          .join("\n")
+      : "    (none — page either has no FAQ section, the FAQ is rendered client-side, or it uses a markup pattern we don't detect)",
+    "- IMPORTANT — FAQ-ANSWER LENGTH RULE (digestibility):",
+    "    Best practice is 75 words or fewer per FAQ answer. Any answer marked '← OVER 75 words' above is too long and HURTS digestibility — readers can't skim past it. When a page's FAQs include answers above 75 words, the digestibility verdict should reflect that. Do NOT write generic praise like 'the FAQ uses tight Q&A pairs with short answers' if ANY answer in the list above is over 75 words — that contradicts the data. If you call out the FAQ length, quote the actual word count from this list (e.g. 'the combinatorial-optimisation answer runs 128 words') so the recommendation is concrete.",
+    "    When NO FAQ pairs were detected (count: 0) it does NOT prove the page has no FAQ — it may be client-rendered. In that case fall back to the body text and the screenshots before commenting on FAQ length.",
     "",
     bodyTextCharLimit >= 60_000
       ? "Body text of the FULL page (top to bottom, may be lightly truncated):"

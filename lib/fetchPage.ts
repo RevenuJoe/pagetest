@@ -65,6 +65,13 @@ export interface PageStructure {
    *  page, which prevents "add a bottom CTA" hallucinations when the
    *  page already ends with a "Get started" section. */
   headings: string[];
+  /** Every <h1> on the page in HTML source order. Surfaced separately
+   *  from `headings` because the hero headline is almost always an
+   *  <h1>, but on pages where CSS reorders the DOM the first <h1> in
+   *  source order is NOT the visual hero. Listing all H1s lets Claude
+   *  see every candidate and pick the actual hero from the screenshot.
+   *  Capped at 20 to keep prompts compact on pages with H1-soup. */
+  h1Texts: string[];
   /** Visible text of every <a> and <button> found inside a <header>
    *  element. Many modern sites use <header> with buttons directly
    *  and skip the <nav> tag entirely — this captures the top-area
@@ -141,6 +148,44 @@ export interface PageStructure {
    *  in any of the forms. Empty array when the page has zero <form>
    *  tags (e.g. fields are wrapped in <div> with JS handlers). */
   forms: FormGroup[];
+  /** Detected FAQ-style question/answer pairs, with each answer's word
+   *  count. Detection covers <details>/<summary> blocks and elements
+   *  with classes like "faq-question", "accordion-question", "faq-item"
+   *  on most modern landing pages. Empty array when no FAQ section
+   *  is found (or it's rendered client-side and the HTML is a shell). */
+  faqAnswers: FaqAnswerStat[];
+  /** Word counts for every <p> element on the page. Used to flag the
+   *  paragraphs that exceed the 50-word digestibility best practice.
+   *  See `longParagraphs` for the filtered list and total counts. */
+  paragraphWordCounts: number[];
+  /** Paragraphs that exceed 50 words (the digestibility best practice).
+   *  Each entry has the word count and the first ~80 characters of
+   *  text so Claude can quote a concrete example. Capped at 20 to
+   *  keep prompts compact. */
+  longParagraphs: LongParagraphStat[];
+}
+
+/** Word count + opening snippet for a paragraph that exceeds the
+ *  50-word digestibility cap. */
+export interface LongParagraphStat {
+  wordCount: number;
+  snippet: string;
+}
+
+/**
+ * One detected FAQ question + answer pair. The 75-word digestibility
+ * best practice fires when `answerWordCount > 75`. We surface up to 20
+ * to keep prompts compact; pages with more FAQs than that almost
+ * always repeat the pattern (so a sample is enough to score).
+ */
+export interface FaqAnswerStat {
+  question: string;
+  answerWordCount: number;
+  /** First ~60 chars of the answer for context when Claude quotes it. */
+  answerSnippet: string;
+  /** Which detector matched ("details/summary", "faq-class", etc.).
+   *  Logged but not shown to Claude. */
+  source: string;
 }
 
 /** Per-format image inventory. Counts are deduped by URL (case-
@@ -399,6 +444,7 @@ function extractStructure(html: string): PageStructure {
   const navLinks = extractNavLinks(html);
   const ctaTexts = extractCtaTexts(html);
   const headings = extractHeadings(html);
+  const h1Texts = extractH1Texts(html);
   const headerCtaTexts = extractHeaderCtaTexts(html);
   const likelyNavLabels = detectLikelyNavLabels(bodyText);
   const imageFormats = scanImageFormats(html);
@@ -407,6 +453,8 @@ function extractStructure(html: string): PageStructure {
   const interactiveAtf = detectInteractiveAboveFold(html);
   const spaShell = detectClientRenderedShell(html, bodyText);
   const forms = extractForms(html);
+  const faqAnswers = extractFaqAnswers(html);
+  const paragraphStats = extractParagraphStats(html);
 
   // Derive blunt yes/no signals for the most-hallucinated fields. Claude
   // gets these as ground truth so it can't claim "the form asks for a
@@ -444,6 +492,7 @@ function extractStructure(html: string): PageStructure {
     navLinks,
     ctaTexts,
     headings,
+    h1Texts,
     headerCtaTexts,
     likelyNavLabels,
     imageFormats,
@@ -456,6 +505,9 @@ function extractStructure(html: string): PageStructure {
     isClientRenderedShell: spaShell.present,
     clientRenderedSignals: spaShell.signals,
     forms,
+    faqAnswers,
+    paragraphWordCounts: paragraphStats.wordCounts,
+    longParagraphs: paragraphStats.longParagraphs,
   };
 }
 
@@ -1002,6 +1054,30 @@ function extractHeadings(html: string): string[] {
 }
 
 /**
+ * Pull every <h1> on the page, in HTML source order.
+ *
+ * Why this exists separately from `extractHeadings`: the hero headline
+ * is almost always an <h1>, but on pages where CSS reorders the DOM
+ * the first <h1> in HTML source order is NOT the visual hero — it can
+ * be the bottom CTA section's headline pulled forward by the source
+ * but rendered at the bottom of the page.
+ *
+ * Listing every <h1> separately gives Claude the full set of candidate
+ * hero headlines so it can pick the correct one from the AtF screenshot
+ * instead of guessing the first source-order heading.
+ */
+function extractH1Texts(html: string): string[] {
+  const out: string[] = [];
+  for (const m of html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/gi)) {
+    const text = cleanInlineText(m[1] ?? "");
+    if (!text || text.length > 200) continue;
+    out.push(text);
+    if (out.length >= 20) return out;
+  }
+  return out;
+}
+
+/**
  * Pull every form field on the page with its identifying attributes.
  * Used as ground-truth context for the Claude prompt so it never has to
  * guess what fields the page's forms actually ask for.
@@ -1138,4 +1214,145 @@ function pickButtonText(html: string, re: RegExp): string | null {
 function pickInputValue(html: string, re: RegExp): string | null {
   const m = html.match(re);
   return m ? m[1].trim() : null;
+}
+
+/**
+ * Detect FAQ-style question/answer pairs on the page and return each
+ * answer's word count. Two detection strategies, run in order:
+ *
+ *   1. <details>/<summary> — the modern accessible FAQ pattern. The
+ *      <summary> text is the question, everything else inside the
+ *      <details> is the answer.
+ *   2. Class-name heuristic — elements with classes like
+ *      "faq-question" / "faq-answer" / "accordion-question" /
+ *      "accordion-content" are matched as Q/A pairs.
+ *
+ * Why this exists: the digestibility criterion says FAQ answers
+ * should be 75 words or fewer. Without programmatic measurement,
+ * Claude tends to wave generic statements like "the FAQ uses tight
+ * Q&A pairs with short answers" even when answers run 100+ words.
+ * Listing each answer's actual word count in GROUND TRUTH forces
+ * Claude to anchor to facts.
+ *
+ * Caveat: pages that render the FAQ client-side won't show up here.
+ * In that case the array is empty and Claude is told in the prompt
+ * to fall back to the body text.
+ */
+function extractFaqAnswers(html: string): FaqAnswerStat[] {
+  const out: FaqAnswerStat[] = [];
+
+  // Pattern 1 — <details><summary>Q</summary> ANSWER </details>.
+  // Most modern accessible FAQ implementations use this.
+  for (const m of html.matchAll(
+    /<details\b[^>]*>([\s\S]*?)<\/details>/gi,
+  )) {
+    if (out.length >= 20) break;
+    const inner = m[1] ?? "";
+    const summaryMatch = inner.match(/<summary\b[^>]*>([\s\S]*?)<\/summary>/i);
+    if (!summaryMatch) continue;
+    const question = cleanInlineText(summaryMatch[1] ?? "");
+    if (!question || question.length > 200) continue;
+    // Remove the summary block so we just have the answer body left.
+    const answerHtml = inner.replace(/<summary\b[^>]*>[\s\S]*?<\/summary>/i, "");
+    const answerText = cleanInlineText(answerHtml);
+    if (!answerText) continue;
+    const wordCount = answerText.split(/\s+/).filter(Boolean).length;
+    out.push({
+      question,
+      answerWordCount: wordCount,
+      answerSnippet: answerText.slice(0, 60),
+      source: "details/summary",
+    });
+  }
+  if (out.length >= 20) return out;
+
+  // Pattern 2 — class-name heuristic. Match a question-class element
+  // immediately followed by an answer-class element.
+  const QUESTION_CLASS_RE =
+    /<([a-zA-Z0-9]+)\b[^>]*\bclass\s*=\s*["'][^"']*\b(faq[-_]?question|accordion[-_]?question|faq[-_]?item__question|question[-_]?text|qa[-_]?question)\b[^"']*["'][^>]*>([\s\S]*?)<\/\1>/gi;
+  const ANSWER_CLASS_RE =
+    /<([a-zA-Z0-9]+)\b[^>]*\bclass\s*=\s*["'][^"']*\b(faq[-_]?answer|accordion[-_]?(answer|content|panel)|faq[-_]?item__answer|answer[-_]?text|qa[-_]?answer)\b[^"']*["'][^>]*>([\s\S]*?)<\/\1>/gi;
+
+  const questions: { index: number; text: string }[] = [];
+  for (const m of html.matchAll(QUESTION_CLASS_RE)) {
+    if (questions.length >= 30) break;
+    const t = cleanInlineText(m[3] ?? "");
+    if (!t || t.length > 200) continue;
+    questions.push({ index: m.index ?? 0, text: t });
+  }
+  const answers: { index: number; text: string }[] = [];
+  for (const m of html.matchAll(ANSWER_CLASS_RE)) {
+    if (answers.length >= 30) break;
+    const t = cleanInlineText(m[4] ?? "");
+    if (!t) continue;
+    answers.push({ index: m.index ?? 0, text: t });
+  }
+  // Pair each question with the nearest following answer.
+  for (const q of questions) {
+    if (out.length >= 20) break;
+    const a = answers.find((ans) => ans.index > q.index);
+    if (!a) continue;
+    const wordCount = a.text.split(/\s+/).filter(Boolean).length;
+    out.push({
+      question: q.text,
+      answerWordCount: wordCount,
+      answerSnippet: a.text.slice(0, 60),
+      source: "faq-class",
+    });
+  }
+
+  return out;
+}
+
+/**
+ * Count words in every <p> element on the page, excluding paragraphs
+ * that belong to FAQ answers (those are tracked separately via
+ * extractFaqAnswers and have their own 75-word best practice).
+ *
+ * The 50-word digestibility best practice applies to non-FAQ
+ * paragraphs only. A page where the only long paragraphs are FAQ
+ * answers shouldn't trip this counter twice — Claude is told in the
+ * prompt that FAQ answers and regular paragraphs are judged on
+ * separate caps.
+ *
+ * Returns:
+ *   - wordCounts: every paragraph's word count (so prompts can show
+ *     "X of Y paragraphs exceed 50 words" with both numerator and
+ *     denominator).
+ *   - longParagraphs: just the ones over 50 words, with snippets so
+ *     Claude can quote concrete examples instead of waving generic
+ *     "some paragraphs run long" hands.
+ */
+function extractParagraphStats(html: string): {
+  wordCounts: number[];
+  longParagraphs: LongParagraphStat[];
+} {
+  // Strip <details> blocks first — typical FAQ markup wraps the
+  // question in <summary> and the answer in <p> tags inside <details>.
+  let scrubbed = html.replace(
+    /<details\b[^>]*>[\s\S]*?<\/details>/gi,
+    "",
+  );
+  // Strip elements with FAQ / accordion classes too, for the pages
+  // that use <div class="faq-item">...<p>answer</p>...</div> patterns
+  // instead of <details>. Best-effort: we look at common wrapper class
+  // tokens and remove the matched element wholesale.
+  scrubbed = scrubbed.replace(
+    /<([a-zA-Z0-9]+)\b[^>]*\bclass\s*=\s*["'][^"']*\b(faq[-_]?(item|wrapper|content|panel|answer)|accordion[-_]?(item|wrapper|content|panel|answer))\b[^"']*["'][^>]*>[\s\S]*?<\/\1>/gi,
+    "",
+  );
+
+  const wordCounts: number[] = [];
+  const longParagraphs: LongParagraphStat[] = [];
+  for (const m of scrubbed.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+    const text = cleanInlineText(m[1] ?? "");
+    if (!text) continue;
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    wordCounts.push(wordCount);
+    if (wordCount > 50 && longParagraphs.length < 20) {
+      longParagraphs.push({ wordCount, snippet: text.slice(0, 80) });
+    }
+    if (wordCounts.length >= 400) break; // safety cap on outlier pages
+  }
+  return { wordCounts, longParagraphs };
 }

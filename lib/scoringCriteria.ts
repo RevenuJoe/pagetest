@@ -141,7 +141,23 @@ A specific, benefit-led promise (what the visitor GETS), not a generic feature l
 
 4. Concrete proof. Numbers, dates, named customers, integrations, specifics over adjectives.
 
-If the page misses Problem / Social proof / FAQ / Product / Stats, those misses ARE the most important notes to surface.`;
+If the page misses Problem / Social proof / FAQ / Product / Stats, those misses ARE the most important notes to surface.
+
+ANTI-HALLUCINATION ANCHORS — read these BEFORE writing any Content note that touches FAQ length, headings, CTAs, social proof, or forms. The same GROUND TRUTH facts other dimensions use apply here too, so Content must not contradict them:
+
+  • SOCIAL PROOF on the page. Check the GROUND TRUTH "Social proof throughout the page (full-site HTML scan): YES/NO" flag. If YES, social proof IS present — do NOT say "no social proof", "social proof is missing", "needs customer logos" etc. The screenshot is also fair to use, especially for above-the-fold judgements. If you write a positive note about social proof, name what you actually see (specific customer logos, the "Trusted by N hospitals" stat, a named review badge) — do not write generic praise.
+
+  • FAQ ANSWER LENGTH. Check the GROUND TRUTH "FAQ-style Q/A pairs detected" block. If any answer is marked "← OVER 75 words", do NOT write generic praise like "the FAQ is excellent with concise answers" — that contradicts the data. Either drop the FAQ-as-strength note, or qualify it ("the FAQ is comprehensive but several answers run long — the longest at 128 words could be tightened or split").
+
+  • SECTION HEADING LENGTH. Check the GROUND TRUTH "Section headings (H1/H2/H3) longer than 10 words" list. If multiple headings exceed 10 words, do NOT call the page's headings "tight" or "scannable" in a Content note. Concrete observation > generic praise.
+
+  • CTA MIX. Check the GROUND TRUTH CTA intent classification (book-time count vs. immediate-action count). Don't write Content notes describing the page's CTAs in a way that contradicts those counts (e.g. don't say "the page leads with 'Start free trial'" when zero immediate-action CTAs were detected).
+
+  • FORMS. Check the GROUND TRUTH per-<form> breakdown. When describing form fields in a Content note (e.g. "the hero asks for an email"), the fields you name must match the per-form list. Do NOT invent fields that aren't there.
+
+  • HERO HEADLINE. If you quote the hero headline in a Content note (e.g. "the headline is benefit-led" or "the headline is feature-focused"), the quoted text MUST be the headline visible at the TOP of the AtF screenshot. The first <h1> in the GROUND TRUTH H1 list is NOT necessarily the hero — verify visually first. If unsure, describe the hero without quoting a specific line.
+
+These anchors apply to every Content note. When a Content claim and a GROUND TRUTH fact disagree, the GROUND TRUTH wins.`;
 
 /**
  * DIGESTIBILITY — visual hierarchy, scannability, navigation.
@@ -154,8 +170,11 @@ CHECKLIST:
 1. Clear visual section headers.
 Each major section on the page should have a visible header (H2 / H3-style title) that names what the section is about. A reader scrolling should always know what they're looking at from the heading alone. Call out any sections that run without a header.
 
+1b. Section-heading length.
+Section headings should be 10 WORDS OR FEWER as a best practice. Anything longer scans badly — readers can't grasp the section's point at a glance. Use the GROUND TRUTH "Section headings longer than 10 words" block to read both the count AND the actual offending headings. CROSS-REFERENCE WITH THE FULL-PAGE SCREENSHOT: the HTML <h1>/<h2>/<h3> tag count can be misleading (pages style <div>s as headings, or wrong-level real headings), so the SCREENSHOT is the authority for what counts as a visible section heading. When more than one heading exceeds 10 words, your note must quote the exact count from GROUND TRUTH (e.g. "4 section headings run longer than 10 words") and quote 1-2 of the worst examples with their word counts. Do NOT vague-wave with "some headings are long" — give the count.
+
 2. Paragraph length.
-The average paragraph should contain NO MORE THAN 50 WORDS. Anything longer is hard to digest. If paragraphs are bloated, flag it and recommend splitting them or converting to bullet points. Conversely, if the page already uses tight paragraphs and bullet points well, call that out as a positive.
+Non-FAQ paragraphs should average NO MORE THAN 50 WORDS. Anything longer is hard to digest. Use the GROUND TRUTH "Paragraphs (<p> elements outside FAQ blocks)" line to read BOTH the total paragraph count AND the count over 50 words. Your note MUST quote the exact figures (e.g. "4 of 12 paragraphs exceed 50 words, the longest at 91 words") and quote 1-2 of the worst examples by their snippet. Do NOT write generic praise like "the page uses tight paragraphs" if any paragraphs in the GROUND TRUTH list exceed 50 words — that contradicts the data. FAQ answers have their own 75-word cap (see checkpoint 6 below) and are judged SEPARATELY — do NOT lump them into the paragraph count.
 
 3. Bullet points / bite-size formatting.
 Bullet points are the strongest format for scannable detail. If the page leans on long prose where bullets would work, flag it and recommend converting. If the page already uses bullets well, that's a positive.
@@ -166,7 +185,10 @@ No more than three paragraphs in a single section / viewport. If a section reads
 5. Skim test.
 Could a busy reader understand the page in 10 seconds by reading just headings and looking at images? If not, the hierarchy is failing.
 
-6. Navigation. Working header + footer navigation, sensible structure.`;
+6. FAQ answer length.
+Each FAQ answer should be 75 WORDS OR FEWER as a best practice — readers come to an FAQ to find a quick fact, not to read a paragraph. Use the GROUND TRUTH "FAQ-style Q/A pairs detected" block to read each answer's actual word count. ANY answer with "← OVER 75 words" next to it FAILS this checkpoint and should be flagged in your notes with the specific word count (e.g. "the combinatorial-optimisation FAQ answer runs 128 words"). Recommend tightening to 75 words or fewer, or splitting the answer into bullet points. Do NOT write generic praise like "the FAQ uses tight Q&A pairs with short answers" when one or more answers exceed 75 words — that's a hallucination contradicted by the data above.
+
+7. Navigation. Working header + footer navigation, sensible structure.`;
 
 /**
  * CRO — the most important dimension and the strictest checklist.
@@ -193,13 +215,44 @@ Look for:
     • Page opens with a question via preset answers but never captures an email → recommend adding an email capture step AFTER the question.
     • Page opens up with just buttons → recommend adding a conversion widget above the fold as a very important improvement.
 - A multi-step form is ONE form, not several. Even if it shows multiple sequential steps (question → answer → email), or has multiple visible widgets at different stages, that's still ONE form. Do NOT describe a multi-step form as "two competing forms", "multiple competing forms", or "the hero has two forms side-by-side". If the hero contains a question with a dropdown plus an email input, that's a single multi-step form, not two forms. Pages also commonly have an unrelated <form>-tagged element wrapping an account button (e.g. "Go to my account") — that is NOT a competing conversion form. Do NOT count it as one.
-- SHORT-OPTION DROPDOWNS IN THE HERO FORM. If the hero / above-the-fold form uses a <select> dropdown with only 3–4 real options (check the GROUND TRUTH "Short-option dropdowns" list and confirm visibility in the above-the-fold screenshot), recommend converting it to a visible radio-button or tick-box group. Exposing 3–4 choices upfront removes a click and reduces friction more than a closed dropdown. Caveats: only apply this when the dropdown is in the hero form (above-the-fold), AND the choice list is short enough (3–4 ideal; 5 options is borderline; 6+ would overwhelm the hero — leave those as dropdowns). Do NOT recommend this for dropdowns that only appear in below-the-fold forms (e.g. footer contact forms) — the friction matters most in the hero where the visitor is deciding whether to engage.
+- HERO-FORM A/B TEST RECOMMENDATIONS. Use the per-<form> GROUND TRUTH breakdown PLUS the above-the-fold screenshot to identify the hero form (the form a visitor sees first, before any scroll). Then match it to one of the three patterns below. Phrase the recommendation as a TEST ("recommend testing", "run an A/B test"), not as a definitive change — the goal is to give the marketer a structured experiment, not to assert the new variant will win.
+
+  Pattern 1 — Hero has a DROPDOWN form (any <select> in the hero form, regardless of option count):
+    Recommend: "Run an A/B test of the existing dropdown vs. a visible multiple tick-box variant in the hero." Specify "display 4 or fewer tick boxes" as the implementation cap, independent of how many options the source dropdown has. A 3-option dropdown becomes 3 tick boxes. A 10-option dropdown becomes 4 tick boxes showing the most useful choices; the marketer prunes.
+
+  Pattern 2 — Hero has a ONE-FIELD form (a single visible input, e.g. just an email input):
+    Recommend: "Test a dropdown or multiple tick-box conversion widget against the existing one-field form in the hero." Frame it as evolving the hero from a static one-field capture into an interactive qualifying step. If recommending tick boxes, hold to the "4 or fewer" implementation cap. Suggest a sensible question for the tick boxes (revenue band, team size, role, industry — whichever fits the page's audience).
+
+  Pattern 3 — Hero has a BIG form (4 or more fields VISIBLE IMMEDIATELY in the above-the-fold screenshot, before any scroll):
+    Recommend: "Test a simpler conversion widget against the big hero form." Specifically suggest testing a ONE-FIELD form (e.g. just email), a DROPDOWN, or a MULTIPLE TICK-BOX option (4 or fewer) as the variant. Big top-of-page forms with 4+ visible fields scare visitors off; the test is whether a simpler hero widget converts higher.
+
+  Required wording rules across all three patterns:
+    • Always say "tick boxes". Do NOT say "radio buttons", "radio-button group", "chips", or "pills".
+    • Always frame as "run a test" / "test against" / "A/B test" — not a hard recommendation to change.
+    • For tick-box variants always cap at "4 or fewer".
+    • Only apply to the HERO form (above-the-fold). Do NOT generate these recommendations for forms that only appear below the fold.
+    • Verify visually in the AtF screenshot which form is the hero — the FIRST form in HTML source order is NOT always the visual hero (CSS-reordered pages put it elsewhere). If the screenshot makes the hero form unambiguous, use that; if you can't tell which form is the hero, do NOT generate the recommendation.
 - Ideal form types — the TOP of the page and the BOTTOM of the page should have different forms, and you should NEVER recommend making them match:
     • TOP of page: a SMALL form. Either a one-field input (e.g. just email), OR a multi-step / question-led form that opens with a qualifying question and preset answers. The qualifying question belongs in the HERO ONLY. Big top-of-page forms with 4+ visible fields scare users away.
     • BOTTOM of page: a BIG form that captures all the fields you'd actually need for a good lead (name, company, email, etc). A one-field form can work at the bottom too if that suits the funnel, but the big form is the default ideal.
     • Ideally not just buttons at the top of the page — UNLESS the buttons are "Get started for free" or "Start free trial" (or similar self-serve CTAs). Those are good Product-Led-Growth (PLG) motions and a button on its own is fine in that case.
     • A page where the hero has a qualifying-question / small form AND the bottom has a full lead-gen form is HITTING the ideal pattern — call this out positively, do not recommend changes to either form on the basis that they're "different".
     • Do NOT recommend the bottom form re-ask the hero's qualifying question. Do NOT recommend stripping fields out of the bottom form to make it "question-led" like the hero.
+
+- SECONDARY-CTA PAIRING FOR MID-PAGE BUTTONS. Ideal landing pages pair ONE book-time CTA (high-commitment: "Get a Demo", "Book a Demo", "Talk to Sales") with ONE immediate-action CTA (low-commitment, do-it-now: "Start free trial", "View pricing", "Get a quote", "Sign up") side by side throughout the page so visitors can pick whichever matches their intent. Two CTAs work HARDER than one — they capture different segments rather than competing.
+  Where this applies — MID-PAGE only:
+    • Mid-page CTAs are the buttons sitting at the end of content sections (feature blocks, stats blocks, FAQ section, role-tabs, etc.) BETWEEN the hero and the footer.
+    • Do NOT apply this to the navigation / header CTA (a single 'Get a Demo' top-right is the expected pattern). Do NOT apply this to the hero / above-the-fold CTA (covered by the hero-form patterns above). Do NOT apply this to buttons inside a form (Submit / Next / Continue are not standalone CTAs).
+  How to judge — rely MAINLY on the full-page screenshot:
+    • The HTML CTA list in GROUND TRUTH tells you what intents the page covers (book-time count vs. immediate-action count), but it can't tell you whether each mid-page CTA is rendered SOLO (one button alone) or PAIRED (two buttons side by side). Only the full-page screenshot can.
+    • Walk the full-page screenshot from top to bottom. For each mid-page CTA you see, judge: solo or paired?
+    • If most mid-page CTAs are SOLO, AND the page's CTA set is heavily one intent bucket (only book-time, or only immediate-action), this is a PROMINENT recommendation candidate — one of the highest-impact tweaks a marketing page can make.
+  How to phrase the recommendation:
+    • Always frame as a TEST ("recommend testing", "A/B test adding a secondary CTA"), not a definitive change.
+    • Name a concrete secondary CTA based on which bucket is missing:
+        – Page has "Get a Demo" / "Book a Demo" style CTAs but no immediate-action variant → suggest pairing each mid-page primary with "Start free trial", "View pricing", "Get a quote", or "Sign up".
+        – Page only has immediate-action CTAs → suggest pairing with "Book a demo" or "Talk to sales".
+    • Quote actual mid-page section names from the screenshot when possible (e.g. "after the Proven Results stats block").
 
 When making recommendations:
 - If the page has only one CTA, suggest adding a clear secondary CTA alongside it (e.g. add "Get started for free" next to the existing "Book a demo").
@@ -318,7 +371,25 @@ const DIMENSION_OUTPUT_RULE = `Return ONLY valid JSON in this exact shape, no ma
 
 Notes: AT MOST 3 bullet-style observations. Pick the 3 most impactful things for THIS page. Each is a concrete, specific recommendation or fact you actually observed. Never generic advice. Three is a hard cap.
 
-LENGTH CAP — each note must be 40 words or fewer. Tight, scannable bullets. If you need more room to make a point, split it into two notes or trim the supporting clauses. Anything longer will be truncated.`;
+LENGTH CAP — each note must be 40 words or fewer. Tight, scannable bullets. If you need more room to make a point, split it into two notes or trim the supporting clauses. Anything longer will be truncated.
+
+HEADLINE-MUST-SUMMARISE-NOTES RULE — this is strict. The headline summarises the notes you just wrote. EVERY topic, observation, recommendation, or judgement in the headline MUST be supported by AT LEAST ONE of the 3 notes you wrote underneath it. Write the notes first, then write the headline as a one-line summary of those specific notes.
+
+Worked failure mode you must avoid:
+  notes = [
+    "The hero form opens with a qualifying question and converts well.",
+    "Convert the hero dropdown to visible tick boxes."
+  ]
+  headline = "Strong multi-step hero form and bottom CTA, but mid-page conversion paths are sparse."
+  Why bad: the notes never mention "bottom CTA" or "mid-page conversion paths" — the headline introduces TWO topics that have no supporting note. This is a hallucination in the headline. Either add notes about those topics, OR remove those clauses from the headline. The headline must not name a topic that no note discusses.
+
+Worked good example:
+  notes = [
+    "The hero form opens with a qualifying question.",
+    "Convert the hero dropdown to visible tick boxes."
+  ]
+  headline = "Strong qualifying hero form, but the dropdown could test as visible tick boxes."
+  Why good: both clauses in the headline map to one of the notes underneath.`;
 
 /**
  * Per-dimension system prompt. Each Claude call uses ONE of these so the
@@ -367,7 +438,8 @@ RULES:
 - Highest-impact items first.
 
 HIGH-PRIORITY PATTERN — surface as a takeaway whenever the CRO dimension flagged it:
-- "Hero form has a short-option dropdown (3–4 choices) that would convert better as visible radio buttons / tick boxes." This is a small, specific, high-conversion change. If a CRO note describes this pattern for the above-the-fold form, lift it into the takeaways list and quote the dropdown's purpose (e.g. "annual revenue dropdown", "team size dropdown") from the source note so the recommendation is concrete.
+- "Hero form has a dropdown that would convert better as visible tick boxes (4 or fewer)." This is a small, specific, high-conversion change. If a CRO note describes this pattern for the above-the-fold form, lift it into the recommendations list and quote the dropdown's purpose (e.g. "annual revenue dropdown", "team size dropdown") from the source note so the recommendation is concrete. ALWAYS say "tick boxes" and ALWAYS phrase the cap as "4 or fewer tick boxes" — never "radio buttons", "chips", or "pills".
+- "Test a secondary mid-page CTA alongside the solo primaries." If a CRO note describes the page's MID-PAGE CTAs as appearing solo (rather than paired with a second-intent variant), lift this into the recommendations list as a prominent item. Phrase it as a TEST and name the missing-bucket secondary CTA (e.g. "Test adding 'Start free trial' alongside the mid-page 'Get a Demo' buttons" or "A/B test pairing 'View pricing' next to each mid-page 'Book a Demo'"). This is one of the highest-leverage page-wide changes.
 
 Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
 
