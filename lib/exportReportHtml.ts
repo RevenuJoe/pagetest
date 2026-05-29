@@ -20,10 +20,23 @@
  *   5. Restore everything we changed.
  */
 
-/** Force all <details> open inside `root` and return a restore fn. */
-function openAllDetails(root: HTMLElement): () => void {
+/**
+ * Force the TOP-LEVEL <details> open inside `root`, but leave any
+ * nested <details> at their current state. This means each report
+ * section (Overview, Breakdown, Key Takeaways, Technical Improvements,
+ * PageSpeed Insights, Above-the-Fold Screenshots) opens by default —
+ * but the expandable per-improvement rows inside Technical Improvements
+ * stay closed so the reader can choose which ones to open.
+ *
+ * Returns a restore function that puts every touched element back to
+ * its previous open/closed state.
+ */
+function openTopLevelDetails(root: HTMLElement): () => void {
   const previous: Array<{ el: HTMLDetailsElement; wasOpen: boolean }> = [];
   for (const el of Array.from(root.querySelectorAll<HTMLDetailsElement>("details"))) {
+    // Skip any <details> that has another <details> as an ancestor
+    // (i.e. it's nested) — those should stay at their natural state.
+    if (el.parentElement?.closest("details")) continue;
     previous.push({ el, wasOpen: el.open });
     el.open = true;
   }
@@ -165,7 +178,7 @@ export async function renderReportToHtml({
   target,
   documentTitle,
 }: ExportHtmlOptions): Promise<Blob> {
-  const restoreDetails = openAllDetails(target);
+  const restoreDetails = openTopLevelDetails(target);
   const restorePrinting = markPrinting();
 
   let restoreImages: (() => void) | null = null;
@@ -188,6 +201,19 @@ export async function renderReportToHtml({
     // be a static snapshot, not the running app.
     for (const s of Array.from(cloned.querySelectorAll("script"))) {
       s.remove();
+    }
+
+    // Strip nav links that point inside the live app and won't work in
+    // a static HTML file. Specifically: the "saved reports" icon
+    // (href="/reports") in the header. Identified by href and by the
+    // aria-label / title we set in components/Header.tsx.
+    const savedReportsLinks = Array.from(
+      cloned.querySelectorAll<HTMLAnchorElement>(
+        'a[href="/reports"], a[aria-label*="saved reports" i], a[title*="saved reports" i]',
+      ),
+    );
+    for (const link of savedReportsLinks) {
+      link.remove();
     }
 
     // Build a complete HTML document. Use the same body bg colour as
