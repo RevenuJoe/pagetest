@@ -358,7 +358,11 @@ function buildPromptText(input: ClaudeInput): string {
     s.headerCtaTexts.length > 0
       ? `- Header link/button labels (verbatim): ${s.headerCtaTexts.map((l) => `"${l}"`).join(", ")}`
       : "- Header link/button labels: (none)",
-    "- IMPORTANT: many modern sites use <header> with buttons directly and skip the <nav> tag entirely. If 'Number of links inside <nav>' is 0 but 'Number of links/buttons inside <header>' is greater than 0, the page DOES HAVE top-area navigation/CTAs (logo + button in the header) — do NOT say 'the page lacks a navigation entirely' or 'no navigation present'. Treat the header buttons as the navigation.",
+    `- Likely nav labels detected in body text: ${s.likelyNavLabels.length}`,
+    s.likelyNavLabels.length > 0
+      ? `- Likely nav labels (from body text): ${s.likelyNavLabels.map((l) => `"${l}"`).join(", ")}`
+      : "- Likely nav labels (from body text): (none)",
+    "- IMPORTANT: many modern sites and landing-page builders (Unbounce, Instapage, etc.) style <div> elements as nav links with no <nav>, <header>, <a>, or <button> markup. So 'Number of links inside <nav>: 0' does NOT mean the page has no navigation — check the 'Likely nav labels' line and the screenshot. If 'Likely nav labels' has 2 or more entries, OR 'Header link/button labels' has entries, OR the screenshot clearly shows a top-area menu, the page HAS navigation. Do NOT say 'the page lacks navigation entirely', 'no navigation present', 'navigation is minimal', or 'page could benefit from additional nav links' in that case. Treat the detected labels as the actual nav.",
     "",
     `- Number of CTA-like buttons/links found: ${s.ctaTexts.length}`,
     s.ctaTexts.length > 0

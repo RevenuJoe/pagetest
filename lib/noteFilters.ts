@@ -67,20 +67,26 @@ function bodyHasSocialProof(bodyText: string): boolean {
 // FILTERS
 // -----------------------------------------------------------------------
 
-/** "Page lacks a nav entirely" / "no navigation present" when the page
- *  has top-area CTAs/links inside a <header> element. Modern sites
- *  often use <header> directly without <nav>; if header has buttons,
- *  the page has navigation, just not tagged semantically. */
-const filterNavMissingButHeaderHasContent: FilterRule = (note, _dim, ctx) => {
+/** "Page lacks a nav entirely" / "no navigation present" / "nav is
+ *  minimal" when the page actually has top-area nav content — either
+ *  inside <header>, or via non-semantic markup (Unbounce-style <div>
+ *  nav links detected via body-text scan). */
+const filterNavMissingButHasContent: FilterRule = (note, _dim, ctx) => {
   const said =
     /\bpage\s+lacks\s+a\s+(<nav>|nav(igation)?)\s+(element\s+)?(entirely|altogether)\b/i.test(note) ||
     /\b(no|missing)\s+nav(igation)?\s+(present|element|whatsoever)\b/i.test(note) ||
     /\bpage\s+has\s+no\s+nav(igation)?\b/i.test(note) ||
     /\b(zero|no)\s+(<nav>|nav)\s+elements?\b/i.test(note) ||
+    /\bnav(igation)?\s+is\s+minimal\b/i.test(note) ||
+    /\b(add|need|missing|lack(s|ing)?)\b[^.]{0,80}\b(additional|more|extra)\s+nav(igation)?\s+(links?|items?)\b/i.test(note) ||
+    /\bcould\s+benefit\s+from\b[^.]{0,80}\bnav(igation)?\s+(links?|items?)\b/i.test(note) ||
     /\bno\s+logo[- ]left\s*\+\s*links[- ]middle\s*\+\s*cta[- ]right\b/i.test(note);
   if (!said) return null;
   if (ctx.structure.headerCtaTexts.length > 0) {
-    return `claims page has no navigation but <header> contains ${ctx.structure.headerCtaTexts.length} link(s)/button(s): ${ctx.structure.headerCtaTexts.slice(0, 4).join(", ")}`;
+    return `claims page has no/minimal navigation but <header> contains ${ctx.structure.headerCtaTexts.length} link(s)/button(s): ${ctx.structure.headerCtaTexts.slice(0, 4).join(", ")}`;
+  }
+  if (ctx.structure.likelyNavLabels.length >= 2) {
+    return `claims page has no/minimal navigation but body text contains likely nav labels: ${ctx.structure.likelyNavLabels.slice(0, 5).join(", ")}`;
   }
   return null;
 };
@@ -213,7 +219,7 @@ const filterNotIntegratedLayout: FilterRule = (note) => {
 // -----------------------------------------------------------------------
 
 const ALL_FILTERS: FilterRule[] = [
-  filterNavMissingButHeaderHasContent,
+  filterNavMissingButHasContent,
   filterNavBulky,
   filterAddSocialProof,
   filterAddBottomForm,

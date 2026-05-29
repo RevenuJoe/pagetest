@@ -71,6 +71,12 @@ export interface PageStructure {
    *  navigation/CTA content so it's not mistaken for "page lacks
    *  navigation". Dedup by text. */
   headerCtaTexts: string[];
+  /** Likely nav labels detected by scanning the FIRST portion of body
+   *  text for common nav vocabulary (Products, Pricing, Resources,
+   *  About, etc.). This catches landing-page builders (Unbounce,
+   *  Instapage, etc.) that style <div> elements as nav links with no
+   *  semantic <nav>/<a>/<button>/<header> markup at all. */
+  likelyNavLabels: string[];
 }
 
 export interface FormFieldSummary {
@@ -278,6 +284,7 @@ function extractStructure(html: string): PageStructure {
   const ctaTexts = extractCtaTexts(html);
   const headings = extractHeadings(html);
   const headerCtaTexts = extractHeaderCtaTexts(html);
+  const likelyNavLabels = detectLikelyNavLabels(bodyText);
 
   // Derive blunt yes/no signals for the most-hallucinated fields. Claude
   // gets these as ground truth so it can't claim "the form asks for a
@@ -316,6 +323,7 @@ function extractStructure(html: string): PageStructure {
     ctaTexts,
     headings,
     headerCtaTexts,
+    likelyNavLabels,
   };
 }
 
@@ -427,6 +435,83 @@ function extractHeaderCtaTexts(html: string): string[] {
     )) {
       add(m[1] ?? "");
       if (out.length >= 30) return out;
+    }
+  }
+  return out;
+}
+
+/**
+ * Detect nav-like labels from the FIRST portion of body text. This is
+ * a fallback for landing-page builders (Unbounce, Instapage, etc.) that
+ * style <div> elements as nav links and ship pages with zero semantic
+ * <nav>/<header>/<a>/<button> markup. Our DOM extractors find nothing
+ * on those pages, even though the screenshot clearly shows a nav.
+ *
+ * Strategy: take the first ~800 chars of body text and look for any
+ * of the common navigation vocabulary as standalone phrases. Match the
+ * phrase against word boundaries so "Products" doesn't accidentally
+ * match inside "Product Updates". Return at most 8 unique labels.
+ */
+const COMMON_NAV_LABELS: string[] = [
+  "Products",
+  "Product",
+  "Pricing",
+  "Features",
+  "Solutions",
+  "Solution",
+  "Resources",
+  "Resource Center",
+  "Resource Hub",
+  "Blog",
+  "About",
+  "About Us",
+  "Contact",
+  "Contact Us",
+  "Company",
+  "Platform",
+  "Customers",
+  "Case Studies",
+  "Use Cases",
+  "Industries",
+  "Integrations",
+  "Docs",
+  "Documentation",
+  "Community",
+  "Support",
+  "Help",
+  "Help Center",
+  "Who We Serve",
+  "What We Do",
+  "How It Works",
+  "Why Us",
+  "Why Choose Us",
+  "Our Story",
+  "Team",
+  "Careers",
+  "News",
+  "Press",
+  "Partners",
+  "Demo",
+];
+
+function detectLikelyNavLabels(bodyText: string): string[] {
+  if (!bodyText) return [];
+  // Take the first chunk of body text — nav labels appear near the
+  // page start in body order.
+  const head = bodyText.slice(0, 800);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const label of COMMON_NAV_LABELS) {
+    // Word-boundary match, case-insensitive. We use [\\s\\b] around the
+    // phrase so "Products" doesn't match inside "Product Updates".
+    const re = new RegExp(`(^|\\W)${label.replace(/\s+/g, "\\s+")}(\\W|$)`, "i");
+    if (re.test(head)) {
+      const key = label.toLowerCase();
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(label);
+        if (out.length >= 8) return out;
+      }
     }
   }
   return out;
