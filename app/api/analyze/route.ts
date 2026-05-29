@@ -143,6 +143,13 @@ export async function POST(req: NextRequest) {
     const desktopFullData = stripDataUrlPrefix(desktop?.fullPageScreenshot ?? null);
     const mobileFullData = stripDataUrlPrefix(mobile?.fullPageScreenshot ?? null);
 
+    // Build the PSI insights bundle BEFORE the Claude call so we can
+    // feed it into the Takeaways context as a secondary source.
+    const psiInsights: PsiInsightsBundle = {
+      desktop: desktop ? psiToBreakdown(desktop) : undefined,
+      mobile: mobile ? psiToBreakdown(mobile) : undefined,
+    };
+
     const ai = await analyzeWithClaude({
       url,
       title: page.value.title,
@@ -153,6 +160,43 @@ export async function POST(req: NextRequest) {
       mobileScreenshotB64: mobileShotData,
       desktopFullPageB64: desktopFullData,
       mobileFullPageB64: mobileFullData,
+      // Feed Speed + PSI Insights + Tech Improvements into the Claude
+      // pipeline so the Takeaways call sees evidence from all 6
+      // sections of the report. The Takeaways prompt prioritises the 6
+      // breakdowns and the PSI Insights section over Tech Improvements.
+      speedCheck,
+      psiInsights: {
+        desktop: psiInsights.desktop
+          ? {
+              performanceScore: psiInsights.desktop.performanceScore,
+              accessibilityScore: psiInsights.desktop.accessibilityScore,
+              bestPracticesScore: psiInsights.desktop.bestPracticesScore,
+              seoScore: psiInsights.desktop.seoScore,
+              speedIndexMs: psiInsights.desktop.speedIndexMs,
+              lcpMs: psiInsights.desktop.lcpMs,
+              cls: psiInsights.desktop.cls,
+              totalByteWeight: psiInsights.desktop.totalByteWeight,
+            }
+          : undefined,
+        mobile: psiInsights.mobile
+          ? {
+              performanceScore: psiInsights.mobile.performanceScore,
+              accessibilityScore: psiInsights.mobile.accessibilityScore,
+              bestPracticesScore: psiInsights.mobile.bestPracticesScore,
+              seoScore: psiInsights.mobile.seoScore,
+              speedIndexMs: psiInsights.mobile.speedIndexMs,
+              lcpMs: psiInsights.mobile.lcpMs,
+              cls: psiInsights.mobile.cls,
+              totalByteWeight: psiInsights.mobile.totalByteWeight,
+            }
+          : undefined,
+      },
+      technicalImprovements: technicalImprovements.slice(0, 10).map((t) => ({
+        title: t.title,
+        description: t.description,
+        overallSavingsMs: t.overallSavingsMs,
+        overallSavingsBytes: t.overallSavingsBytes,
+      })),
     });
 
     const checks = {
@@ -174,14 +218,7 @@ export async function POST(req: NextRequest) {
         6,
     );
 
-    // Bundle the raw per-strategy PSI breakdown so the new "PageSpeed
-    // Insights" section can render it. Everything except the screenshots
-    // and the technical-improvements list is dropped here — those are
-    // already surfaced in their own sections.
-    const psiInsights: PsiInsightsBundle = {
-      desktop: desktop ? psiToBreakdown(desktop) : undefined,
-      mobile: mobile ? psiToBreakdown(mobile) : undefined,
-    };
+    // (psiInsights was built earlier so we could pass it into Claude.)
 
     // Image-format takeaway. When the HTML scan found any PNG/JPEG/GIF
     // images, we prepend a deterministic "convert to WebP" takeaway as

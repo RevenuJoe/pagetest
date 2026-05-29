@@ -491,3 +491,177 @@ export function buildFilterContext(page: FetchedPage, url: string): FilterContex
     url,
   };
 }
+
+// ---------------------------------------------------------------------------
+// CONTRADICTION SWEEP
+// ---------------------------------------------------------------------------
+
+/**
+ * Final contradiction check applied after the critic pass. For each
+ * "add X" takeaway / note, scans every other note + headline in the
+ * report for a positive statement about X (e.g. "shows X", "has X",
+ * "X is present"). If found, the recommendation is dropped because
+ * recommending we add something the page already has is the most
+ * common style of hallucination and the most jarring for the reader.
+ *
+ * Deterministic. No model involvement. Topic list is curated to the
+ * concrete recommendations we keep seeing contradicted.
+ */
+
+interface ContradictionTopic {
+  key: string;
+  /** Matches the topic word(s) anywhere in a note. */
+  topic: RegExp;
+  /** Label used in the drop-reason log. */
+  label: string;
+}
+
+const CONTRADICTION_TOPICS: ContradictionTopic[] = [
+  {
+    key: "social_proof",
+    topic: /\b(social\s+proof|customer\s+logos?|trust\s+signals?|testimonials?|customer\s+ratings?|brand\s+logos?)\b/i,
+    label: "social proof / customer logos",
+  },
+  {
+    key: "faq",
+    topic: /\b(faqs?|frequently\s+asked\s+questions?)\b/i,
+    label: "FAQ section",
+  },
+  {
+    key: "comparison",
+    topic: /\b(comparison\s+(?:table|section|framing)?|compare\s+to|vs\.?\s+the\s+(?:competitor|old\s+way|alternative)|competitor\s+table|you\s+vs\.?)\b/i,
+    label: "comparison framing",
+  },
+  {
+    key: "bottom_form",
+    topic: /\b(bottom\s+(?:form|cta)|final\s+(?:form|cta)|footer\s+form|closing\s+(?:form|cta))\b/i,
+    label: "bottom / final form or CTA",
+  },
+  {
+    key: "problem_statement",
+    topic: /\b(problem\s+(?:statement|framing|narrative|definition)|name(?:s|d)?\s+the\s+(?:pain|problem))\b/i,
+    label: "problem statement",
+  },
+  {
+    key: "hero_cta",
+    topic: /\bhero\s+(?:cta|button|widget|conversion)\b/i,
+    label: "hero CTA / widget",
+  },
+  {
+    key: "pricing",
+    topic: /\b(pricing\s+(?:section|page|tiers?|plans?|table)|price\s+points?)\b/i,
+    label: "pricing section",
+  },
+  {
+    key: "case_studies",
+    topic: /\bcase\s+stud(?:ies|y)\b/i,
+    label: "case studies",
+  },
+  {
+    key: "stats",
+    topic: /\bstats?\s+(?:section|block|panel)|concrete\s+numbers?\b/i,
+    label: "stats / concrete numbers",
+  },
+  {
+    key: "value_prop",
+    topic: /\bvalue\s+prop(?:osition)?|benefit[- ]led\s+(?:headline|copy)/i,
+    label: "value proposition / benefit-led copy",
+  },
+];
+
+/** Action verbs that indicate a recommendation to ADD something. */
+const ACTION_VERB = /\b(add|introduce|include|insert|build|create|missing|lack(?:s|ing)?|needs?|require[sd]?|should\s+have|consider\s+adding)\b/i;
+
+/** Verbs / phrasings that indicate the thing is ALREADY PRESENT. */
+const PRESENT_VERB = /\b(has|have|shows?|displays?|delivers?|provides?|includes?|features?|contains?|with|visible|present|appears?|already\s+(?:has|includes|shows))\b/i;
+
+/** Run the contradiction sweep over every note + every headline in
+ *  every dimension AND every takeaway. Returns cleaned versions. */
+export function runContradictionSweep(
+  dimensions: Record<string, CheckResult>,
+  takeaways: KeyTakeaway[],
+  url: string,
+): { dimensions: Record<string, CheckResult>; takeaways: KeyTakeaway[] } {
+  // Build the pool of positive statements: every note + headline that
+  // says some topic is present. We'll check "add X" recommendations
+  // against this pool.
+  const positiveTexts: string[] = [];
+  for (const dim of Object.keys(dimensions)) {
+    const r = dimensions[dim];
+    if (r?.headline) positiveTexts.push(r.headline);
+    for (const n of r?.notes ?? []) positiveTexts.push(n);
+  }
+
+  function isPositiveAbout(topic: RegExp, text: string): boolean {
+    if (!topic.test(text)) return false;
+    if (!PRESENT_VERB.test(text)) return false;
+    // Exclude obviously-negative phrasings: "no X visible", "missing X".
+    if (/\b(no|without|missing|lacks?|lacking|absent)\b[^.]{0,40}/i.test(text)) {
+      // Make sure the negative isn't about a DIFFERENT thing in the
+      // same sentence. We test that the topic match isn't immediately
+      // preceded by a negation.
+      const m = text.match(topic);
+      if (m && m.index != null) {
+        const pre = text.slice(Math.max(0, m.index - 40), m.index).toLowerCase();
+        if (/\b(no|without|missing|lacks?|lacking|absent)\b[^.]{0,40}$/.test(pre)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  function isRecommendingAddition(text: string): boolean {
+    return ACTION_VERB.test(text);
+  }
+
+  /** Check one candidate text against the positive pool. Returns the
+   *  topic label that contradicts, or null if no contradiction. */
+  function findContradiction(text: string, ownPool: string[]): string | null {
+    if (!isRecommendingAddition(text)) return null;
+    for (const t of CONTRADICTION_TOPICS) {
+      if (!t.topic.test(text)) continue;
+      // Look for any other text in the pool that says this topic is
+      // already present.
+      const positive = ownPool.some((pt) => pt !== text && isPositiveAbout(t.topic, pt));
+      if (positive) return t.label;
+    }
+    return null;
+  }
+
+  // Filter dimension notes.
+  const cleanedDimensions: Record<string, CheckResult> = {};
+  for (const dim of Object.keys(dimensions)) {
+    const r = dimensions[dim];
+    const keptNotes: string[] = [];
+    for (const note of r.notes) {
+      const contradiction = findContradiction(note, positiveTexts);
+      if (contradiction) {
+        console.warn(
+          `[contradictionSweep] DROP note dim="${dim}" topic="${contradiction}" url="${url}" note="${note}"`,
+        );
+      } else {
+        keptNotes.push(note);
+      }
+    }
+    cleanedDimensions[dim] = { ...r, notes: keptNotes };
+  }
+
+  // Filter takeaways. Each takeaway is also checked against the
+  // positive pool — if it recommends adding X and a dimension says X
+  // is present, drop it.
+  const keptTakeaways: KeyTakeaway[] = [];
+  for (const tk of takeaways) {
+    const text = typeof tk === "string" ? tk : tk.text;
+    const contradiction = findContradiction(text, positiveTexts);
+    if (contradiction) {
+      console.warn(
+        `[contradictionSweep] DROP takeaway topic="${contradiction}" url="${url}" text="${text}"`,
+      );
+    } else {
+      keptTakeaways.push(tk);
+    }
+  }
+
+  return { dimensions: cleanedDimensions, takeaways: keptTakeaways };
+}

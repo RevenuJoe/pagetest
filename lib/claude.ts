@@ -27,6 +27,7 @@ import {
   type FilterContext,
   filterDimensionResult,
   filterTakeaways,
+  runContradictionSweep,
 } from "./noteFilters";
 
 const MODEL = "claude-sonnet-4-5";
@@ -45,6 +46,46 @@ export interface ClaudeInput {
   desktopFullPageB64: string | null;
   /** Base64 JPEG of the FULL mobile page (scrolled). */
   mobileFullPageB64: string | null;
+  /** The Speed dimension result (computed deterministically server-side
+   *  from PSI). Optional; included in the takeaways prompt so Takeaways
+   *  can pick from all 6 sections, not just the 5 Claude-scored ones. */
+  speedCheck?: CheckResult;
+  /** PageSpeed Insights section data — per-strategy category scores,
+   *  Speed Index, page weight, Core Web Vitals. Surfaced to Takeaways
+   *  as a secondary source after the 6 dimension breakdowns. Field
+   *  shape matches PsiBreakdown so route.ts can pass the existing
+   *  object directly. */
+  psiInsights?: {
+    desktop?: {
+      performanceScore: number;
+      accessibilityScore: number | null;
+      bestPracticesScore: number | null;
+      seoScore: number | null;
+      speedIndexMs: number | null;
+      lcpMs: number | null;
+      cls: number | null;
+      totalByteWeight: number | null;
+    };
+    mobile?: {
+      performanceScore: number;
+      accessibilityScore: number | null;
+      bestPracticesScore: number | null;
+      seoScore: number | null;
+      speedIndexMs: number | null;
+      lcpMs: number | null;
+      cls: number | null;
+      totalByteWeight: number | null;
+    };
+  };
+  /** Top Lighthouse technical improvements (audit titles, savings).
+   *  Lowest-priority source for takeaways — only useful when a Speed
+   *  takeaway needs a specific audit name. */
+  technicalImprovements?: Array<{
+    title: string;
+    description?: string;
+    overallSavingsMs?: number;
+    overallSavingsBytes?: number;
+  }>;
 }
 
 export type ClaudeChecks = Pick<
@@ -142,9 +183,34 @@ export async function analyzeWithClaude(
     filteredTakeaways,
   );
 
+  // Phase 4: FINAL CONTRADICTION SWEEP. Deterministic, fast. Scans the
+  // whole report for "add X" recommendations where another note /
+  // headline confirms X is already present. Drops the contradicting
+  // item. Belt-and-braces on top of the critic pass — if anything
+  // slipped through, this catches it. Always include Speed in the
+  // sweep input because Tech Improvements and Speed notes are part
+  // of the same report surface.
+  const sweepInput: Record<string, CheckResult> = { ...audited.dimensions };
+  if (input.speedCheck) sweepInput.speed = input.speedCheck;
+  const swept = runContradictionSweep(
+    sweepInput,
+    audited.takeaways,
+    input.url,
+  );
+
+  // Rebuild dimensions in the original ClaudeChecks shape (the sweep
+  // returned a generic record; pull the 5 Claude dimensions back out).
+  const finalDimensions = {
+    content: swept.dimensions.content ?? audited.dimensions.content,
+    digestibility: swept.dimensions.digestibility ?? audited.dimensions.digestibility,
+    cro: swept.dimensions.cro ?? audited.dimensions.cro,
+    aboveTheFold: swept.dimensions.aboveTheFold ?? audited.dimensions.aboveTheFold,
+    mobile: swept.dimensions.mobile ?? audited.dimensions.mobile,
+  };
+
   return {
-    checks: audited.dimensions,
-    keyTakeaways: audited.takeaways,
+    checks: finalDimensions,
+    keyTakeaways: swept.takeaways,
   };
 }
 
@@ -193,9 +259,16 @@ async function callTakeaways(
 ): Promise<KeyTakeaway[]> {
   const system = buildTakeawaysPrompt();
   const userBlocks = buildUserBlocks(input);
-  // Append the dimension findings to the user message so Claude
-  // chooses takeaways from notes the dimensions actually produced.
-  const dimensionDigest = formatDimensionDigest(dimensionResults);
+  // Append findings from ALL SIX sections of the report (Speed + 5
+  // Claude dimensions + Technical Improvements) to the user message so
+  // Takeaways picks from the full evidence, not just the 5 Claude-scored
+  // dimensions.
+  const dimensionDigest = formatDimensionDigest(
+    dimensionResults,
+    input.speedCheck,
+    input.psiInsights,
+    input.technicalImprovements,
+  );
   userBlocks.push({ type: "text", text: dimensionDigest });
   const response = await client.messages.create({
     model: MODEL,
@@ -456,6 +529,9 @@ function parseCriticVerdicts(raw: string): CriticVerdict[] {
  */
 function formatDimensionDigest(
   results: Record<ClaudeDimension, CheckResult>,
+  speedCheck?: CheckResult,
+  psiInsights?: ClaudeInput["psiInsights"],
+  technicalImprovements?: ClaudeInput["technicalImprovements"],
 ): string {
   const labels: Record<ClaudeDimension, string> = {
     content: "Content",
@@ -471,34 +547,107 @@ function formatDimensionDigest(
     "aboveTheFold",
     "mobile",
   ];
-  const sections = order.map((dim) => {
+
+  // Speed section — populated from the server-side deterministic check
+  // so Takeaways can recommend speed fixes that match what the Speed
+  // breakdown actually showed.
+  const speedSection = speedCheck
+    ? [
+        `### Speed — score ${speedCheck.score}/100`,
+        `Headline: ${speedCheck.headline}`,
+        `Notes:`,
+        ...(speedCheck.notes.length === 0
+          ? ["  (no notes from this dimension)"]
+          : speedCheck.notes.map((n) => `  - ${n}`)),
+      ].join("\n")
+    : null;
+
+  const claudeSections = order.map((dim) => {
     const r = results[dim];
     const notes = r.notes.length === 0
       ? "  (no notes from this dimension)"
       : r.notes.map((n) => `  - ${n}`).join("\n");
     return `### ${labels[dim]} — score ${r.score}/100\nHeadline: ${r.headline}\nNotes:\n${notes}`;
   });
+
+  // PageSpeed Insights numerical block — per-strategy category scores
+  // + Speed Index + page weight + CWV. SECONDARY source for takeaways
+  // after the 6 dimension breakdowns.
+  const psiSection = (() => {
+    if (!psiInsights || (!psiInsights.desktop && !psiInsights.mobile)) return null;
+    const lines: string[] = ["### PageSpeed Insights (secondary source)"];
+    const fmtScore = (n: number | null) => (n == null ? "—" : `${n}/100`);
+    const fmtSecs = (ms: number | null) => (ms == null ? "—" : `${(ms / 1000).toFixed(2)}s`);
+    const fmtMb = (b: number | null) =>
+      b == null ? "—" : `${(b / 1024 / 1024).toFixed(2)} MB`;
+    const fmtCls = (v: number | null) => (v == null ? "—" : v.toFixed(3));
+    for (const strat of ["desktop", "mobile"] as const) {
+      const s = psiInsights[strat];
+      if (!s) continue;
+      lines.push(
+        `  ${strat.toUpperCase()}: Performance ${fmtScore(s.performanceScore)} • Accessibility ${fmtScore(s.accessibilityScore)} • Best Practices ${fmtScore(s.bestPracticesScore)} • SEO ${fmtScore(s.seoScore)}`,
+      );
+      lines.push(
+        `    Speed Index ${fmtSecs(s.speedIndexMs)} • LCP ${fmtSecs(s.lcpMs)} • CLS ${fmtCls(s.cls)} • Page weight ${fmtMb(s.totalByteWeight)}`,
+      );
+    }
+    return lines.join("\n");
+  })();
+
+  // Technical Improvements section — Lighthouse audits with concrete
+  // savings numbers. LOWEST-priority source. The 6 breakdowns + PSI
+  // section are the primary source; only pull from this list when a
+  // Speed takeaway specifically needs a Lighthouse audit name.
+  const techSection =
+    technicalImprovements && technicalImprovements.length > 0
+      ? [
+          "### Technical Improvements (LOWEST-priority source)",
+          "These are individual Lighthouse audit findings. Use this list SPARINGLY — only when a Speed-category takeaway needs a specific Lighthouse audit name (e.g. 'Reduce unused JavaScript'). Prefer the 6 dimension breakdowns and PageSpeed Insights section above. Do NOT use this list as the basis for Content / CRO / Above-the-fold / Mobile / Digestibility takeaways.",
+          ...technicalImprovements.slice(0, 10).map((t) => {
+            const savings =
+              t.overallSavingsMs && t.overallSavingsMs > 0
+                ? ` (saves ~${(t.overallSavingsMs / 1000).toFixed(1)}s)`
+                : t.overallSavingsBytes && t.overallSavingsBytes > 0
+                ? ` (saves ~${Math.round(t.overallSavingsBytes / 1024)} KB)`
+                : "";
+            return `  - ${t.title}${savings}`;
+          }),
+        ].join("\n")
+      : null;
+
   return [
     "================================================================",
-    "DIMENSION FINDINGS — read carefully. These are the conclusions the",
-    "five dimension calls reached after analysing the page. Your Key",
-    "Takeaways MUST be drawn directly from these notes and headlines.",
+    "REPORT FINDINGS — read carefully. These are the conclusions the",
+    "previous analysis steps reached about the page. Your Key Takeaways",
+    "MUST be drawn directly from these notes and headlines.",
     "Do NOT introduce new observations or recommendations that contradict",
-    "what a dimension already concluded.",
+    "what a section already concluded.",
+    "",
+    "PRIORITY ORDER for picking takeaways:",
+    "  1. The SIX BREAKDOWN sections (Speed + Content + Digestibility +",
+    "     CRO + Above-the-fold + Mobile). These are the primary source",
+    "     because they reflect the actual scoring logic.",
+    "  2. The PageSpeed Insights section. Use for Speed-related",
+    "     recommendations grounded in actual PSI numbers.",
+    "  3. The Technical Improvements list. Lowest priority — only for",
+    "     specific Lighthouse audit references in a Speed takeaway.",
     "",
     "Example contradictions to avoid:",
     "- If Above-the-fold's headline or notes say social proof is present,",
     "  do NOT recommend adding social proof.",
-    "- If a dimension's notes praise the existing form pattern, do NOT",
+    "- If a section praises the existing form pattern, do NOT",
     "  recommend changing it.",
-    "- If a dimension acknowledges a CTA exists, do NOT recommend adding",
+    "- If a section acknowledges a CTA exists, do NOT recommend adding",
     "  one with similar intent.",
     "",
-    "Pick the 5 highest-impact recommendations from the union of these",
-    "notes. Rephrase / tighten them as needed, but every takeaway must be",
-    "traceable back to a note or headline below.",
+    "Pick the 5 highest-impact recommendations. Rephrase / tighten as",
+    "needed, but every takeaway must be traceable back to a note,",
+    "headline, or numerical reading from the sections below.",
     "================================================================",
-    ...sections,
+    ...(speedSection ? [speedSection] : []),
+    ...claudeSections,
+    ...(psiSection ? [psiSection] : []),
+    ...(techSection ? [techSection] : []),
   ].join("\n");
 }
 
