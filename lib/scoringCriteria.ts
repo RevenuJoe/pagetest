@@ -452,7 +452,12 @@ RULES:
 - Highest-impact items first.
 
 HIGH-PRIORITY PATTERN — surface as a takeaway whenever the CRO dimension flagged it:
-- "Hero form has a dropdown that would convert better as visible tick boxes (4 or fewer)." This is a small, specific, high-conversion change. If a CRO note describes this pattern for the above-the-fold form, lift it into the recommendations list and quote the dropdown's purpose (e.g. "annual revenue dropdown", "team size dropdown") from the source note so the recommendation is concrete. ALWAYS say "tick boxes" and ALWAYS phrase the cap as "4 or fewer tick boxes" — never "radio buttons", "chips", or "pills".
+- HERO-FORM CHANGE recommendations (dropdown -> tick boxes, one-field -> dropdown / tick boxes, big-form -> simpler widget) MUST be framed as A/B TESTS, never as definitive changes. Use one of these openings:
+    "Test converting the hero dropdown to 4 or fewer tick boxes…"
+    "A/B test the hero dropdown against a 4-or-fewer tick-box variant…"
+    "Run an A/B test of the existing hero form vs. …"
+  Do NOT lead with "Convert the…", "Replace the…", or "Change the…" — those read as definitive recommendations and we can't promise the variant will win without testing. The whole point of these recommendations is to give the marketer a structured experiment.
+  When the recommendation is the dropdown -> tick-box pattern: ALWAYS say "tick boxes" (never "radio buttons", "chips", "pills") and ALWAYS phrase the implementation cap as "4 or fewer tick boxes". Quote the dropdown's purpose from the source note (e.g. "the annual revenue dropdown", "the team size dropdown") so the recommendation is concrete.
 - "Test a secondary mid-page CTA alongside the solo primaries." If a CRO note describes the page's MID-PAGE CTAs as appearing solo (rather than paired with a second-intent variant), lift this into the recommendations list as a prominent item. Phrase it as a TEST and name the missing-bucket secondary CTA (e.g. "Test adding 'Start free trial' alongside the mid-page 'Get a Demo' buttons" or "A/B test pairing 'View pricing' next to each mid-page 'Book a Demo'"). This is one of the highest-leverage page-wide changes.
 
 Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
