@@ -265,6 +265,8 @@ When making recommendations:
 export const CRITERIA_ABOVE_THE_FOLD = `5. aboveTheFold
 What the user sees in the desktop and mobile screenshots before scrolling. This dimension is judged purely from the screenshots. Use these as your checklist; the more criteria the page hits well, the higher the score.
 
+STRICT SCOPE — ONLY ABOVE-THE-FOLD CONTENT. This dimension's notes and headline must ONLY describe and judge what is visible INSIDE the above-the-fold viewport in the screenshots. Do NOT mention, describe, praise, or critique anything that lives below the fold or further down the page — that's the Content / Digestibility / CRO dimensions' job. Forbidden phrasings in AtF notes: "below the fold", "further down the page", "the X section further down", "the product screenshot below the fold", "the page also includes…", "after the hero…", "scrolling down reveals…". If something isn't in the AtF viewport, it doesn't exist for this dimension's purposes. Worked failure mode: "The product screenshot below the fold is professional and clear" — this is OUT OF SCOPE for AtF. Either drop the note entirely (because it's irrelevant to the AtF judgement) or rewrite it to describe what IS in the AtF screenshot (the hero visual specifically).
+
 Look for:
 - ONE clear, dominant headline. One big H1, not multiple competing oversized headlines.
 - Some supporting content under the headline, but kept tight: one short paragraph or 2-3 bullet points. Long paragraphs above the fold lose points.

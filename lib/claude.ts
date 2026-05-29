@@ -447,28 +447,46 @@ async function runCriticPass(
 
   let verdicts: CriticVerdict[] = [];
   try {
-    // max_tokens 4000 fits the full verdict JSON even when the candidate
-    // list is large (5 dims × headline + ~5 notes + 5 takeaways = ~35
-    // verdicts; each verdict is ~50-80 tokens with a reason). 2000 was
-    // overflowing on big reports, which silently truncated the JSON and
-    // tripped the parse-failure fallback (everything defaults to KEEP).
+    // Extended thinking is enabled ONLY on the dimensions-critic pass
+    // (scope === "dimensions"). The dims-critic audits the bigger
+    // candidate list — five dimensions × headline + ~3 notes each =
+    // up to 20 items — so a private 2500-token chain-of-thought
+    // produces meaningfully better verdicts than a one-shot pass.
     //
-    // Extended thinking was briefly enabled on this call but it roughly
-    // doubled the critic's wall-clock latency — and because both the
-    // dimensions-critic and takeaways-critic pass through this same
-    // function, the cost compounded across both. Rolled back to plain
-    // temperature-0 critic. If we want to revisit, the smarter shape
-    // is probably thinking on one critic pass only (the dims-critic,
-    // which has the larger candidate list) with a smaller budget.
+    // The takeaways-critic gets a shorter candidate list (max 5
+    // takeaways) and stays at plain temperature 0 — the cost of
+    // thinking on both passes was prohibitive (roughly doubled the
+    // critic's wall-clock).
+    //
+    // Trade-offs for the dims-critic:
+    //   - temperature MUST be 1 with thinking enabled.
+    //   - max_tokens must accommodate thinking budget + output. 2500
+    //     thinking + 4000 output = 6500.
+    //   - Wall-clock latency: dims-critic ~30s -> ~45-50s, but runs
+    //     in parallel with the Takeaways call so the net report-time
+    //     impact is usually small.
+    // SDK 0.27 doesn't type the `thinking` field — we pass it via a
+    // typed cast. Runtime API supports it on Claude Sonnet 4-5.
+    const enableThinking = scope === "dimensions";
+    const baseParams: Parameters<Anthropic["messages"]["create"]>[0] = enableThinking
+      ? ({
+          model: MODEL,
+          max_tokens: 6500,
+          temperature: 1,
+          thinking: { type: "enabled", budget_tokens: 2500 },
+          system,
+          messages: [{ role: "user", content: userBlocks }],
+        } as Parameters<Anthropic["messages"]["create"]>[0])
+      : {
+          model: MODEL,
+          max_tokens: 4000,
+          temperature: 0,
+          system,
+          messages: [{ role: "user", content: userBlocks }],
+        };
     const response = await createWithRetry(
       client,
-      {
-        model: MODEL,
-        max_tokens: 4000,
-        temperature: 0,
-        system,
-        messages: [{ role: "user", content: userBlocks }],
-      },
+      baseParams,
       `critic:${scope}`,
     );
     const text = response.content
@@ -577,6 +595,7 @@ function buildCriticPrompt(): string {
     "  - HEADLINE-MUST-SUMMARISE-NOTES check: when auditing a HEADLINE candidate, look at all the NOTE candidates from the SAME dimension. Every topic mentioned in the headline must be supported by at least one note. If the headline mentions a topic (e.g. 'bottom CTA', 'mid-page conversion paths', 'social proof', 'mobile layout') that NO note in the same dimension discusses, REWRITE the headline to remove that clause. The headline is a summary of the notes, not a standalone claim. Worked failure mode: headline says 'Strong hero form and bottom CTA, but mid-page conversion paths are sparse' while the notes only discuss the hero form and the dropdown — 'bottom CTA' and 'mid-page conversion paths' have no supporting note. Rewrite to drop those unsupported clauses.",
     "  - HEADLINE-SIMILARITY check across dimensions: scan all HEADLINE candidates together. If two dimension headlines lead with the SAME topic or repeat the same descriptive phrase (e.g. one says 'Strong hero form with qualifying question' and another says 'Strong hero form with qualifying dropdown'), REWRITE one of them so each dimension's headline reads as a distinct take. The headlines should reflect what's UNIQUE to each dimension's perspective: Above-the-fold is about visual hierarchy and what the visitor sees first; CRO is about conversion design and CTA strategy; Content is about copy and messaging. Never let two headlines feel like restatements of the same idea — the reader is meant to learn something different from each dimension. Bias toward rewriting the WEAKER duplicate (less specific, less concrete) rather than the stronger one.",
     "  - HERO-FORM-CHANGE TEST-FRAMING rule: any takeaway, note, or headline that recommends CHANGING the hero form (dropdown -> tick boxes, one-field -> dropdown / tick boxes, big-form -> simpler widget) MUST be framed as an A/B test. If the candidate leads with 'Convert the…', 'Replace the…', 'Change the…', 'Switch the…', or any other definitive opener about a hero form change, REWRITE it to lead with 'Test converting…', 'A/B test…', 'Run an A/B test of…' instead. The variant might not win — the recommendation is to RUN A TEST, not to ship a fix. Worked failure mode: 'Convert the hero's dropdown form to four visible tick boxes' must become 'Test converting the hero's dropdown form to four visible tick boxes against the existing version' or 'A/B test 4-or-fewer tick boxes against the existing hero dropdown'. Same rule applies to recommendations that swap one form type for another (e.g. 'Replace the one-field email form with a multi-step quiz' → 'Test a multi-step quiz against the current one-field email form').",
+    "  - ABOVE-THE-FOLD SCOPE rule: when auditing an aboveTheFold dimension candidate (headline or note), DROP it if it describes, praises, or critiques anything that lives BELOW the fold or further down the page. AtF only judges what's visible in the AtF viewport in the screenshots. Phrases like 'below the fold', 'further down the page', 'the product screenshot below the fold', 'the page also includes…', 'after the hero…', 'scrolling down reveals…' are out of scope for this dimension. If the candidate's substantive claim is about something inside the AtF viewport but uses one of those phrasings, REWRITE to remove the below-the-fold framing. If the entire note is about something below the fold, DROP it.",
     "",
     "Return ONLY valid JSON, no markdown fences, no preamble, in this exact shape:",
     "",
