@@ -514,8 +514,12 @@ function Home() {
         {phase === "showing" && focusResult && (
           <>
             {/* Rerun + Download row — same pattern as /report. Tagged with
-                pdf-hide so the row is removed from the HTML export. */}
-            <section className="pdf-hide mx-auto mt-12 flex w-full max-w-[1180px] items-center justify-end gap-2 px-6 sm:px-14">
+                pdf-hide so the row is removed from the HTML export. No
+                max-width / horizontal padding here because the parent
+                <main> already handles centring and side padding;
+                duplicating them would inset the buttons away from the
+                report cards below. */}
+            <section className="pdf-hide mt-12 flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={rerun}
