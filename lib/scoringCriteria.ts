@@ -68,6 +68,7 @@ export const ACCURACY_RULES = `ACCURACY RULES — these apply to every note you 
    • "Sign in / log in / sign up / create account is missing from the nav" — these are NOT positive CTAs and their absence is never a negative. Drop any note that flags missing sign-in/log-in.
    • "Add a sign-in option" / "include sign-in alongside the CTA" — never recommend adding sign-in CTAs. They're for existing users, not visitor conversion.
    • "The CTA button is below / separate / not integrated with the form" — a CTA button stacked beneath a form's input or dropdown is a perfectly normal layout, not a problem. Drop any note that frames stacked layout as a negative unless you can describe a specific visible disconnect that genuinely hurts UX.
+   • "The bottom form should re-ask the hero's qualifying question" / "Repeat the question-led pattern on the bottom form" / "Strip fields out of the bottom form to match the hero" — these all contradict the explicit Form types rule. The hero and the bottom form are deliberately different (hero = small + question, bottom = full lead-gen). A page with both is HITTING the ideal pattern. Drop any note recommending the two forms be made the same.
    • "Headlines are weak / unclear" — only valid when you can quote the actual headline and explain why. If you can't quote it from body text or the screenshot, drop the note.
 
    For any "add X" or "X is missing" recommendation, you should be able to mentally answer: "I checked GROUND TRUTH at line Y / I checked the screenshot region Z / I searched the body text for term W and didn't find it." If you can't, the note is a hallucination and must be removed.`;
@@ -188,9 +189,10 @@ Look for:
     • Page only has an email field → recommend introducing a question-led step BEFORE the email capture, with preset answers from day one.
     • Page opens with a question via preset answers but never captures an email → recommend adding an email capture step AFTER the question.
     • Page opens up with just buttons → recommend adding a conversion widget above the fold as a very important improvement.
-- Form types:
-    • The form at the BOTTOM of the page should be quite big and capture all the fields you'd need for a good lead.
+- Form types — the HERO form and the BOTTOM form are DELIBERATELY DIFFERENT and you should NEVER recommend making them match.
+    • The form at the BOTTOM of the page should be QUITE BIG: full lead-gen fields (name, company, email, etc). Visitors who scroll all the way down have higher intent and will fill in more info. This is the CORRECT pattern. Praise it when it's there. Do NOT recommend the bottom form re-ask the hero's qualifying question — the qualifying question belongs in the HERO ONLY. Do NOT recommend stripping fields out of the bottom form to make it "question-led" like the hero.
     • The form at the TOP of the page should NOT be a large form with 4 or more questions. If multiple fields are needed, it should open with just one question and add fields step-by-step, OR it should be a one-field form. A big form with 4+ fields above the fold scares users away and increases bounce rate.
+    • A page where the hero has a qualifying-question form AND the bottom has a full lead-gen form is HITTING the ideal pattern — call this out positively, do not recommend changes to either form on the basis that they're "different".
 
 When making recommendations:
 - If the page has only one CTA, suggest adding a clear secondary CTA alongside it (e.g. add "Get started for free" next to the existing "Book a demo").
