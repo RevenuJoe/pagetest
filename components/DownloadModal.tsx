@@ -16,14 +16,12 @@
 import { useEffect } from "react";
 import { Spinner } from "@/components/Icons";
 
-export type DownloadState = "select" | "preparing" | "ready" | "error";
-export type DownloadFormat = "pdf" | "html";
+export type DownloadState = "preparing" | "ready" | "error";
 
 export default function DownloadModal({
   state,
   onClose,
   onDownload,
-  onChooseFormat,
   errorMessage,
 }: {
   state: DownloadState;
@@ -32,8 +30,6 @@ export default function DownloadModal({
    *  ready state. The blob URL is already prepared by the parent — this
    *  just triggers the actual file download. */
   onDownload: () => void;
-  /** Called when the user picks a format on the select state. */
-  onChooseFormat?: (format: DownloadFormat) => void;
   errorMessage?: string;
 }) {
   // Esc to close, but only when the modal isn't actively preparing.
@@ -67,123 +63,12 @@ export default function DownloadModal({
           animation: "fadeIn 320ms ease-out",
         }}
       >
-        {state === "select" && (
-          <SelectState
-            onChoose={onChooseFormat ?? (() => undefined)}
-            onClose={onClose}
-          />
-        )}
         {state === "preparing" && <PreparingState />}
         {state === "ready" && <ReadyState onDownload={onDownload} onClose={onClose} />}
         {state === "error" && (
           <ErrorState message={errorMessage ?? ""} onClose={onClose} />
         )}
       </div>
-    </div>
-  );
-}
-
-function SelectState({
-  onChoose,
-  onClose,
-}: {
-  onChoose: (format: DownloadFormat) => void;
-  onClose: () => void;
-}) {
-  return (
-    <div className="flex flex-col items-center text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-accent-soft text-accent-dark">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-6 w-6"
-          aria-hidden
-        >
-          <path d="M12 3v12" />
-          <path d="M7 10l5 5 5-5" />
-          <path d="M5 21h14" />
-        </svg>
-      </span>
-      <p className="mt-5 text-[18px] font-bold tracking-tight text-ink">
-        Download report
-      </p>
-      <p className="mt-2 text-[13px] font-medium leading-[1.55] text-ink-soft">
-        Pick a format. The PDF is great for sharing with clients; the HTML file
-        opens in any browser and looks just like the live report.
-      </p>
-      <div className="mt-6 flex w-full flex-col gap-2.5">
-        <button
-          type="button"
-          onClick={() => onChoose("pdf")}
-          className="group flex w-full items-center gap-4 rounded-card border border-beige-line bg-card px-4 py-3 text-left transition hover:border-accent hover:bg-accent-soft"
-        >
-          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[7px] bg-accent-soft text-accent-dark group-hover:bg-accent group-hover:text-white">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-[18px] w-[18px]"
-              aria-hidden
-            >
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <path d="M14 2v6h6" />
-              <path d="M8 15h8M8 19h5" />
-            </svg>
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[14px] font-bold text-ink">
-              PDF document
-            </span>
-            <span className="block text-[12px] font-medium text-ink-soft">
-              One long page, just like a screenshot of the report.
-            </span>
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onChoose("html")}
-          className="group flex w-full items-center gap-4 rounded-card border border-beige-line bg-card px-4 py-3 text-left transition hover:border-accent hover:bg-accent-soft"
-        >
-          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[7px] bg-accent-soft text-accent-dark group-hover:bg-accent group-hover:text-white">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-[18px] w-[18px]"
-              aria-hidden
-            >
-              <path d="M4 4h16v16H4z" />
-              <path d="M4 9h16" />
-              <path d="m9 14 2 2-2 2M15 14l-2 2 2 2" />
-            </svg>
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-[14px] font-bold text-ink">
-              HTML file
-            </span>
-            <span className="block text-[12px] font-medium text-ink-soft">
-              Double-click to open in any browser, works offline.
-            </span>
-          </span>
-        </button>
-      </div>
-      <button
-        type="button"
-        onClick={onClose}
-        className="mt-5 text-[12px] font-semibold text-ink-soft hover:text-ink"
-      >
-        Cancel
-      </button>
     </div>
   );
 }
