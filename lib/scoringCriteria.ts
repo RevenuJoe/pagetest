@@ -32,19 +32,45 @@ Every note, headline, score justification, and recommendation you produce must b
 // part of the prompt, not just the role intro.
 // ---------------------------------------------------------------------------
 
-export const ACCURACY_RULES = `ACCURACY — read this before writing anything.
+export const ACCURACY_RULES = `ACCURACY RULES — these apply to every note you write, on every dimension. Read carefully. Hallucinations on this report are a critical failure; over-cautious silence is always preferred over a fabricated recommendation.
 
-Every note, headline, score justification, and recommendation you produce MUST be grounded in solid, verifiable facts taken from one of these three sources:
+1. NEVER claim an element, section, form field, button, image, or feature exists or is missing unless you have specific, concrete evidence for it in:
+   - the GROUND TRUTH block (form-field inventory, nav links, CTA labels, headings, counts), OR
+   - the attached above-the-fold or full-page screenshots, OR
+   - the body text provided.
 
-1. The GROUND TRUTH block in the user message (parsed directly from the page HTML: form fields, nav links, CTA labels, headings, counts).
-2. The attached above-the-fold and full-page screenshots.
-3. The body text provided.
+2. If you cannot quote the exact phrase from body text, point to a specific visible element in the screenshot, or cite a row from the GROUND TRUTH inventory, do NOT write the note. Silence is always better than fabrication.
 
-If a recommendation or observation isn't directly supported by something you can point to in those three sources, do NOT write it. Say nothing. Silence is always the correct choice over a guess. A shorter, fully grounded list of notes is better than a longer one with a single fabricated claim.
+3. The GROUND TRUTH block is authoritative. Specifically:
+   - "Form contains a phone-number field" — YES/NO is final. Do not contradict.
+   - "Form contains an email field" — YES/NO is final.
+   - "Number of links inside <nav>: N" and the verbatim "Nav link labels: ..." — these are the EXACT nav links on the page. Count them yourself before writing anything about navigation.
+   - "CTA labels (verbatim): ..." — these are the actual buttons / CTA links on the page. Do not claim a CTA is missing when one with similar intent is in this list.
+   - "First heading" and "Last heading" — these are real strings from the top and bottom of the page.
 
-Do not say a page is missing something without first checking GROUND TRUTH, the body text, and the full-page screenshot for it. Do not recommend "add X" when X already exists. Do not describe what you "infer" or "imply" from indirect signals — only what is plainly visible or stated.
+4. Do NOT extrapolate from "I see a form" to "the form probably asks for X". The GROUND TRUTH inventory lists the actual fields. Read that list. Refer only to fields that appear in it.
 
-This applies to every dimension, every note, and every recommendation. No exceptions.`;
+5. Do NOT invent missing sections. If you suspect a section is missing (FAQ, comparison, problem statement, bottom CTA, contact form, social proof, testimonials, customer logos, ratings, case studies, pricing), check the body text AND the full-page screenshot AND the headings list in GROUND TRUTH first. Only flag it as missing if you've genuinely confirmed it's not on the page.
+
+6. Do NOT describe content that is "not shown but inferred" or "implied". If the screenshot or text doesn't show it, you cannot mention it.
+
+7. When in doubt, write fewer notes. Three confident, evidence-based notes beat three notes with one hallucination.
+
+8. VERIFICATION PASS — before finalising your notes, re-check EVERY note against GROUND TRUTH and the full-page screenshot. Drop any note that fails the check. Use this checklist of common hallucinations to avoid:
+
+   • "Slim the navigation to 3-4 links" — read the "Number of links inside <nav>" line in GROUND TRUTH. If the nav already has 4 or fewer links, DO NOT recommend slimming it.
+   • "Add a CTA at the bottom of the page" — look at the bottom of the FULL-PAGE screenshot AND the "Last heading" in GROUND TRUTH. If you can see a CTA / form / "Get started" / "Book a demo" section near the page bottom, DO NOT recommend adding one.
+   • "Add a final / bottom form" — same check. The full-page screenshot is the full scrolled height of the page. If a form appears anywhere in the lower half, do not say "add a bottom form".
+   • "Add a contact form" or "add a demo form" — search the body text for "contact", "demo", "get a demo", "book a demo". Check the GROUND TRUTH CTA labels list. If you find any match, the form is already in place.
+   • "Add social proof / customer logos / ratings / testimonials / case studies above the fold" — look at the ABOVE-THE-FOLD screenshot. If you see customer logos (recognisable company names or brand marks), star ratings, "Trusted by", "Used by", review badges, or any visible social-proof element, the page already has it — do NOT recommend adding it.
+   • "Add testimonials / case studies / FAQ / pricing" anywhere on the page — search the body text and full-page screenshot for these patterns BEFORE recommending. The first heading and last heading give you anchors for the page structure.
+   • "Add a hero CTA" — check the CTA labels list AND the above-the-fold screenshot. If a CTA button is visible above the fold, do not recommend adding one.
+   • "Sign in / log in / sign up / create account is missing from the nav" — these are NOT positive CTAs and their absence is never a negative. Drop any note that flags missing sign-in/log-in.
+   • "Add a sign-in option" / "include sign-in alongside the CTA" — never recommend adding sign-in CTAs. They're for existing users, not visitor conversion.
+   • "The CTA button is below / separate / not integrated with the form" — a CTA button stacked beneath a form's input or dropdown is a perfectly normal layout, not a problem. Drop any note that frames stacked layout as a negative unless you can describe a specific visible disconnect that genuinely hurts UX.
+   • "Headlines are weak / unclear" — only valid when you can quote the actual headline and explain why. If you can't quote it from body text or the screenshot, drop the note.
+
+   For any "add X" or "X is missing" recommendation, you should be able to mentally answer: "I checked GROUND TRUTH at line Y / I checked the screenshot region Z / I searched the body text for term W and didn't find it." If you can't, the note is a hallucination and must be removed.`;
 
 // ---------------------------------------------------------------------------
 // INPUTS
@@ -147,6 +173,12 @@ Conversion design across the WHOLE page, not just the hero. This is the most imp
 
 Look for:
 - LOTS of clickable conversion paths throughout the page. Ideally every major section has at least one CTA button or interactive element pointing at conversion. Comment on which sections have CTAs and which don't.
+- PREFERRED CTA TYPES — the CTAs we want pages to use, and that we want to recommend:
+    • "Book a demo" / "Schedule a demo" / "Talk to sales"
+    • "Get started for free" / "Start free trial" / "Try it free" / "Start free"
+    • "Get a quote" / "Get my free audit" / outcome-led copy that promises something concrete
+  CTAs we do NOT consider positive and do NOT want to recommend:
+    • "Sign in" / "Log in" / "Login" / "Create account" — these are for EXISTING users, not for converting new visitors. Their presence is neither a positive nor a negative; their absence is NEVER a negative. Do not praise them, do not flag them as missing, do not recommend adding them.
 - Multiple competing CTAs are GOOD, not bad. Two clear primary actions (e.g. "Book a demo" AND "Get started for free") give the user a choice and lift overall conversion. A single CTA option is a negative signal; score it accordingly.
 - A clear conversion widget above the fold (form, multi-step question, calculator, or a prominent primary CTA) AND another at the bottom of the page (e.g. a final form or final CTA section). Having only one or having neither loses major points.
 - THE IDEAL HERO FORM — read this as ONE pattern, not two separate things. A "multi-step form opening with a question" and a "dropdown / preset-range answer" describe the SAME ideal: the visitor sees a qualifying question (e.g. "What is your annual revenue?", "How many orders do you get per month?", "What's your biggest channel?") and answers it by clicking a preset option (e.g. "£10k-£50k", "£50k-£250k", "£250k+") via a dropdown / radio / chip picker, BEFORE the form asks for an email or any personal info. This pattern converts significantly higher than a plain email-only form because the question pulls people in and clicking a preset is lower friction than typing.
@@ -176,9 +208,9 @@ Look for:
 - Some supporting content under the headline, but kept tight: one short paragraph or 2-3 bullet points. Long paragraphs above the fold lose points.
 - A strong, professional-looking visual: product screenshot, hero illustration, demo video, or a polished graphic. A blank or weak visual loses points significantly.
 - A LEAN, light navigation: logo on the left, ideally only 3 to 4 links in the middle. A bulky nav with 7+ links is a negative.
-- Clear conversion buttons on the RIGHT side of the nav (e.g. "Book a demo", "Get started", "Sign in"). At least one CTA in the nav.
-- A clear conversion widget in the hero itself: an email form, a multi-step question form, a calculator, or a prominent primary CTA. A form-based widget scores HIGHER than just a button.
-- Social proof visible above the fold: logos of recognised customers, ratings ("4.9/5 on G2"), or proof numbers ("Trusted by 10,000+ teams"). Missing social proof is a meaningful negative.
+- Clear conversion buttons on the RIGHT side of the nav (e.g. "Book a demo", "Get started for free", "Start free trial", "Get a quote"). At least one CTA in the nav. SIGN-IN / LOG-IN / CREATE ACCOUNT links are NOT considered a positive nav CTA — they're for existing users, not for converting new visitors. Do not praise them and do not recommend adding them.
+- A clear conversion widget in the hero itself: an email form, a multi-step question form, a calculator, or a prominent primary CTA. A form-based widget scores HIGHER than just a button. Do NOT make claims about how the CTA button is "integrated" or "separate" from the form unless the screenshot clearly shows a problematic disconnect — a button stacked below a dropdown is a perfectly normal layout, not a negative.
+- Social proof visible above the fold: logos of recognised customers, ratings ("4.9/5 on G2"), or proof numbers ("Trusted by 10,000+ teams"). Missing social proof is a meaningful negative — but BEFORE you flag it as missing, look at the above-the-fold screenshot carefully. If you can see customer logos (recognisable brand marks), star ratings, "Trusted by" copy, review badges, or any visible social-proof element, the page already has it — DO NOT recommend adding it.
 - As many of the above as possible should also be visible on the MOBILE above-the-fold screenshot, not just desktop. Mobile compromise (e.g. losing the form to a "tap to expand") is a negative.
 
 Comment specifically on which elements are present and which are missing. Reward pages that hit most criteria well even if one is imperfect; mark down pages that miss the basics.`;
