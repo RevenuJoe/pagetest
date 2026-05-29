@@ -2,7 +2,18 @@
  * Collapsible section using native <details>. The summary is a clickable
  * header with the section title in small-caps ink-soft + a chevron that
  * rotates when open.
+ *
+ * Initial open state comes from the `defaultOpen` prop. We use React
+ * state plus an `onToggle` handler so the user can freely open/close
+ * the section after mount — and crucially so the *initial* open value
+ * is locked in even when the parent re-renders during the staggered
+ * reveal cascade in Results.tsx. If `defaultOpen` is true, the section
+ * is open from the first paint.
  */
+
+"use client";
+
+import { useState } from "react";
 
 export default function Section({
   title,
@@ -29,6 +40,12 @@ export default function Section({
   compact?: boolean;
   children: React.ReactNode;
 }) {
+  // Internal open state. Seeded once from `defaultOpen` so the parent
+  // can't force the section back open or closed on every re-render.
+  // The native <details> element's onToggle event keeps this in sync
+  // with the user's clicks.
+  const [open, setOpen] = useState(defaultOpen);
+
   // Saved-report rows ("compact") shrink the summary padding on mobile:
   // left + right go from px-7 (28px) to px-3.5 (14px), top + bottom from
   // py-5 (20px) to py-3 (12px). Desktop keeps the original spacing.
@@ -37,7 +54,8 @@ export default function Section({
     : "px-7 py-5";
   return (
     <details
-      open={defaultOpen}
+      open={open}
+      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
       className="group rounded-[24px] border border-beige-line bg-card shadow-card overflow-hidden"
     >
       <summary
