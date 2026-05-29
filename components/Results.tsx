@@ -262,11 +262,11 @@ function clipboardHeader(data: AnalyzeResponse, sectionTitle: string): string {
 function formatOverviewForClipboard(data: AnalyzeResponse): string {
   const order: CheckKey[] = [
     "speed",
-    "content",
-    "digestibility",
-    "cro",
     "aboveTheFold",
+    "cro",
+    "content",
     "mobile",
+    "digestibility",
   ];
   const summary = overallSummary(data).trim();
   const dims = order
@@ -290,11 +290,11 @@ function formatOverviewForClipboard(data: AnalyzeResponse): string {
 function formatBreakdownForClipboard(data: AnalyzeResponse): string {
   const order: CheckKey[] = [
     "speed",
-    "content",
-    "digestibility",
-    "cro",
     "aboveTheFold",
+    "cro",
+    "content",
     "mobile",
+    "digestibility",
   ];
   const body = order
     .map((k, i) => {
@@ -423,11 +423,11 @@ export function OverviewBlock({
 }) {
   const order: CheckKey[] = [
     "speed",
-    "content",
-    "digestibility",
-    "cro",
     "aboveTheFold",
+    "cro",
+    "content",
     "mobile",
+    "digestibility",
   ];
   return (
     <div>
@@ -555,11 +555,11 @@ function MetaRow({
 function BreakdownBlock({ data }: { data: AnalyzeResponse }) {
   const order: CheckKey[] = [
     "speed",
-    "content",
-    "digestibility",
-    "cro",
     "aboveTheFold",
+    "cro",
+    "content",
     "mobile",
+    "digestibility",
   ];
 
   // Carousel state. We track whether arrows should be enabled and disable
@@ -1685,11 +1685,11 @@ function ScreenshotCard({
 function overallSummary(data: AnalyzeResponse): string {
   const order: CheckKey[] = [
     "speed",
-    "content",
-    "digestibility",
-    "cro",
     "aboveTheFold",
+    "cro",
+    "content",
     "mobile",
+    "digestibility",
   ];
   const entries = order.map((k) => ({
     key: k,
