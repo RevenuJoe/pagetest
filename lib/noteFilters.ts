@@ -67,10 +67,43 @@ function bodyHasSocialProof(bodyText: string): boolean {
 // FILTERS
 // -----------------------------------------------------------------------
 
-/** "Page lacks a nav entirely" / "no navigation present" / "nav is
- *  minimal" when the page actually has top-area nav content — either
- *  inside <header>, or via non-semantic markup (Unbounce-style <div>
- *  nav links detected via body-text scan). */
+/**
+ * Drop ANY note that comments on the page's navigation, whether the
+ * comment is positive or negative. Joe's call: nav-link detection from
+ * static HTML is unreliable on modern landing pages, and even
+ * accurate-looking nav commentary (e.g. "navigation is lean with 4
+ * links") risks being wrong on the next page. Nav is off-limits as a
+ * topic.
+ *
+ * Pattern is broad on purpose. Matches:
+ *   - "navigation", "nav bar", "nav links", "nav menu"
+ *   - "the top menu", "header menu", "primary menu"
+ *   - "links in the nav", "nav has N links"
+ *   - "slim/lean/bulky/minimal navigation"
+ *   - "logo-left + links-middle" layout descriptions
+ *
+ * Does NOT match notes that mention "navigate" as a verb in another
+ * sense (e.g. "users navigate to the form"), because the patterns are
+ * anchored to the noun forms / common nav phrasings.
+ */
+const filterAnyNavCommentary: FilterRule = (note) => {
+  const said =
+    /\bnav(igation)?\s+(is|has|carries|contains|holds|provides|offers|appears)\b/i.test(note) ||
+    /\b(the|a|page'?s?)\s+nav(igation)?\b[^.]{0,30}\b(is|has|with|of|in)\b/i.test(note) ||
+    /\bnav(?:igation)?\s+(?:bar|menu|links?|items?|elements?|structure|layout)\b/i.test(note) ||
+    /\b(header|top|primary)\s+(?:nav|menu|navigation)\b/i.test(note) ||
+    /\blinks?\s+(?:in|inside)\s+(?:the\s+)?nav(igation)?\b/i.test(note) ||
+    /\bnav(igation)?\s+(?:lean|bulky|minimal|slim|tidy|clean|sparse|crowded|heavy|cluttered|cramped)\b/i.test(note) ||
+    /\b(slim|trim|reduce|cut|expand|add)\b[^.]{0,40}\bnav(igation)?\b/i.test(note) ||
+    /\blogo[- ]left\s*\+\s*links[- ]middle\b/i.test(note) ||
+    /\bpage\s+lacks\s+a\s+(<nav>|nav(igation)?)\b/i.test(note);
+  if (!said) return null;
+  return "navigation commentary (off-limits topic — counts unreliable)";
+};
+
+/** Legacy filter kept for compatibility — superseded by
+ *  filterAnyNavCommentary above, which catches the same cases plus
+ *  positive nav commentary. */
 const filterNavMissingButHasContent: FilterRule = (note, _dim, ctx) => {
   const said =
     /\bpage\s+lacks\s+a\s+(<nav>|nav(igation)?)\s+(element\s+)?(entirely|altogether)\b/i.test(note) ||
@@ -219,6 +252,10 @@ const filterNotIntegratedLayout: FilterRule = (note) => {
 // -----------------------------------------------------------------------
 
 const ALL_FILTERS: FilterRule[] = [
+  // Navigation is OFF-LIMITS as a topic — counts are unreliable on
+  // modern landing pages. The broad filter below catches both
+  // negative AND positive nav commentary.
+  filterAnyNavCommentary,
   filterNavMissingButHasContent,
   filterNavBulky,
   filterAddSocialProof,
