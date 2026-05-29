@@ -23,6 +23,11 @@ import {
   buildTakeawaysPrompt,
   type ClaudeDimension,
 } from "./scoringCriteria";
+import {
+  type FilterContext,
+  filterDimensionResult,
+  filterTakeaways,
+} from "./noteFilters";
 
 const MODEL = "claude-sonnet-4-5";
 
@@ -73,25 +78,46 @@ export async function analyzeWithClaude(
   }
   const client = new Anthropic({ apiKey });
 
+  // Filter context — used by the deterministic note filter to cross-
+  // check Claude-generated notes against parsed ground truth (nav
+  // links, form fields, body text markers etc.). Built once, shared.
+  const filterCtx: FilterContext = {
+    structure: input.structure,
+    bodyText: input.bodyText,
+    url: input.url,
+  };
+
   // Phase 1: fan out the 5 DIMENSION calls in parallel. Each call sees
   // the page evidence and returns its own { score, headline, notes }.
-  const [content, digestibility, cro, aboveTheFold, mobile] = await Promise.all([
-    callDimension(client, input, "content"),
-    callDimension(client, input, "digestibility"),
-    callDimension(client, input, "cro"),
-    callDimension(client, input, "aboveTheFold"),
-    callDimension(client, input, "mobile"),
-  ]);
+  const [contentRaw, digestibilityRaw, croRaw, aboveTheFoldRaw, mobileRaw] =
+    await Promise.all([
+      callDimension(client, input, "content"),
+      callDimension(client, input, "digestibility"),
+      callDimension(client, input, "cro"),
+      callDimension(client, input, "aboveTheFold"),
+      callDimension(client, input, "mobile"),
+    ]);
 
-  // Phase 2: now that the dimensions have concluded, run the Takeaways
-  // call with each dimension's notes injected into the prompt as the
-  // SOURCE MATERIAL. This eliminates the contradiction where the
-  // Above-the-fold dimension says "social proof is present" while a
-  // parallel Takeaways call recommends adding social proof. Takeaways
-  // can only summarise / re-prioritise what the dimensions already
-  // concluded — it can't invent new observations.
+  // Phase 1b: deterministic filtering. Run every dimension's notes
+  // through the hallucination filter BEFORE takeaways sees them, so
+  // a bad note can't propagate from a dimension to the takeaways list.
+  const content = filterDimensionResult(contentRaw, "content", filterCtx);
+  const digestibility = filterDimensionResult(digestibilityRaw, "digestibility", filterCtx);
+  const cro = filterDimensionResult(croRaw, "cro", filterCtx);
+  const aboveTheFold = filterDimensionResult(aboveTheFoldRaw, "aboveTheFold", filterCtx);
+  const mobile = filterDimensionResult(mobileRaw, "mobile", filterCtx);
+
+  // Phase 2: now that the dimensions have concluded (and been filtered),
+  // run the Takeaways call with each dimension's CLEAN notes injected
+  // into the prompt as the SOURCE MATERIAL. Takeaways can only
+  // summarise / re-prioritise what the dimensions already concluded —
+  // it can't invent new observations.
   const dimensionResults = { content, digestibility, cro, aboveTheFold, mobile };
-  const keyTakeaways = await callTakeaways(client, input, dimensionResults);
+  const rawTakeaways = await callTakeaways(client, input, dimensionResults);
+
+  // Phase 2b: filter takeaways too, in case Claude re-introduced a
+  // hallucination by rewording a dimension note.
+  const keyTakeaways = filterTakeaways(rawTakeaways, filterCtx);
 
   return {
     checks: dimensionResults,
