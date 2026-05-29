@@ -73,20 +73,28 @@ export async function analyzeWithClaude(
   }
   const client = new Anthropic({ apiKey });
 
-  // Fan out: 5 dimension calls + 1 takeaways call, ALL in parallel via
-  // a single Promise.all — wall-clock stays close to one call.
-  const [content, digestibility, cro, aboveTheFold, mobile, keyTakeaways] =
-    await Promise.all([
-      callDimension(client, input, "content"),
-      callDimension(client, input, "digestibility"),
-      callDimension(client, input, "cro"),
-      callDimension(client, input, "aboveTheFold"),
-      callDimension(client, input, "mobile"),
-      callTakeaways(client, input),
-    ]);
+  // Phase 1: fan out the 5 DIMENSION calls in parallel. Each call sees
+  // the page evidence and returns its own { score, headline, notes }.
+  const [content, digestibility, cro, aboveTheFold, mobile] = await Promise.all([
+    callDimension(client, input, "content"),
+    callDimension(client, input, "digestibility"),
+    callDimension(client, input, "cro"),
+    callDimension(client, input, "aboveTheFold"),
+    callDimension(client, input, "mobile"),
+  ]);
+
+  // Phase 2: now that the dimensions have concluded, run the Takeaways
+  // call with each dimension's notes injected into the prompt as the
+  // SOURCE MATERIAL. This eliminates the contradiction where the
+  // Above-the-fold dimension says "social proof is present" while a
+  // parallel Takeaways call recommends adding social proof. Takeaways
+  // can only summarise / re-prioritise what the dimensions already
+  // concluded — it can't invent new observations.
+  const dimensionResults = { content, digestibility, cro, aboveTheFold, mobile };
+  const keyTakeaways = await callTakeaways(client, input, dimensionResults);
 
   return {
-    checks: { content, digestibility, cro, aboveTheFold, mobile },
+    checks: dimensionResults,
     keyTakeaways,
   };
 }
@@ -118,16 +126,24 @@ async function callDimension(
 }
 
 /**
- * The dedicated Key Takeaways call. Same inputs as the dimension calls
- * but its system prompt asks for 5 categorised one-liners across the
- * whole page, not a score.
+ * The dedicated Key Takeaways call. Runs AFTER the dimension calls and
+ * receives each dimension's conclusion as source material — the
+ * takeaways prompt asks Claude to summarise / re-prioritise what the
+ * dimensions ALREADY observed, never to invent new claims. This kills
+ * the "Above-the-fold says social proof is present, Takeaways
+ * recommends adding social proof" contradiction.
  */
 async function callTakeaways(
   client: Anthropic,
   input: ClaudeInput,
+  dimensionResults: Record<ClaudeDimension, CheckResult>,
 ): Promise<KeyTakeaway[]> {
   const system = buildTakeawaysPrompt();
   const userBlocks = buildUserBlocks(input);
+  // Append the dimension findings to the user message so Claude
+  // chooses takeaways from notes the dimensions actually produced.
+  const dimensionDigest = formatDimensionDigest(dimensionResults);
+  userBlocks.push({ type: "text", text: dimensionDigest });
   const response = await client.messages.create({
     model: MODEL,
     max_tokens: 800,
@@ -143,6 +159,60 @@ async function callTakeaways(
 }
 
 /**
+ * Format the five dimension results into a structured digest that the
+ * Takeaways call uses as the ONLY allowed source of observations.
+ * Headlines + notes are quoted verbatim so the takeaways are literally
+ * a re-prioritised selection of dimension output, never new content.
+ */
+function formatDimensionDigest(
+  results: Record<ClaudeDimension, CheckResult>,
+): string {
+  const labels: Record<ClaudeDimension, string> = {
+    content: "Content",
+    digestibility: "Digestibility",
+    cro: "CRO",
+    aboveTheFold: "Above the fold",
+    mobile: "Mobile layout",
+  };
+  const order: ClaudeDimension[] = [
+    "content",
+    "digestibility",
+    "cro",
+    "aboveTheFold",
+    "mobile",
+  ];
+  const sections = order.map((dim) => {
+    const r = results[dim];
+    const notes = r.notes.length === 0
+      ? "  (no notes from this dimension)"
+      : r.notes.map((n) => `  - ${n}`).join("\n");
+    return `### ${labels[dim]} — score ${r.score}/100\nHeadline: ${r.headline}\nNotes:\n${notes}`;
+  });
+  return [
+    "================================================================",
+    "DIMENSION FINDINGS — read carefully. These are the conclusions the",
+    "five dimension calls reached after analysing the page. Your Key",
+    "Takeaways MUST be drawn directly from these notes and headlines.",
+    "Do NOT introduce new observations or recommendations that contradict",
+    "what a dimension already concluded.",
+    "",
+    "Example contradictions to avoid:",
+    "- If Above-the-fold's headline or notes say social proof is present,",
+    "  do NOT recommend adding social proof.",
+    "- If a dimension's notes praise the existing form pattern, do NOT",
+    "  recommend changing it.",
+    "- If a dimension acknowledges a CTA exists, do NOT recommend adding",
+    "  one with similar intent.",
+    "",
+    "Pick the 5 highest-impact recommendations from the union of these",
+    "notes. Rephrase / tighten them as needed, but every takeaway must be",
+    "traceable back to a note or headline below.",
+    "================================================================",
+    ...sections,
+  ].join("\n");
+}
+
+/**
  * Shared user-message builder. Includes URL + structure + body text and
  * the four screenshots, but TRIMS to what's relevant per dimension to
  * keep token usage sensible:
@@ -152,11 +222,13 @@ async function callTakeaways(
  *   - others:       all four screenshots
  *   - takeaways:    all four screenshots
  */
+type UserContentBlock = Anthropic.TextBlockParam | Anthropic.ImageBlockParam;
+
 function buildUserBlocks(
   input: ClaudeInput,
   dim?: ClaudeDimension,
-): Anthropic.MessageParam["content"] {
-  const blocks: Anthropic.MessageParam["content"] = [];
+): UserContentBlock[] {
+  const blocks: UserContentBlock[] = [];
   blocks.push({ type: "text", text: buildPromptText(input) });
 
   const wantAboveFold = dim !== "mobile"; // mobile call doesn't need desktop above-the-fold

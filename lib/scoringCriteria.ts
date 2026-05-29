@@ -330,10 +330,14 @@ export function buildDimensionPrompt(dim: ClaudeDimension): string {
 
 const TAKEAWAYS_RULES = `You are choosing the 5 highest-impact, page-specific recommendations the team should action across the WHOLE page.
 
+CRITICAL: Your ONLY source of observations is the "DIMENSION FINDINGS" section in the user message below. That section contains the five dimension calls' headlines and notes — the conclusions another version of you already reached about this exact page. Pick the five highest-impact takeaways FROM THOSE NOTES. Do not invent new observations. Do not contradict a dimension's verdict (e.g. if Above-the-fold says social proof is present, do not recommend adding social proof). Do not pull from criteria the dimensions chose not to flag.
+
+If a takeaway you want to write isn't directly supported by a dimension headline or note, drop it. Returning four solid takeaways is better than five with a hallucinated one.
+
 RULES:
-- EXACTLY 5 takeaways. Pick the FIVE biggest issues across the page.
+- AT MOST 5 takeaways. Aim for five only if the dimension notes genuinely provide five distinct, high-impact items.
 - Each takeaway is an object: { "category": <one of "speed" | "content" | "digestibility" | "cro" | "aboveTheFold" | "mobile">, "text": "<recommendation>" }.
-- "category" tags which scoring dimension this primarily helps. Choose the single best fit.
+- "category" tags which scoring dimension this primarily helps. Choose the single best fit. The category MUST match the dimension whose notes the takeaway is drawn from.
 - "text" is ONE short sentence, MAX 14 WORDS. It must fit on a single line on a desktop screen.
 - Highest-impact items first.
 
