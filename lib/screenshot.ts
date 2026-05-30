@@ -133,9 +133,22 @@ export async function fetchMicrolinkScreenshot(
     });
 
     if (!res.ok) {
-      // 429 = rate-limited (free tier), 5xx = Microlink trouble.
+      // Read the response body so we can see WHY Microlink rejected
+      // the call. They return JSON like `{ status: "fail",
+      // message: "<reason>", code: "<short_id>" }`. The HTTP status
+      // text alone (e.g. "Bad Request") tells us nothing — the
+      // message field is the actionable bit. We also include `mode`
+      // in the log so AtF failures are distinguishable from full-page
+      // failures.
+      let bodyText = "";
+      try {
+        bodyText = await res.text();
+      } catch {
+        bodyText = "(failed to read body)";
+      }
+      const hasKey = process.env.MICROLINK_API_KEY ? "with-key" : "no-key";
       console.warn(
-        `Microlink ${strategy} returned ${res.status} ${res.statusText} for ${url}`,
+        `Microlink ${strategy}/${mode} (${hasKey}) returned ${res.status} ${res.statusText} for ${url} — body: ${bodyText.slice(0, 600)}`,
       );
       return null;
     }
