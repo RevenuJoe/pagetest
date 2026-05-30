@@ -43,6 +43,7 @@ import {
   IconWrench,
   IconGauge,
   IconEye,
+  IconDownload,
 } from "@/components/Icons";
 import { scoreColor } from "@/lib/scoreColor";
 import { displayName } from "@/lib/nameUtil";
@@ -153,25 +154,8 @@ export default function Results({
         </Section>
       ),
     },
-    // The Full Page Screenshot section sits above the Technical
-    // Improvements section when Microlink returned a full-page
-    // capture. Hidden on old reports / failed captures.
-    ...(data.desktopFullPageScreenshot || data.mobileFullPageScreenshot
-      ? [
-          {
-            key: "full-screenshots",
-            node: (
-              <Section
-                title="Full Page Screenshot"
-                icon={<IconEye />}
-                defaultOpen={false}
-              >
-                <FullPageScreenshotsBlock data={data} />
-              </Section>
-            ),
-          },
-        ]
-      : []),
+    // Technical Improvements sits above the two screenshot sections so
+    // the image-heavy content lives at the very bottom of the report.
     {
       key: "tech",
       node: (
@@ -187,17 +171,67 @@ export default function Results({
         </Section>
       ),
     },
-    // Above-the-Fold Screenshots is the last non-debug section so the
-    // big images don't push later content (recommendations, technical
-    // improvements) below the fold.
+    // Above-the-Fold first, then Full Page beneath it. Both get a
+    // download button in the header that pulls the high-quality WebP
+    // assets from Microlink's CDN to the user's computer.
     {
       key: "screenshots",
       node: (
-        <Section title="Above-the-Fold Screenshots" icon={<IconEye />} defaultOpen={false}>
+        <Section
+          title="Above-the-Fold Screenshots"
+          icon={<IconEye />}
+          defaultOpen={false}
+          headerAction={
+            <DownloadButton
+              label="Download above-the-fold screenshots"
+              files={[
+                {
+                  url: data.desktopScreenshot,
+                  filename: `${screenshotFilenameStem(data)}-atf-desktop.webp`,
+                },
+                {
+                  url: data.mobileScreenshot,
+                  filename: `${screenshotFilenameStem(data)}-atf-mobile.webp`,
+                },
+              ]}
+            />
+          }
+        >
           <ScreenshotsBlock data={data} />
         </Section>
       ),
     },
+    ...(data.desktopFullPageScreenshot || data.mobileFullPageScreenshot
+      ? [
+          {
+            key: "full-screenshots",
+            node: (
+              <Section
+                title="Full Page Screenshot"
+                icon={<IconEye />}
+                defaultOpen={false}
+                headerAction={
+                  <DownloadButton
+                    label="Download full page screenshots"
+                    files={[
+                      {
+                        url: data.desktopFullPageScreenshot,
+                        filename: `${screenshotFilenameStem(data)}-fullpage-desktop.webp`,
+                      },
+                      {
+                        url: data.mobileFullPageScreenshot,
+                        filename: `${screenshotFilenameStem(data)}-fullpage-mobile.webp`,
+                      },
+                    ]}
+                  />
+                }
+              >
+                <FullPageScreenshotsBlock data={data} />
+              </Section>
+            ),
+          },
+        ]
+      : []),
   ];
 
   // Stage trace inspector — only renders when /api/analyze was called
@@ -336,6 +370,115 @@ function CopyButton({ getText }: { getText: () => string }) {
       {copied ? <IconCheck className="h-4 w-4 text-accent" /> : <IconCopy />}
     </button>
   );
+}
+
+/**
+ * Header action for a screenshot Section. Same visual treatment as
+ * CopyButton (small grey icon, hover darkens, briefly swaps to a check
+ * after action). Clicking it downloads the high-quality WebP files
+ * (desktop + mobile when both are present) directly from Microlink's
+ * CDN to the user's computer.
+ *
+ * The Microlink CDN responds with Content-Disposition that opens
+ * inline by default, so we explicitly fetch the asset as a Blob and
+ * trigger a download via an anchor + object URL so the browser
+ * actually saves the file with the filename we choose.
+ */
+function DownloadButton({
+  files,
+  label,
+}: {
+  /** One entry per file to download. `url` is the Microlink WebP URL
+   *  (or PSI base64 data URL as a fallback). `filename` is what the
+   *  saved file should be named locally. */
+  files: Array<{ url: string | undefined; filename: string }>;
+  /** Accessible label / tooltip for the button. */
+  label: string;
+}) {
+  const [done, setDone] = useState(false);
+  const usable = files.filter(
+    (f): f is { url: string; filename: string } => typeof f.url === "string" && f.url.length > 0,
+  );
+  if (usable.length === 0) return null;
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={(e) => {
+        // Stop the click from toggling the surrounding <details>.
+        e.preventDefault();
+        e.stopPropagation();
+        void downloadFiles(usable).then((ok) => {
+          if (ok) {
+            setDone(true);
+            window.setTimeout(() => setDone(false), 1400);
+          }
+        });
+      }}
+      className="flex h-7 w-7 items-center justify-center rounded-md text-ink-soft transition hover:bg-bg hover:text-ink"
+    >
+      {done ? <IconCheck className="h-4 w-4 text-accent" /> : <IconDownload />}
+    </button>
+  );
+}
+
+/** Fetch each URL as a Blob and trigger a browser download with the
+ *  chosen filename. Returns true if at least one file downloaded; logs
+ *  but doesn't throw on individual failures. Sequential to avoid
+ *  popup-blocker behaviour that fires on bursts of synthetic clicks. */
+async function downloadFiles(
+  files: Array<{ url: string; filename: string }>,
+): Promise<boolean> {
+  let anySucceeded = false;
+  for (const f of files) {
+    try {
+      // Data URLs (PSI fallback) can be turned into a download
+      // directly without a fetch round-trip.
+      let objectUrl: string;
+      let revoke = false;
+      if (f.url.startsWith("data:")) {
+        objectUrl = f.url;
+      } else {
+        const res = await fetch(f.url, { mode: "cors" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        objectUrl = URL.createObjectURL(blob);
+        revoke = true;
+      }
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = f.filename;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      if (revoke) {
+        // Give the browser a moment to start the download before
+        // revoking the blob URL.
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
+      }
+      anySucceeded = true;
+    } catch (err) {
+      console.warn(`Failed to download ${f.filename}:`, err);
+    }
+  }
+  return anySucceeded;
+}
+
+/** Build a filesystem-safe filename stem from the report. Used to name
+ *  the WebP downloads (e.g. `revenuagency-io-atf-desktop.webp`). Falls
+ *  back to "screenshot" when the displayName produces only stripped
+ *  characters. */
+function screenshotFilenameStem(data: AnalyzeResponse): string {
+  const raw = (displayName(data) || data.url || "").toLowerCase();
+  const cleaned = raw
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  return cleaned.length > 0 ? cleaned : "screenshot";
 }
 
 /** Standard report header — name, URL, analysed date — used by every
