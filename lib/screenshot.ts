@@ -95,13 +95,24 @@ export async function fetchMicrolinkScreenshot(
       params.set("viewport.isMobile", "true");
     }
 
+    // Optional Microlink API key. When set, the request goes against the
+    // project's paid quota instead of the anonymous IP-based bucket
+    // (which is small and shared with everyone else on the same exit
+    // IP — easy to exhaust, especially behind a VPN). Microlink reads
+    // the key from the `x-api-key` header per their docs.
+    const headers: Record<string, string> = {
+      "user-agent": "pagetest-revenuagency.io",
+    };
+    const microlinkKey = process.env.MICROLINK_API_KEY;
+    if (microlinkKey) headers["x-api-key"] = microlinkKey;
+
     const res = await fetch(`${MICROLINK_ENDPOINT}?${params.toString()}`, {
       // 45s ceiling. Joe specifically values Microlink's high-quality
       // screenshots and would rather wait than fall back to PSI's lower
       // resolution images. Still fits inside the route's maxDuration
       // (270s) alongside the parallel PSI runs.
       signal: AbortSignal.timeout(45_000),
-      headers: { "user-agent": "pagetest-revenuagency.io" },
+      headers,
     });
 
     if (!res.ok) {
