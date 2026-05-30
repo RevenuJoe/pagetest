@@ -379,21 +379,29 @@ Look for:
 - ONE clear, dominant headline. One big H1, not multiple competing oversized headlines.
 - Some supporting content under the headline, but kept tight: one short paragraph or 2-3 bullet points. Long paragraphs above the fold lose points.
 - A strong, professional-looking visual: product screenshot, hero illustration, demo video, or a polished graphic. A blank or weak visual loses points significantly.
-- NAVIGATION (above-the-fold dim is the ONLY dimension allowed to comment on the nav). Read the nav from the ABOVE-THE-FOLD SCREENSHOT, NOT from the HTML — the HTML "navLinks" data can include items that aren't visible in the rendered hero (CSS-hidden links, sub-menu items, etc.). Use the screenshot as the only authority for what the visitor actually sees.
+- NAVIGATION (above-the-fold dim is the ONLY dimension allowed to comment on the nav). MANDATORY counting step before any nav commentary: count the text links visibly in the hero nav from the ABOVE-THE-FOLD SCREENSHOT. The HTML "navLinks" data in GROUND TRUTH is a STARTING POINT only — CSS-hidden links and sub-menu items routinely show up there but aren't actually rendered in the hero. The SCREENSHOT is the authority for what the visitor sees.
+  How to count correctly:
+    • Look at the AtF screenshot. Identify the nav row at the top.
+    • Count the TEXT LINKS — words / phrases that look like nav items (Pricing, Products, Resources, About, Customers, etc.).
+    • Do NOT count the logo as a text link.
+    • Do NOT count obvious conversion BUTTONS as text links (a "Get a Demo" or "Start Free Trial" button with a coloured background is counted SEPARATELY from the links).
+    • Sign-in / Log-in / Create-Account links are NEUTRAL — list them but don't count them toward "is this nav too full".
   Ideal nav pattern:
     • Logo on the left (a link back to the home page — present on every well-designed landing page).
-    • 3 to 4 text links maximum, separate from the buttons.
-    • 1 to 2 obvious BUTTONS on the right ("Get a Demo", "Book a Demo", "Get Started for Free", "Start Free Trial", "Sign Up"). The buttons should look visibly like buttons in the screenshot — coloured background, clearly clickable — and are counted SEPARATELY from the text links.
+    • 3 text links MAXIMUM, separate from the buttons. More than 3 text links is too many.
+    • 1 to 2 obvious BUTTONS on the right ("Get a Demo", "Book a Demo", "Get Started for Free", "Start Free Trial", "Sign Up"). The buttons should look visibly like buttons in the screenshot — coloured background, clearly clickable.
   Scoring guidance:
     • Logo missing → flag it; the nav reads as anonymous.
     • Zero or 1 text link → flag as too sparse; visitors don't have orientation cues.
-    • 5+ text links (not counting the buttons) → recommend trimming to 3 or 4 of the most useful (Pricing / Resources / About / Customers / etc.). Nav over-stuffing is a real conversion drag.
+    • Exactly 2-3 text links + 1-2 buttons + logo → ideal, call it a positive.
+    • 4+ text links (not counting the buttons) → too many — recommend trimming to 3 of the most useful (Pricing / Resources / About / Customers / etc.). Nav over-stuffing is a real conversion drag.
     • No prominent button in the nav → recommend adding one of the conversion CTAs above.
-    • Sign-in / Log-in / Create-Account links are NEUTRAL — don't count them positively, don't flag their absence. Their presence doesn't add to the link count for "is this nav too full".
-  Rules for the recommendation copy:
-    • Always quote the actual numbers from the screenshot when you can ("the hero nav shows 6 text links plus 'Get a Demo' — recommend trimming the links to 3 or 4").
-    • If the nav looks fine in the screenshot, call it a positive — don't fish for things to change.
-    • If the screenshot is ambiguous (e.g. nav links are partially hidden behind a hamburger), say so and recommend testing the full nav.
+  Rules for the recommendation copy (MANDATORY):
+    • State the actual count at the start of any nav observation. Format: "The hero nav shows <N> text links plus <buttons>". Examples: "The hero nav shows 5 text links plus a 'Get a Demo' button" or "The hero nav has 2 text links (Pricing, Resources) plus a 'Book a Demo' button — a clean configuration".
+    • Do NOT call a nav "good" / "clean" / "lean" / "balanced" without stating the count. The count IS the verdict — readers should see the number, not just an adjective.
+    • If the screenshot shows 4 or more text links, the nav is too full. You MUST recommend trimming to 3. Do NOT praise a 4+ link nav.
+    • If the nav genuinely hits the ideal (≤3 text links + 1-2 buttons + logo), call it a positive AND state the count.
+    • If the screenshot is ambiguous (nav links partially hidden behind a hamburger), say so and recommend testing the full nav.
 - At least one conversion CTA visible above the fold (e.g. "Book a demo", "Get started for free", "Start free trial", "Get a quote"). This can be a button inside the hero form, a standalone button in the top-right, or both. SIGN-IN / LOG-IN / CREATE ACCOUNT are NOT considered a positive CTA — they're for existing users. Do not praise them and do not recommend adding them.
 - A clear conversion widget in the hero itself: an email form, a multi-step question form, a calculator, or a prominent primary CTA. A form-based widget scores HIGHER than just a button. Do NOT make claims about how the CTA button is "integrated" or "separate" from the form unless the screenshot clearly shows a problematic disconnect — a button stacked below a dropdown is a perfectly normal layout, not a negative. IMPORTANT: if the hero form is a multi-step / question-led form, the "Next" / "Continue" / "Submit" button INSIDE that form IS the CTA button. Do NOT claim "no standalone CTA button is visible" when the form already has a Next/Continue/Submit button — that button is the CTA. Multi-step forms intentionally have the CTA inside the form; a separate standalone button is not required.
 - CHECK GROUND TRUTH for "Above-the-fold contains interactive controls (checkbox / radio / quiz / multi-step)". If this flag is YES, the page is intentionally leading with an interactive flow — a quiz, qualifier, or multi-step form where the CTA is the next step. Treat this as a STRONG above-the-fold pattern. Do NOT say the hero is static, boring, or lacks interactivity. Do NOT recommend adding a separate primary CTA button — the interactive control IS the CTA. Score the dimension on the quality of the interaction (clear prompt, visible options, obvious path forward), not on the absence of a traditional headline + button layout.

@@ -190,11 +190,30 @@ const filterSocialProofBelowFoldClaim: FilterRule = (note, _dim, ctx) => {
 
 const filterAddBottomForm: FilterRule = (note, _dim, ctx) => {
   const said =
-    /(add|missing|lack|need|no)\b[^.]{0,80}\b(bottom|final|footer|second|closing)\s+(form|cta\b|conversion widget)\b/i.test(
+    /(add|missing|lack|need|no)\b[^.]{0,80}\b(bottom|final|footer|second|closing)\s+(form|cta\b|conversion widget|lead.?gen)\b/i.test(
       note,
     ) ||
-    /\b(form|cta\b|conversion widget)\s+at\s+the\s+bottom\b/i.test(note) && /(add|missing|lack|need|no)\b/i.test(note);
+    /\b(form|cta\b|conversion widget|lead.?gen)\s+at\s+the\s+bottom\b/i.test(note) && /(add|missing|lack|need|no)\b/i.test(note);
   if (!said) return null;
+  // Drop the claim if the page has ANY form at "late" (likely bottom)
+  // or "middle" position — those count as bottom forms regardless of
+  // field count. A one-field email form near the footer IS a bottom
+  // lead-gen form. The previous "formCount >= 2" gate missed this
+  // because a page with only ONE form (the bottom one) would still
+  // trip the false negative.
+  const hasLateOrMiddleForm = ctx.structure.forms.some(
+    (f) => f.position === "late" || f.position === "middle",
+  );
+  if (hasLateOrMiddleForm) {
+    const lateForms = ctx.structure.forms.filter(
+      (f) => f.position === "late" || f.position === "middle",
+    );
+    const labels = lateForms
+      .map((f) => `Form #${f.index + 1} (${f.position}, ${f.fields.length} field${f.fields.length === 1 ? "" : "s"})`)
+      .slice(0, 3)
+      .join(", ");
+    return `bottom-form claim but page has ${lateForms.length} form(s) at late/middle position: ${labels}`;
+  }
   if (ctx.structure.formCount >= 2) {
     return `bottom-form claim but page has ${ctx.structure.formCount} <form> elements`;
   }
