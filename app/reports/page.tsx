@@ -10,7 +10,7 @@ import { IconRerun, IconTrash, IconPencil } from "@/components/Icons";
 import { useRunningUrls, useSavedReports } from "@/lib/storeHooks";
 import { analysisStore } from "@/lib/analysisStore";
 import { savedStore } from "@/lib/savedStore";
-import { deriveReportName, displayName } from "@/lib/nameUtil";
+import { displayName } from "@/lib/nameUtil";
 import type { AnalyzeResponse } from "@/lib/types";
 
 export default function ReportsPage() {
@@ -33,7 +33,13 @@ export default function ReportsPage() {
 
   function rerunReport(r: AnalyzeResponse) {
     if (running.has(r.url)) return;
-    analysisStore.start(r.url, { preserveName: r.name ?? deriveReportName(r.url) });
+    // Only carry forward an explicit user-set name. When `r.name` is
+    // undefined the rerun should behave exactly like a fresh run:
+    // displayName() falls back to the new response's pageTitle.
+    // Previously we passed `deriveReportName(r.url)` as the fallback,
+    // which force-set the report's name to a URL-derived string and
+    // overrode the freshly-fetched pageTitle on every rerun.
+    analysisStore.start(r.url, { preserveName: r.name });
   }
 
   function confirmDelete() {
