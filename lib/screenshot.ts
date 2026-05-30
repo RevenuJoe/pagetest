@@ -99,10 +99,14 @@ export async function fetchMicrolinkScreenshot(
       type: "jpeg",
       // Above-the-fold = false (capture just the visible viewport on
       // page load). Full page = true (stitch the whole scroll).
-      // Microlink's public API was observed returning full-page
-      // captures even when fullPage was omitted, so we always set it
-      // explicitly to the value we want.
-      fullPage: mode === "fullpage" ? "true" : "false",
+      // PARAMETER NAME: per Microlink docs the correct key is
+      // `screenshot.fullPage` (it lives under the `screenshot` object,
+      // same way `screenshot.type` does). Sending bare `fullPage=true`
+      // is silently ignored and Microlink returns an AtF crop for
+      // every call — which is exactly what happened when this was
+      // first shipped. URLSearchParams encodes the dot fine; that's
+      // also how `viewport.width` etc are documented.
+      "screenshot.fullPage": mode === "fullpage" ? "true" : "false",
       // Microlink caches by URL aggressively (default TTL 12h+) and the
       // cache key does NOT include screenshot params like fullPage. So a
       // URL that was previously captured with fullPage=true keeps

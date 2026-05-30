@@ -68,6 +68,40 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // `?debug=1` on the analyse request asks the pipeline to return every
+  // critic verdict (KEEP / REWRITE / DROP per item, with reason and
+  // before/after text), plus a full per-stage trace and per-phase
+  // timings. Used to inspect what each phase produced and what was
+  // dropped on real pages. Off by default so production responses
+  // stay clean.
+  const debug =
+    req.nextUrl?.searchParams.get("debug") === "1" ||
+    req.nextUrl?.searchParams.get("debug") === "true";
+
+  // End-to-end timer that includes both Phase 0 fetches and the Claude
+  // pipeline. Reported as totalRouteMs in the debug response so we can
+  // see total wall-clock from the user's perspective.
+  const tRouteStart = Date.now();
+  // Per-fetch stopwatches so we can attribute Phase 0 latency to each
+  // source (PSI desktop, PSI mobile, HTML fetch, the four Microlink
+  // captures). They all run in parallel so the slowest one dominates
+  // the phase wall-clock.
+  const phase0Timings = {
+    psiDesktopMs: 0,
+    psiMobileMs: 0,
+    fetchPageMs: 0,
+    microDesktopMs: 0,
+    microMobileMs: 0,
+    microDesktopFullMs: 0,
+    microMobileFullMs: 0,
+  };
+  const timed = <T>(label: keyof typeof phase0Timings, p: Promise<T>): Promise<T> => {
+    const t = Date.now();
+    return p.finally(() => {
+      phase0Timings[label] = Date.now() - t;
+    });
+  };
+
   try {
     // Kick off PSI + page fetch + high-res screenshot fetches all in
     // parallel. PSI screenshots are low-quality JPEGs at low resolution;
@@ -83,19 +117,20 @@ export async function POST(req: NextRequest) {
       microDesktopFullRes,
       microMobileFullRes,
     ] = await Promise.allSettled([
-      runPageSpeed(url, "desktop"),
-      runPageSpeed(url, "mobile"),
-      fetchPage(url),
+      timed("psiDesktopMs", runPageSpeed(url, "desktop")),
+      timed("psiMobileMs", runPageSpeed(url, "mobile")),
+      timed("fetchPageMs", fetchPage(url)),
       // Above-the-fold crops (shown in Overview + AtF Screenshots section).
-      fetchMicrolinkScreenshot(url, "desktop", "atf"),
-      fetchMicrolinkScreenshot(url, "mobile", "atf"),
+      timed("microDesktopMs", fetchMicrolinkScreenshot(url, "desktop", "atf")),
+      timed("microMobileMs", fetchMicrolinkScreenshot(url, "mobile", "atf")),
       // Full-page captures (shown in the new Full Page Screenshot
       // section). Microlink stitches the whole scroll into one image.
       // Takes longer than AtF; runs in parallel so wall-clock isn't
       // dominated unless PSI returns very fast.
-      fetchMicrolinkScreenshot(url, "desktop", "fullpage"),
-      fetchMicrolinkScreenshot(url, "mobile", "fullpage"),
+      timed("microDesktopFullMs", fetchMicrolinkScreenshot(url, "desktop", "fullpage")),
+      timed("microMobileFullMs", fetchMicrolinkScreenshot(url, "mobile", "fullpage")),
     ]);
+    const phase0WallClockMs = Date.now() - tRouteStart;
 
     // PSI is allowed to fail; we degrade gracefully. Log failures to the
     // server so we can see WHY in Vercel logs (e.g. timeout, 4xx, 5xx)
@@ -254,6 +289,7 @@ export async function POST(req: NextRequest) {
         overallSavingsMs: t.overallSavingsMs,
         overallSavingsBytes: t.overallSavingsBytes,
       })),
+      debug,
     });
 
     const checks = {
@@ -318,6 +354,24 @@ export async function POST(req: NextRequest) {
       desktopFullPageScreenshot: microDesktopFull?.url ?? undefined,
       mobileFullPageScreenshot: microMobileFull?.url ?? undefined,
       pageSpeedInsights: psiInsights,
+      ...(debug && ai.criticVerdicts
+        ? { criticVerdicts: ai.criticVerdicts }
+        : {}),
+      // When debug is on, merge Phase 0 (fetches) timings into the
+      // debug trace before shipping. Total route wall-clock is the
+      // user-perceived end-to-end latency.
+      ...(debug && ai.debugTrace
+        ? {
+            debugTrace: {
+              ...ai.debugTrace,
+              phase0: {
+                ...phase0Timings,
+                phase0WallClockMs,
+              },
+              totalRouteMs: Date.now() - tRouteStart,
+            },
+          }
+        : {}),
     };
 
     return NextResponse.json(response);

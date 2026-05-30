@@ -153,18 +153,9 @@ export default function Results({
         </Section>
       ),
     },
-    {
-      key: "screenshots",
-      node: (
-        <Section title="Above-the-Fold Screenshots" icon={<IconEye />} defaultOpen={false}>
-          <ScreenshotsBlock data={data} />
-        </Section>
-      ),
-    },
-    // Only render the Full Page Screenshot section when Microlink
-    // actually returned a full-page capture for at least one device.
-    // Old saved reports (pre full-page support) lack these fields, and
-    // we don't want an empty section on those.
+    // The Full Page Screenshot section sits above the Technical
+    // Improvements section when Microlink returned a full-page
+    // capture. Hidden on old reports / failed captures.
     ...(data.desktopFullPageScreenshot || data.mobileFullPageScreenshot
       ? [
           {
@@ -196,7 +187,37 @@ export default function Results({
         </Section>
       ),
     },
+    // Above-the-Fold Screenshots is the last non-debug section so the
+    // big images don't push later content (recommendations, technical
+    // improvements) below the fold.
+    {
+      key: "screenshots",
+      node: (
+        <Section title="Above-the-Fold Screenshots" icon={<IconEye />} defaultOpen={false}>
+          <ScreenshotsBlock data={data} />
+        </Section>
+      ),
+    },
   ];
+
+  // Stage trace inspector — only renders when /api/analyze was called
+  // with ?debug=1. Captures the content at every pipeline phase plus
+  // what was removed at each phase with reasons. Used for tuning, not
+  // shown on normal runs.
+  if (data.debugTrace) {
+    sections.push({
+      key: "stage-trace",
+      node: (
+        <Section
+          title="Stage Trace (debug)"
+          icon={<IconLayers />}
+          defaultOpen={false}
+        >
+          <StageTraceBlock trace={data.debugTrace} />
+        </Section>
+      ),
+    });
+  }
 
   // Sequential reveal: each section slides in from the left ~500ms after
   // the previous one. Page scroll follows each new section in, then once
@@ -2021,4 +2042,411 @@ function overallSummary(data: AnalyzeResponse): string {
     return `${lead} The one area to lift is ${weak[0].label} (${weak[0].score}/100). The cards below show the page-specific fix.`;
   }
   return `${lead} The two areas to lift are ${list(weak)}. The cards below break down what to change in each.`;
+}
+
+// ---------------------------------------------------------------------------
+// Stage Trace inspector (debug)
+//
+// Renders the per-phase debug trace returned by /api/analyze?debug=1.
+// Shows the content produced at each pipeline stage and the items that
+// were removed at each stage with reasons, so we can spot weak points
+// in the pipeline and tune prompts / filters.
+// ---------------------------------------------------------------------------
+
+interface CheckResultLite {
+  score: number;
+  headline: string;
+  notes: string[];
+}
+interface FilterDropLite {
+  text: string;
+  reason: string;
+}
+interface CriticVerdictLite {
+  scope?: string;
+  kind?: string;
+  dim?: string;
+  decision: "KEEP" | "REWRITE" | "DROP";
+  before: string;
+  after?: string;
+  reason?: string;
+}
+interface DimensionTraceLite {
+  raw: CheckResultLite;
+  filterDrops: FilterDropLite[];
+  headlineCleanup: { before: string; after: string; reason: string } | null;
+  afterFilter: CheckResultLite;
+  criticVerdicts: CriticVerdictLite[];
+  afterCritic: CheckResultLite;
+  afterSweep: CheckResultLite;
+}
+interface TakeawayLite {
+  text?: string;
+  category?: string;
+}
+interface TakeawaysTraceLite {
+  raw: Array<TakeawayLite | string>;
+  filterDrops: FilterDropLite[];
+  afterFilter: Array<TakeawayLite | string>;
+  criticVerdicts: CriticVerdictLite[];
+  afterCritic: Array<TakeawayLite | string>;
+  afterSweep: Array<TakeawayLite | string>;
+}
+interface DebugTraceLite {
+  vision: Record<string, unknown> | null;
+  dimensions: Record<string, DimensionTraceLite>;
+  takeaways: TakeawaysTraceLite;
+  contradictionSweep: {
+    drops: Array<{ origin: string; topic: string; text: string }>;
+  };
+  timings?: {
+    visionPrepassMs: number | null;
+    dimsMs: Record<string, number>;
+    dimFilterMs: number;
+    takeawaysMs: number;
+    dimsCriticMs: number;
+    takeawaysFilterMs: number;
+    takeawaysCriticMs: number;
+    contradictionSweepMs: number;
+    totalAnalyzeMs: number;
+  };
+  phase0?: {
+    psiDesktopMs: number;
+    psiMobileMs: number;
+    fetchPageMs: number;
+    microDesktopMs: number;
+    microMobileMs: number;
+    microDesktopFullMs?: number;
+    microMobileFullMs?: number;
+    phase0WallClockMs: number;
+  };
+  totalRouteMs?: number;
+}
+
+function StageTraceBlock({ trace: traceUnknown }: { trace: unknown }) {
+  const trace = traceUnknown as DebugTraceLite;
+  return (
+    <div className="space-y-6 text-[13px] leading-[1.55] text-ink">
+      {(trace.timings || trace.phase0) && (
+        <StageGroup title={`Phase timings (total: ${formatMs(trace.totalRouteMs ?? trace.timings?.totalAnalyzeMs)})`}>
+          <TimingsTable trace={trace} />
+        </StageGroup>
+      )}
+
+      <StageGroup title="Phase 2: Vision pre-pass (screenshots → JSON facts)">
+        {trace.vision ? (
+          <pre className="overflow-x-auto rounded-md border border-beige-line bg-bg p-3 text-[12px] font-mono leading-[1.5] text-ink">
+            {JSON.stringify(trace.vision, null, 2)}
+          </pre>
+        ) : (
+          <em className="text-ink-soft">Vision pre-pass returned null (failed or skipped).</em>
+        )}
+      </StageGroup>
+
+      {(["content", "digestibility", "cro", "aboveTheFold", "mobile"] as const).map((dim) => (
+        <DimensionTracePanel key={dim} dim={dim} trace={trace.dimensions[dim]} />
+      ))}
+
+      <StageGroup title="Takeaways pipeline (Phase 4 raw → filter → Phase 5 critic → sweep)">
+        <Subsection label="Phase 4: Raw takeaways from Claude">
+          <TakeawaysList items={trace.takeaways.raw} />
+        </Subsection>
+        <Subsection label={`Phase 4b filter drops (${trace.takeaways.filterDrops.length})`}>
+          <DropsList drops={trace.takeaways.filterDrops} />
+        </Subsection>
+        <Subsection label="After filter">
+          <TakeawaysList items={trace.takeaways.afterFilter} />
+        </Subsection>
+        <Subsection
+          label={`Phase 5 critic verdicts (${trace.takeaways.criticVerdicts.length}, ${countVerdicts(trace.takeaways.criticVerdicts)})`}
+        >
+          <CriticVerdictsList verdicts={trace.takeaways.criticVerdicts} />
+        </Subsection>
+        <Subsection label="After critic">
+          <TakeawaysList items={trace.takeaways.afterCritic} />
+        </Subsection>
+        <Subsection label="Final (after contradiction sweep)">
+          <TakeawaysList items={trace.takeaways.afterSweep} />
+        </Subsection>
+      </StageGroup>
+
+      <StageGroup title={`Phase 6: Contradiction sweep drops (${trace.contradictionSweep.drops.length})`}>
+        {trace.contradictionSweep.drops.length === 0 ? (
+          <em className="text-ink-soft">No drops on this run.</em>
+        ) : (
+          <ul className="space-y-2">
+            {trace.contradictionSweep.drops.map((d, i) => (
+              <li key={i} className="rounded-md border border-beige-line bg-bg p-2.5">
+                <div className="text-[12px] font-semibold uppercase tracking-wide text-ink-soft">
+                  {d.origin} · {d.topic}
+                </div>
+                <div className="mt-1 text-ink">{d.text}</div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </StageGroup>
+    </div>
+  );
+}
+
+function DimensionTracePanel({
+  dim,
+  trace,
+}: {
+  dim: string;
+  trace: DimensionTraceLite | undefined;
+}) {
+  if (!trace) return null;
+  return (
+    <StageGroup title={`Phase 3-6: ${dim} dimension`}>
+      <Subsection label={`Phase 3 raw (score ${trace.raw.score})`}>
+        <CheckResultBlock r={trace.raw} />
+      </Subsection>
+      <Subsection label={`Phase 3b filter drops (${trace.filterDrops.length})`}>
+        <DropsList drops={trace.filterDrops} />
+      </Subsection>
+      {trace.headlineCleanup && (
+        <Subsection label="Phase 3b headline cleanup">
+          <div className="rounded-md border border-beige-line bg-bg p-2.5">
+            <div className="text-[12px] font-semibold uppercase tracking-wide text-ink-soft">
+              {trace.headlineCleanup.reason}
+            </div>
+            <div className="mt-1">
+              <span className="text-ink-soft">before:</span> {trace.headlineCleanup.before}
+            </div>
+            <div className="mt-1">
+              <span className="text-ink-soft">after:</span>{" "}
+              {trace.headlineCleanup.after || <em>(blanked)</em>}
+            </div>
+          </div>
+        </Subsection>
+      )}
+      <Subsection label="After filter">
+        <CheckResultBlock r={trace.afterFilter} />
+      </Subsection>
+      <Subsection
+        label={`Phase 4 critic verdicts (${trace.criticVerdicts.length}, ${countVerdicts(trace.criticVerdicts)})`}
+      >
+        <CriticVerdictsList verdicts={trace.criticVerdicts} />
+      </Subsection>
+      <Subsection label="After critic">
+        <CheckResultBlock r={trace.afterCritic} />
+      </Subsection>
+      <Subsection label="Final (after contradiction sweep)">
+        <CheckResultBlock r={trace.afterSweep} />
+      </Subsection>
+    </StageGroup>
+  );
+}
+
+function StageGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="rounded-lg border border-beige-line bg-card p-3">
+      <summary className="cursor-pointer text-[14px] font-semibold tracking-tight text-ink">
+        {title}
+      </summary>
+      <div className="mt-3 space-y-4">{children}</div>
+    </details>
+  );
+}
+
+function Subsection({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function CheckResultBlock({ r }: { r: CheckResultLite }) {
+  return (
+    <div className="rounded-md border border-beige-line bg-bg p-2.5">
+      <div className="mb-1 text-[12px] font-semibold text-ink">
+        Headline: {r.headline || <em className="text-ink-soft">(blank)</em>}
+      </div>
+      {r.notes.length === 0 ? (
+        <em className="text-ink-soft">No notes.</em>
+      ) : (
+        <ul className="ml-4 list-disc space-y-1">
+          {r.notes.map((n, i) => (
+            <li key={i}>{n}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function DropsList({ drops }: { drops: FilterDropLite[] }) {
+  if (drops.length === 0) return <em className="text-ink-soft">No drops.</em>;
+  return (
+    <ul className="space-y-2">
+      {drops.map((d, i) => (
+        <li key={i} className="rounded-md border border-beige-line bg-bg p-2.5">
+          <div className="text-[12px] font-semibold uppercase tracking-wide text-ink-soft">
+            {d.reason}
+          </div>
+          <div className="mt-1 text-ink">{d.text}</div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function CriticVerdictsList({ verdicts }: { verdicts: CriticVerdictLite[] }) {
+  if (verdicts.length === 0)
+    return <em className="text-ink-soft">No verdicts.</em>;
+  const interesting = verdicts.filter((v) => v.decision !== "KEEP");
+  if (interesting.length === 0) {
+    return (
+      <em className="text-ink-soft">All {verdicts.length} items kept as-is.</em>
+    );
+  }
+  return (
+    <ul className="space-y-2">
+      {interesting.map((v, i) => (
+        <li key={i} className="rounded-md border border-beige-line bg-bg p-2.5">
+          <div className="text-[12px] font-semibold uppercase tracking-wide text-ink-soft">
+            {v.decision} · {v.kind ?? ""} · {v.reason ?? "(no reason)"}
+          </div>
+          <div className="mt-1">
+            <span className="text-ink-soft">before:</span> {v.before}
+          </div>
+          {v.after && (
+            <div className="mt-1">
+              <span className="text-ink-soft">after:</span> {v.after}
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function TakeawaysList({ items }: { items: Array<TakeawayLite | string> }) {
+  if (items.length === 0)
+    return <em className="text-ink-soft">No takeaways.</em>;
+  return (
+    <ul className="ml-4 list-disc space-y-1">
+      {items.map((tk, i) => {
+        const text = typeof tk === "string" ? tk : tk.text ?? "";
+        const cat = typeof tk === "string" ? null : tk.category ?? null;
+        return (
+          <li key={i}>
+            {cat && (
+              <span className="mr-1.5 rounded bg-bg px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-ink-soft">
+                {cat}
+              </span>
+            )}
+            {text}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function countVerdicts(verdicts: CriticVerdictLite[]): string {
+  const k = verdicts.filter((v) => v.decision === "KEEP").length;
+  const r = verdicts.filter((v) => v.decision === "REWRITE").length;
+  const d = verdicts.filter((v) => v.decision === "DROP").length;
+  return `${k} KEEP · ${r} REWRITE · ${d} DROP`;
+}
+
+function formatMs(ms: number | null | undefined): string {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(2)}s`;
+}
+
+function TimingsTable({ trace }: { trace: DebugTraceLite }) {
+  const t = trace.timings;
+  const p0 = trace.phase0;
+  const rows: Array<{ label: string; ms: number | null | undefined; note?: string }> = [];
+  if (p0) {
+    const microNotes = [
+      `PSI desktop ${formatMs(p0.psiDesktopMs)}`,
+      `PSI mobile ${formatMs(p0.psiMobileMs)}`,
+      `HTML fetch ${formatMs(p0.fetchPageMs)}`,
+      `Microlink desktop ATF ${formatMs(p0.microDesktopMs)}`,
+      `Microlink mobile ATF ${formatMs(p0.microMobileMs)}`,
+      p0.microDesktopFullMs != null
+        ? `Microlink desktop full ${formatMs(p0.microDesktopFullMs)}`
+        : null,
+      p0.microMobileFullMs != null
+        ? `Microlink mobile full ${formatMs(p0.microMobileFullMs)}`
+        : null,
+    ].filter(Boolean).join(", ");
+    rows.push({
+      label: "Phase 0: fetches (wall-clock, parallel)",
+      ms: p0.phase0WallClockMs,
+      note: microNotes,
+    });
+  }
+  if (t) {
+    rows.push({ label: "Phase 2: vision pre-pass", ms: t.visionPrepassMs });
+    rows.push({
+      label: "Phase 3: 5 dim calls (parallel)",
+      ms: Math.max(...Object.values(t.dimsMs || {})),
+      note: Object.entries(t.dimsMs || {})
+        .map(([k, v]) => `${k} ${formatMs(v)}`)
+        .join(", "),
+    });
+    rows.push({ label: "Phase 3b: dim filters (deterministic)", ms: t.dimFilterMs });
+    rows.push({ label: "Phase 4: takeaways call (parallel with dims-critic)", ms: t.takeawaysMs });
+    rows.push({ label: "Phase 4: dims-critic call (extended thinking)", ms: t.dimsCriticMs });
+    rows.push({ label: "Phase 4b: takeaways filter", ms: t.takeawaysFilterMs });
+    rows.push({ label: "Phase 5: takeaways-critic call", ms: t.takeawaysCriticMs });
+    rows.push({ label: "Phase 6: contradiction sweep (deterministic)", ms: t.contradictionSweepMs });
+    rows.push({ label: "Total inside analyzeWithClaude", ms: t.totalAnalyzeMs });
+  }
+  if (trace.totalRouteMs != null) {
+    rows.push({ label: "TOTAL ROUTE WALL-CLOCK", ms: trace.totalRouteMs });
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-[12.5px]">
+        <thead>
+          <tr className="text-left text-[11px] uppercase tracking-wider text-ink-soft">
+            <th className="pb-2 pr-4">Phase</th>
+            <th className="pb-2 pr-4">Time</th>
+            <th className="pb-2">Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => {
+            const isTotal = r.label.toLowerCase().includes("total");
+            return (
+              <tr
+                key={i}
+                className={isTotal ? "border-t border-beige-line font-semibold" : "border-t border-beige-line/60"}
+              >
+                <td className="py-1.5 pr-4 align-top text-ink">{r.label}</td>
+                <td className="py-1.5 pr-4 align-top font-mono tabular-nums text-ink">
+                  {formatMs(r.ms)}
+                </td>
+                <td className="py-1.5 align-top text-[11.5px] text-ink-soft">{r.note ?? ""}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }

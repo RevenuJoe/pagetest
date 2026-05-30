@@ -25,6 +25,46 @@ export interface FilterContext {
   url: string;
 }
 
+/** One item the deterministic filter dropped, with the reason. Used by
+ *  the debug surface so we can see exactly what each filter rule
+ *  removed from each dim / from the takeaways. */
+export interface FilterDrop {
+  text: string;
+  reason: string;
+}
+
+/** One headline that the filter rewrote (trimmed a clause) or blanked.
+ *  `after === ""` means the whole headline was blanked. */
+export interface HeadlineCleanup {
+  before: string;
+  after: string;
+  reason: string;
+}
+
+/** Return shape for filterDimensionResult — includes the cleaned result
+ *  AND the list of removals, so the orchestrator can pipe them into
+ *  the debug trace. */
+export interface DimensionFilterResult {
+  result: CheckResult;
+  drops: FilterDrop[];
+  headlineCleanup: HeadlineCleanup | null;
+}
+
+/** Return shape for filterTakeaways — includes the kept list and the
+ *  list of removals with reasons. */
+export interface TakeawaysFilterResult {
+  kept: KeyTakeaway[];
+  drops: FilterDrop[];
+}
+
+/** One drop from the contradiction sweep. Includes the dim (or
+ *  "takeaway") it came from and the contradiction-topic label. */
+export interface ContradictionSweepDrop {
+  origin: ClaudeDimension | "takeaway";
+  topic: string;
+  text: string;
+}
+
 /** A filter looks at a note (and its dimension) and decides whether to
  *  drop it. Return a reason string to drop; return null to keep. */
 type FilterRule = (
@@ -361,8 +401,9 @@ export function filterDimensionResult(
   result: CheckResult,
   dim: ClaudeDimension,
   ctx: FilterContext,
-): CheckResult {
+): DimensionFilterResult {
   const kept: string[] = [];
+  const drops: FilterDrop[] = [];
   for (const note of result.notes) {
     const verdict = applyFilters(note, dim, ctx);
     if (verdict.keep) {
@@ -371,13 +412,15 @@ export function filterDimensionResult(
       console.warn(
         `[noteFilter] DROP dim="${dim}" reason="${verdict.reason}" url="${ctx.url}" note="${note}"`,
       );
+      drops.push({ text: note, reason: verdict.reason });
     }
   }
-  const headline = cleanHeadline(result.headline, dim, ctx, kept);
-  if (kept.length === result.notes.length && headline === result.headline) {
-    return result;
-  }
-  return { ...result, headline, notes: kept };
+  const { headline, cleanup } = cleanHeadline(result.headline, dim, ctx, kept);
+  const cleaned =
+    kept.length === result.notes.length && headline === result.headline
+      ? result
+      : { ...result, headline, notes: kept };
+  return { result: cleaned, drops, headlineCleanup: cleanup };
 }
 
 /**
@@ -401,8 +444,8 @@ function cleanHeadline(
   dim: ClaudeDimension | "takeaways",
   ctx: FilterContext,
   notesInDimension: string[],
-): string {
-  if (!headline) return headline;
+): { headline: string; cleanup: HeadlineCleanup | null } {
+  if (!headline) return { headline, cleanup: null };
 
   // 1) Direct filter match.
   const directReason = firstFilterHit(headline, dim, ctx);
@@ -412,12 +455,18 @@ function cleanHeadline(
       console.warn(
         `[noteFilter] HEADLINE trim dim="${dim}" reason="${directReason}" url="${ctx.url}" before="${headline}" after="${trimmed}"`,
       );
-      return trimmed;
+      return {
+        headline: trimmed,
+        cleanup: { before: headline, after: trimmed, reason: directReason },
+      };
     }
     console.warn(
       `[noteFilter] HEADLINE blank dim="${dim}" reason="${directReason}" url="${ctx.url}" original="${headline}"`,
     );
-    return "";
+    return {
+      headline: "",
+      cleanup: { before: headline, after: "", reason: directReason },
+    };
   }
 
   // 2) Cross-check headline vs notes — the model's own observations
@@ -456,16 +505,22 @@ function cleanHeadline(
         console.warn(
           `[noteFilter] HEADLINE trim (cross-check) dim="${dim}" reason="${c.label}" url="${ctx.url}" before="${headline}" after="${trimmed}"`,
         );
-        return trimmed;
+        return {
+          headline: trimmed,
+          cleanup: { before: headline, after: trimmed, reason: c.label },
+        };
       }
       console.warn(
         `[noteFilter] HEADLINE blank (cross-check) dim="${dim}" reason="${c.label}" url="${ctx.url}" original="${headline}"`,
       );
-      return "";
+      return {
+        headline: "",
+        cleanup: { before: headline, after: "", reason: c.label },
+      };
     }
   }
 
-  return headline;
+  return { headline, cleanup: null };
 }
 
 /** Try to trim a hallucination clause from the headline by splitting on
@@ -510,8 +565,9 @@ function firstFilterHit(
 export function filterTakeaways(
   takeaways: KeyTakeaway[],
   ctx: FilterContext,
-): KeyTakeaway[] {
+): TakeawaysFilterResult {
   const kept: KeyTakeaway[] = [];
+  const drops: FilterDrop[] = [];
   for (const tk of takeaways) {
     const text = typeof tk === "string" ? tk : tk.text;
     const verdict = applyFilters(text, "takeaways", ctx);
@@ -521,9 +577,10 @@ export function filterTakeaways(
       console.warn(
         `[noteFilter] DROP takeaway reason="${verdict.reason}" url="${ctx.url}" text="${text}"`,
       );
+      drops.push({ text, reason: verdict.reason });
     }
   }
-  return kept;
+  return { kept, drops };
 }
 
 /** Convenience: build a FilterContext from the page fetch + url. */
@@ -627,7 +684,12 @@ export function runContradictionSweep(
   takeaways: KeyTakeaway[],
   url: string,
   groundTruth?: { socialProofPresent?: boolean },
-): { dimensions: Record<string, CheckResult>; takeaways: KeyTakeaway[] } {
+): {
+  dimensions: Record<string, CheckResult>;
+  takeaways: KeyTakeaway[];
+  drops: ContradictionSweepDrop[];
+} {
+  const sweepDrops: ContradictionSweepDrop[] = [];
   // Build the pool of positive statements: every note + headline that
   // says some topic is present. We'll check "add X" recommendations
   // against this pool.
@@ -697,6 +759,7 @@ export function runContradictionSweep(
         console.warn(
           `[contradictionSweep] DROP note dim="${dim}" topic="${contradiction}" url="${url}" note="${note}"`,
         );
+        sweepDrops.push({ origin: dim as ClaudeDimension, topic: contradiction, text: note });
       } else {
         keptNotes.push(note);
       }
@@ -715,10 +778,11 @@ export function runContradictionSweep(
       console.warn(
         `[contradictionSweep] DROP takeaway topic="${contradiction}" url="${url}" text="${text}"`,
       );
+      sweepDrops.push({ origin: "takeaway", topic: contradiction, text });
     } else {
       keptTakeaways.push(tk);
     }
   }
 
-  return { dimensions: cleanedDimensions, takeaways: keptTakeaways };
+  return { dimensions: cleanedDimensions, takeaways: keptTakeaways, drops: sweepDrops };
 }

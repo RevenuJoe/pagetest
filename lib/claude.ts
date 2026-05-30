@@ -135,6 +135,124 @@ export interface ClaudeInput {
    *  `structure` on every call. Populated by `analyzeWithClaude` after
    *  the vision pre-pass runs. */
   master?: MasterGroundTruth;
+  /** When true, collect every critic verdict (KEEP / REWRITE / DROP per
+   *  candidate item, with reason and before/after text) and return them
+   *  in the output. Used by `/api/analyze?debug=1` to inspect what the
+   *  Phase 5 critic dropped or rewrote on a given run. */
+  debug?: boolean;
+}
+
+/** One entry in the debug log of critic verdicts. */
+export interface CriticVerdictDebugEntry {
+  /** "dimensions" (Phase 4 dims-critic) or "takeaways" (Phase 5). */
+  scope: "dimensions" | "takeaways";
+  kind: "headline" | "note" | "takeaway";
+  dim: ClaudeDimension | "speed";
+  decision: "KEEP" | "REWRITE" | "DROP";
+  before: string;
+  /** Rewritten text when decision is REWRITE; undefined otherwise. */
+  after?: string;
+  /** Short reason the critic emitted; may be undefined. */
+  reason?: string;
+}
+
+/** One drop from the deterministic regex filter. */
+export interface FilterDropEntry {
+  text: string;
+  reason: string;
+}
+
+/** When the filter rewrote a headline (trimmed a clause or blanked it). */
+export interface HeadlineCleanupEntry {
+  before: string;
+  after: string;
+  reason: string;
+}
+
+/** Per-dimension trace through every pipeline stage. */
+export interface DimensionTrace {
+  /** Phase 3: raw output from the dim Claude call, before any cleanup. */
+  raw: CheckResult;
+  /** Phase 3b: notes dropped by the deterministic regex filter, with reasons. */
+  filterDrops: FilterDropEntry[];
+  /** Phase 3b: headline rewrite (trim) or blank, if any. */
+  headlineCleanup: HeadlineCleanupEntry | null;
+  /** Phase 3b: dim state after filter. */
+  afterFilter: CheckResult;
+  /** Phase 4 (dims-critic): per-item KEEP/REWRITE/DROP verdicts. */
+  criticVerdicts: CriticVerdictDebugEntry[];
+  /** Phase 4: dim state after critic. */
+  afterCritic: CheckResult;
+  /** Phase 6 (contradiction sweep): dim state in the final report. */
+  afterSweep: CheckResult;
+}
+
+/** Wall-clock duration captured for each phase of the analyse run, in
+ *  milliseconds. Used by the Stage Trace UI to highlight which phases
+ *  cost the most time on a given page so we can target speedups. */
+export interface PhaseTimings {
+  /** Phase 2: vision pre-pass Claude call. Null when pre-pass didn't run. */
+  visionPrepassMs: number | null;
+  /** Phase 3: one entry per dim. Captures the per-call duration even
+   *  though the five fire in parallel — useful for spotting an
+   *  outlier dim that consistently takes longer than the others. */
+  dimsMs: Record<ClaudeDimension, number>;
+  /** Phase 3b: deterministic filter + headline cleanup across all 5
+   *  dims, total. Usually under 5ms. */
+  dimFilterMs: number;
+  /** Phase 4: takeaways Claude call (runs in parallel with dims-critic). */
+  takeawaysMs: number;
+  /** Phase 4: dims-critic Claude call with extended thinking. */
+  dimsCriticMs: number;
+  /** Phase 4b: takeaways filter, deterministic. */
+  takeawaysFilterMs: number;
+  /** Phase 5: takeaways-critic Claude call. */
+  takeawaysCriticMs: number;
+  /** Phase 6: contradiction sweep, deterministic. */
+  contradictionSweepMs: number;
+  /** Total wall-clock inside analyzeWithClaude (Phase 2 onwards). The
+   *  route can attach its own Phase 0 / 1 timings to this. */
+  totalAnalyzeMs: number;
+}
+
+/** Trace through the takeaways pipeline (the parallel Claude call). */
+export interface TakeawaysTrace {
+  /** Phase 4 (Takeaways call): raw output before any cleanup. */
+  raw: KeyTakeaway[];
+  /** Phase 4b: dropped by the regex filter with reasons. */
+  filterDrops: FilterDropEntry[];
+  /** Phase 4b: takeaways after the filter. */
+  afterFilter: KeyTakeaway[];
+  /** Phase 5 (takeaways-critic): per-item verdicts. */
+  criticVerdicts: CriticVerdictDebugEntry[];
+  /** Phase 5: takeaways after the critic. */
+  afterCritic: KeyTakeaway[];
+  /** Phase 6: takeaways after the contradiction sweep. */
+  afterSweep: KeyTakeaway[];
+}
+
+/** Full per-stage trace of one analyse run. Returned only when
+ *  input.debug is set so the UI's "Stage trace" section can render
+ *  the content created at each stage AND what was taken out at each
+ *  stage with reasons. Used to spot weak points and tune the pipeline. */
+export interface DebugTrace {
+  /** Phase 2 (vision pre-pass): raw JSON facts the pre-pass extracted
+   *  from the screenshots. `null` if the pre-pass failed or wasn't run. */
+  vision: import("./groundTruth").VisualGroundTruth | null;
+  /** Per-dimension trace, keyed by dim. */
+  dimensions: Record<ClaudeDimension, DimensionTrace>;
+  /** Takeaways trace. */
+  takeaways: TakeawaysTrace;
+  /** Phase 6 (contradiction sweep): drops with topic + origin. */
+  contradictionSweep: {
+    drops: Array<{
+      origin: ClaudeDimension | "takeaway";
+      topic: string;
+      text: string;
+    }>;
+  };
+  /** Per-phase wall-clock durations in milliseconds. */
+  timings: PhaseTimings;
 }
 
 export type ClaudeChecks = Pick<
@@ -146,6 +264,14 @@ export interface ClaudeOutput {
   checks: ClaudeChecks;
   /** Top 5 categorised, page-specific takeaways. */
   keyTakeaways: KeyTakeaway[];
+  /** Populated only when `input.debug === true`. Lists every critic
+   *  verdict across both critic passes so callers can inspect what
+   *  Phase 5 dropped / rewrote. */
+  criticVerdicts?: CriticVerdictDebugEntry[];
+  /** Populated only when `input.debug === true`. Full per-stage trace
+   *  capturing the content created at each phase AND what was taken
+   *  out at each phase with reasons. */
+  debugTrace?: DebugTrace;
 }
 
 const VALID_CATEGORIES: ReadonlyArray<CheckKey> = [
@@ -187,6 +313,17 @@ export async function analyzeWithClaude(
     url: input.url,
   };
 
+  // Per-phase timing accumulator. Used only when input.debug is true,
+  // but bookkeeping is so cheap we just always populate it.
+  const tAnalyzeStart = Date.now();
+  const timeDimMs: Record<ClaudeDimension, number> = {
+    content: 0,
+    digestibility: 0,
+    cro: 0,
+    aboveTheFold: 0,
+    mobile: 0,
+  };
+
   // Phase 0: VISION PRE-PASS. One small Claude call against the
   // screenshots that produces deterministic visual facts (nav
   // worksheet, hero pattern, AtF social proof, mid-page CTA layout,
@@ -195,12 +332,14 @@ export async function analyzeWithClaude(
   // never have to interpret pixels themselves. Non-fatal: on any
   // failure we get null and the dim prompts fall back to their
   // "decide visually" rules.
+  const tVisionStart = Date.now();
   const visualGT = await runVisualGroundTruthPass(
     client,
     input.desktopScreenshotB64,
     input.desktopFullPageB64,
     input.mobileScreenshotB64,
   );
+  const visionPrepassMs = Date.now() - tVisionStart;
   const masterGT: MasterGroundTruth = (() => {
     const base = computeMasterGroundTruth({
       url: input.url,
@@ -218,23 +357,41 @@ export async function analyzeWithClaude(
 
   // Phase 1: fan out the 5 DIMENSION calls in parallel. Each call sees
   // the page evidence and returns its own { score, headline, notes }.
+  // Each individual dim call is wrapped with a stopwatch so we can
+  // spot outlier dims that consistently run longer than the others.
+  const timedDim = async (dim: ClaudeDimension) => {
+    const t = Date.now();
+    const result = await callDimension(client, inputWithMaster, dim);
+    timeDimMs[dim] = Date.now() - t;
+    return result;
+  };
   const [contentRaw, digestibilityRaw, croRaw, aboveTheFoldRaw, mobileRaw] =
     await Promise.all([
-      callDimension(client, inputWithMaster, "content"),
-      callDimension(client, inputWithMaster, "digestibility"),
-      callDimension(client, inputWithMaster, "cro"),
-      callDimension(client, inputWithMaster, "aboveTheFold"),
-      callDimension(client, inputWithMaster, "mobile"),
+      timedDim("content"),
+      timedDim("digestibility"),
+      timedDim("cro"),
+      timedDim("aboveTheFold"),
+      timedDim("mobile"),
     ]);
 
   // Phase 1b: deterministic filtering. Run every dimension's notes
   // through the hallucination filter BEFORE takeaways sees them, so
   // a bad note can't propagate from a dimension to the takeaways list.
-  const content = filterDimensionResult(contentRaw, "content", filterCtx);
-  const digestibility = filterDimensionResult(digestibilityRaw, "digestibility", filterCtx);
-  const cro = filterDimensionResult(croRaw, "cro", filterCtx);
-  const aboveTheFold = filterDimensionResult(aboveTheFoldRaw, "aboveTheFold", filterCtx);
-  const mobile = filterDimensionResult(mobileRaw, "mobile", filterCtx);
+  // Each call returns the cleaned result PLUS the list of drops (with
+  // reasons) and any headline cleanup info, so the debug trace can
+  // surface exactly what was removed at this stage.
+  const tDimFilterStart = Date.now();
+  const contentF = filterDimensionResult(contentRaw, "content", filterCtx);
+  const digestibilityF = filterDimensionResult(digestibilityRaw, "digestibility", filterCtx);
+  const croF = filterDimensionResult(croRaw, "cro", filterCtx);
+  const aboveTheFoldF = filterDimensionResult(aboveTheFoldRaw, "aboveTheFold", filterCtx);
+  const mobileF = filterDimensionResult(mobileRaw, "mobile", filterCtx);
+  const dimFilterMs = Date.now() - tDimFilterStart;
+  const content = contentF.result;
+  const digestibility = digestibilityF.result;
+  const cro = croF.result;
+  const aboveTheFold = aboveTheFoldF.result;
+  const mobile = mobileF.result;
 
   // Phase 2: PARALLEL. We start two Claude calls at the same time:
   //
@@ -253,28 +410,47 @@ export async function analyzeWithClaude(
   // still gets critic-audited (dim claims by the dims-critic here,
   // takeaway claims by a smaller takeaways-critic right after).
   const dimensionResultsAfterFilter = { content, digestibility, cro, aboveTheFold, mobile };
+  const tDimsCriticStart = Date.now();
+  let dimsCriticMs = 0;
   const dimensionsCriticPromise = runCriticPass(
     client,
     inputWithMaster,
     dimensionResultsAfterFilter,
     [],
     "dimensions",
+  ).then((r) => {
+    dimsCriticMs = Date.now() - tDimsCriticStart;
+    return r;
+  });
+  const tTakeawaysStart = Date.now();
+  const takeawaysPromise = callTakeaways(
+    client,
+    inputWithMaster,
+    dimensionResultsAfterFilter,
   );
-  const takeawaysPromise = callTakeaways(client, inputWithMaster, dimensionResultsAfterFilter);
 
   // As soon as Takeaways comes back, filter it and kick off the
   // takeaways-critic. The dims-critic may still be running — both
   // critics now race to completion. The takeaways-critic has a much
   // smaller candidate list so it's typically the faster of the two.
   const rawTakeaways = await takeawaysPromise;
-  const filteredTakeaways = filterTakeaways(rawTakeaways, filterCtx);
+  const takeawaysMs = Date.now() - tTakeawaysStart;
+  const tTakeawaysFilterStart = Date.now();
+  const takeawaysFilterResult = filterTakeaways(rawTakeaways, filterCtx);
+  const takeawaysFilterMs = Date.now() - tTakeawaysFilterStart;
+  const filteredTakeaways = takeawaysFilterResult.kept;
+  const tTakeawaysCriticStart = Date.now();
+  let takeawaysCriticMs = 0;
   const takeawaysCriticPromise = runCriticPass(
     client,
-    input,
+    inputWithMaster,
     dimensionResultsAfterFilter,
     filteredTakeaways,
     "takeaways",
-  );
+  ).then((r) => {
+    takeawaysCriticMs = Date.now() - tTakeawaysCriticStart;
+    return r;
+  });
 
   // Wait for both critics. Each one returns the slice it audited; we
   // merge them into a single `audited` object with the same shape the
@@ -297,12 +473,14 @@ export async function analyzeWithClaude(
   // of the same report surface.
   const sweepInput: Record<string, CheckResult> = { ...audited.dimensions };
   if (input.speedCheck) sweepInput.speed = input.speedCheck;
+  const tSweepStart = Date.now();
   const swept = runContradictionSweep(
     sweepInput,
     audited.takeaways,
     input.url,
     { socialProofPresent: input.structure.socialProofPresent },
   );
+  const contradictionSweepMs = Date.now() - tSweepStart;
 
   // Rebuild dimensions in the original ClaudeChecks shape (the sweep
   // returned a generic record; pull the 5 Claude dimensions back out).
@@ -314,9 +492,87 @@ export async function analyzeWithClaude(
     mobile: swept.dimensions.mobile ?? audited.dimensions.mobile,
   };
 
+  // Combine the per-pass verdict logs into one ordered list (dims-critic
+  // entries first, takeaways-critic second). Returned to the caller only
+  // when input.debug is set; otherwise dropped on the floor.
+  const criticVerdicts: CriticVerdictDebugEntry[] = [
+    ...dimensionsCriticResult.verdicts,
+    ...takeawaysCriticResult.verdicts,
+  ];
+
+  // Build the FULL per-stage debug trace when input.debug is set. This
+  // captures the content at every stage of the pipeline (raw dim
+  // output, after-filter, after-critic, after-sweep) AND the list of
+  // things that were removed at each stage with the reason. The
+  // payload is included in the API response so the report UI can
+  // render a "Stage trace" inspector for tuning the pipeline.
+  let debugTrace: DebugTrace | undefined;
+  if (input.debug) {
+    const filterMap = {
+      content: contentF,
+      digestibility: digestibilityF,
+      cro: croF,
+      aboveTheFold: aboveTheFoldF,
+      mobile: mobileF,
+    } as const;
+    const rawMap: Record<ClaudeDimension, CheckResult> = {
+      content: contentRaw,
+      digestibility: digestibilityRaw,
+      cro: croRaw,
+      aboveTheFold: aboveTheFoldRaw,
+      mobile: mobileRaw,
+    };
+    const dimVerdictsByDim: Record<string, CriticVerdictDebugEntry[]> = {};
+    for (const v of dimensionsCriticResult.verdicts) {
+      const key = v.dim;
+      if (!dimVerdictsByDim[key]) dimVerdictsByDim[key] = [];
+      dimVerdictsByDim[key].push(v);
+    }
+    const dims: DebugTrace["dimensions"] = {} as DebugTrace["dimensions"];
+    for (const dim of CLAUDE_DIMS) {
+      const f = filterMap[dim];
+      dims[dim] = {
+        raw: rawMap[dim],
+        filterDrops: f.drops,
+        headlineCleanup: f.headlineCleanup,
+        afterFilter: f.result,
+        criticVerdicts: dimVerdictsByDim[dim] ?? [],
+        afterCritic: dimensionsCriticResult.dimensions[dim],
+        afterSweep: finalDimensions[dim],
+      };
+    }
+    debugTrace = {
+      vision: masterGT.vision ?? null,
+      dimensions: dims,
+      takeaways: {
+        raw: rawTakeaways,
+        filterDrops: takeawaysFilterResult.drops,
+        afterFilter: filteredTakeaways,
+        criticVerdicts: takeawaysCriticResult.verdicts,
+        afterCritic: takeawaysCriticResult.takeaways,
+        afterSweep: swept.takeaways,
+      },
+      contradictionSweep: {
+        drops: swept.drops,
+      },
+      timings: {
+        visionPrepassMs,
+        dimsMs: timeDimMs,
+        dimFilterMs,
+        takeawaysMs,
+        dimsCriticMs,
+        takeawaysFilterMs,
+        takeawaysCriticMs,
+        contradictionSweepMs,
+        totalAnalyzeMs: Date.now() - tAnalyzeStart,
+      },
+    };
+  }
+
   return {
     checks: finalDimensions,
     keyTakeaways: swept.takeaways,
+    ...(input.debug ? { criticVerdicts, debugTrace } : {}),
   };
 }
 
@@ -448,6 +704,9 @@ async function runCriticPass(
 ): Promise<{
   dimensions: Record<ClaudeDimension, CheckResult>;
   takeaways: KeyTakeaway[];
+  /** Per-candidate verdict log. Always populated; callers ignore it
+   *  unless input.debug is set. */
+  verdicts: CriticVerdictDebugEntry[];
 }> {
   // Build the candidate list — every piece of generated text in the
   // report that the model produced (not deterministic content). The
@@ -477,8 +736,13 @@ async function runCriticPass(
 
   // If nothing to audit, return inputs unchanged.
   if (candidates.length === 0) {
-    return { dimensions: dimensionResults, takeaways };
+    return { dimensions: dimensionResults, takeaways, verdicts: [] };
   }
+
+  // Debug log accumulator. Filled as we walk the verdicts below.
+  const debugLog: CriticVerdictDebugEntry[] = [];
+  const debugScope: "dimensions" | "takeaways" =
+    scope === "takeaways" ? "takeaways" : "dimensions";
 
   // Build the critic prompt + user blocks (same evidence the generators
   // had, plus the candidate list).
@@ -541,7 +805,7 @@ async function runCriticPass(
     // un-audited results for whichever scope was being audited. This
     // keeps the tool working when the critic API misbehaves persistently.
     console.warn(`Critic pass (scope=${scope}) failed — returning un-audited results:`, err);
-    return { dimensions: dimensionResults, takeaways };
+    return { dimensions: dimensionResults, takeaways, verdicts: [] };
   }
 
   // Apply verdicts. Default for any item missing a verdict is KEEP
@@ -562,18 +826,25 @@ async function runCriticPass(
         if (v?.decision === "DROP") {
           newHeadline = "";
           console.warn(`[critic] DROP headline dim="${dim}" reason="${v.reason ?? ""}" text="${cand.text}"`);
+          debugLog.push({ scope: debugScope, kind: "headline", dim, decision: "DROP", before: cand.text, reason: v.reason });
         } else if (v?.decision === "REWRITE" && v.text) {
           newHeadline = scrubEmDashes(v.text);
           console.warn(`[critic] REWRITE headline dim="${dim}" reason="${v.reason ?? ""}" before="${cand.text}" after="${v.text}"`);
+          debugLog.push({ scope: debugScope, kind: "headline", dim, decision: "REWRITE", before: cand.text, after: v.text, reason: v.reason });
+        } else {
+          debugLog.push({ scope: debugScope, kind: "headline", dim, decision: "KEEP", before: cand.text });
         }
       } else if (cand.kind === "note") {
         if (v?.decision === "DROP") {
           console.warn(`[critic] DROP note dim="${dim}" reason="${v.reason ?? ""}" text="${cand.text}"`);
+          debugLog.push({ scope: debugScope, kind: "note", dim, decision: "DROP", before: cand.text, reason: v.reason });
         } else if (v?.decision === "REWRITE" && v.text) {
           newNotes.push(scrubEmDashes(v.text));
           console.warn(`[critic] REWRITE note dim="${dim}" reason="${v.reason ?? ""}" before="${cand.text}" after="${v.text}"`);
+          debugLog.push({ scope: debugScope, kind: "note", dim, decision: "REWRITE", before: cand.text, after: v.text, reason: v.reason });
         } else {
           newNotes.push(cand.text);
+          debugLog.push({ scope: debugScope, kind: "note", dim, decision: "KEEP", before: cand.text });
         }
       }
     }
@@ -595,17 +866,20 @@ async function runCriticPass(
     const v = verdictById.get(cand.id);
     if (v?.decision === "DROP") {
       console.warn(`[critic] DROP takeaway reason="${v.reason ?? ""}" text="${cand.text}"`);
+      debugLog.push({ scope: debugScope, kind: "takeaway", dim: cand.dim, decision: "DROP", before: cand.text, reason: v.reason });
       return;
     }
     if (v?.decision === "REWRITE" && v.text) {
       newTakeaways.push({ ...tk, text: scrubEmDashes(v.text) });
       console.warn(`[critic] REWRITE takeaway reason="${v.reason ?? ""}" before="${cand.text}" after="${v.text}"`);
+      debugLog.push({ scope: debugScope, kind: "takeaway", dim: cand.dim, decision: "REWRITE", before: cand.text, after: v.text, reason: v.reason });
       return;
     }
     newTakeaways.push(tk);
+    debugLog.push({ scope: debugScope, kind: "takeaway", dim: cand.dim, decision: "KEEP", before: cand.text });
   });
 
-  return { dimensions: newDimensions, takeaways: newTakeaways };
+  return { dimensions: newDimensions, takeaways: newTakeaways, verdicts: debugLog };
 }
 
 /** System prompt for the critic. Narrow and structured — the only job

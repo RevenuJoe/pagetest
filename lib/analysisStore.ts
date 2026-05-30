@@ -53,7 +53,17 @@ export const analysisStore = {
     notify();
     void (async () => {
       try {
-        const res = await fetch("/api/analyze", {
+        // Forward `?debug=1` from the page URL through to the API
+        // call. When set, the response includes a `criticVerdicts`
+        // log + a `debugTrace` capturing the content at every
+        // pipeline phase plus what was removed at each phase. Used
+        // by the in-page "Stage trace" inspector for tuning.
+        const debugFlag =
+          typeof window !== "undefined" &&
+          (new URLSearchParams(window.location.search).get("debug") === "1" ||
+            new URLSearchParams(window.location.search).get("debug") === "true");
+        const endpoint = debugFlag ? "/api/analyze?debug=1" : "/api/analyze";
+        const res = await fetch(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ url }),

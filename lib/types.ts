@@ -135,6 +135,28 @@ export interface AnalyzeResponse {
    *  Optional: only present when Microlink succeeded for the mobile
    *  full-page call. */
   mobileFullPageScreenshot?: string;
+  /** Critic verdict log, populated only when /api/analyze is called with
+   *  ?debug=1. Lists every candidate item the critic looked at, its
+   *  decision (KEEP / REWRITE / DROP), the reason, and the before /
+   *  after text. Used to inspect what Phase 5 dropped on a real page. */
+  criticVerdicts?: CriticVerdictDebugEntry[];
+  /** Full per-stage trace, populated only when /api/analyze is called
+   *  with ?debug=1. Captures the content created at each phase AND
+   *  what was taken out at each phase with reasons. Used by the report
+   *  UI to render an inline "Stage trace" inspector for tuning the
+   *  pipeline. Shape mirrors lib/claude.ts DebugTrace. */
+  debugTrace?: unknown;
+}
+
+/** One critic verdict entry in the debug log (see ?debug=1). */
+export interface CriticVerdictDebugEntry {
+  scope: "dimensions" | "takeaways";
+  kind: "headline" | "note" | "takeaway";
+  dim: string;
+  decision: "KEEP" | "REWRITE" | "DROP";
+  before: string;
+  after?: string;
+  reason?: string;
 }
 
 export interface AnalyzeError {

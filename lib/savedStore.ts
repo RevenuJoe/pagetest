@@ -52,7 +52,14 @@ export const savedStore = {
   save(report: AnalyzeResponse) {
     const list = ensure();
     const deduped = list.filter((r) => r.url !== report.url);
-    cache = [report, ...deduped].slice(0, MAX);
+    // Strip the debug-only fields before persisting to localStorage.
+    // debugTrace + criticVerdicts can be 100KB+ per report and only
+    // exist for ephemeral inspection of a single run; they shouldn't
+    // bloat the saved-websites list or survive a page reload.
+    const { criticVerdicts: _v, debugTrace: _t, ...persistable } = report;
+    void _v;
+    void _t;
+    cache = [persistable as AnalyzeResponse, ...deduped].slice(0, MAX);
     persist();
   },
   rename(url: string, name: string) {
