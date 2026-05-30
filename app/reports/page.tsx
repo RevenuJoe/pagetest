@@ -62,7 +62,7 @@ export default function ReportsPage() {
         <section className="pt-14 md:pt-20">
           <div className="flex items-baseline justify-between gap-4">
             <h1 className="text-[clamp(14px,2vw,22px)] font-bold leading-[1.04] tracking-tight text-ink">
-              Your saved reports
+              Your Saved Websites
             </h1>
             <Link
               href="/"
@@ -177,8 +177,8 @@ function ConfirmDeleteModal({
         </h2>
         <p className="mt-2 text-[14px] font-medium leading-[1.6] text-ink-soft">
           {name
-            ? `"${name}" will be removed from your saved reports. This cannot be undone.`
-            : "This report will be removed from your saved reports. This cannot be undone."}
+            ? `"${name}" will be removed from your saved websites. This cannot be undone.`
+            : "This report will be removed from your saved websites. This cannot be undone."}
         </p>
         <div className="mt-6 flex items-center justify-end gap-2.5">
           <button
@@ -418,7 +418,7 @@ function RenameModal({
           Rename report
         </h2>
         <p className="mt-2 text-[14px] font-medium leading-[1.6] text-ink-soft">
-          Choose a name you&apos;ll recognise on the Saved Reports list.
+          Choose a name you&apos;ll recognise on the Saved Websites list.
         </p>
         <input
           ref={inputRef}

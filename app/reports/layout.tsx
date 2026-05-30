@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 // so there's nothing useful for search engines to index here. We still give
 // it a title so the browser tab makes sense.
 export const metadata: Metadata = {
-  title: "Your saved reports",
+  title: "Your Saved Websites",
   description:
     "Your saved landing page reports, stored locally in your browser. Open, rename, rerun, or delete them.",
   robots: {
