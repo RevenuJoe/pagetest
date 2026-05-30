@@ -12,7 +12,16 @@
 
 "use client";
 
-import { cloneElement, isValidElement, useEffect, useRef, useState } from "react";
+import {
+  cloneElement,
+  createContext,
+  isValidElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type {
   AnalyzeResponse,
   CheckKey,
@@ -37,6 +46,28 @@ import {
 } from "@/components/Icons";
 import { scoreColor } from "@/lib/scoreColor";
 import { displayName } from "@/lib/nameUtil";
+import Lightbox, { type LightboxMode } from "@/components/Lightbox";
+
+/**
+ * Shape of the currently-open lightbox. `null` means nothing is open.
+ * - `src` is the WebP URL (or PSI data URL) being displayed.
+ * - `mode` decides layout: "atf" centers + fits, "fullpage" scrolls.
+ * The state lives at the Results level so it doesn't matter which child
+ * section asks to open it — the overlay always renders at the root of the
+ * report and covers the whole viewport.
+ */
+type LightboxState = { src: string; mode: LightboxMode; alt?: string } | null;
+
+/**
+ * Context plumbing for "click this image to open it in the lightbox".
+ * Children inside Results don't need to thread a callback through props —
+ * they just call useLightboxOpen() and invoke it. Defined here (not its
+ * own file) because it's only used inside this component tree.
+ */
+const LightboxContext = createContext<((s: LightboxState) => void) | null>(null);
+export function useLightboxOpen() {
+  return useContext(LightboxContext);
+}
 
 export default function Results({
   data,
@@ -47,6 +78,14 @@ export default function Results({
   onRerun?: () => void;
   rerunning?: boolean;
 }) {
+  // Lightbox state shared across every screenshot in the report. Children
+  // call `openLightbox(...)` via context; the overlay renders once at the
+  // end of this component so it covers the whole viewport regardless of
+  // which section the thumbnail lives in.
+  const [lightbox, setLightbox] = useState<LightboxState>(null);
+  const openLightbox = useCallback((s: LightboxState) => setLightbox(s), []);
+  const closeLightbox = useCallback(() => setLightbox(null), []);
+
   // Each report section is described once here so we can drive the
   // staggered reveal in a loop. Only "The Overview" (the first entry) is
   // open by default; the rest are collapsed until the user clicks them.
@@ -122,6 +161,26 @@ export default function Results({
         </Section>
       ),
     },
+    // Only render the Full Page Screenshot section when Microlink
+    // actually returned a full-page capture for at least one device.
+    // Old saved reports (pre full-page support) lack these fields, and
+    // we don't want an empty section on those.
+    ...(data.desktopFullPageScreenshot || data.mobileFullPageScreenshot
+      ? [
+          {
+            key: "full-screenshots",
+            node: (
+              <Section
+                title="Full Page Screenshot"
+                icon={<IconEye />}
+                defaultOpen={false}
+              >
+                <FullPageScreenshotsBlock data={data} />
+              </Section>
+            ),
+          },
+        ]
+      : []),
     {
       key: "tech",
       node: (
@@ -172,26 +231,37 @@ export default function Results({
   }, [data.url, data.analyzedAt]);
 
   return (
-    <div className="space-y-5">
-      {sections.map((s, i) => {
-        const visible = i <= revealedIndex;
-        return (
-          <div
-            key={s.key}
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
-            style={{
-              opacity: visible ? 1 : 0,
-              transform: visible ? "translateX(0)" : "translateX(-40px)",
-              transition: "opacity 500ms ease-out, transform 500ms ease-out",
-            }}
-          >
-            {s.node}
-          </div>
-        );
-      })}
-    </div>
+    <LightboxContext.Provider value={openLightbox}>
+      <div className="space-y-5">
+        {sections.map((s, i) => {
+          const visible = i <= revealedIndex;
+          return (
+            <div
+              key={s.key}
+              ref={(el) => {
+                refs.current[i] = el;
+              }}
+              style={{
+                opacity: visible ? 1 : 0,
+                transform: visible ? "translateX(0)" : "translateX(-40px)",
+                transition: "opacity 500ms ease-out, transform 500ms ease-out",
+              }}
+            >
+              {s.node}
+            </div>
+          );
+        })}
+      </div>
+      {/* Single root-level overlay. Visibility is gated inside Lightbox
+          itself by the `open` prop, so it's cheap to leave mounted. */}
+      <Lightbox
+        open={lightbox !== null}
+        src={lightbox?.src}
+        alt={lightbox?.alt}
+        mode={lightbox?.mode ?? "atf"}
+        onClose={closeLightbox}
+      />
+    </LightboxContext.Provider>
   );
 }
 
@@ -493,16 +563,7 @@ export function OverviewBlock({
           </p>
         </div>
         {data.desktopScreenshot && (
-          <div className="w-[200px] flex-shrink-0">
-            <div className="overflow-hidden rounded-card border border-beige-line bg-card">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={data.desktopScreenshot}
-                alt="Desktop above-the-fold preview"
-                className="block w-full h-auto"
-              />
-            </div>
-          </div>
+          <OverviewSnapshot data={data} />
         )}
       </div>
 
@@ -547,6 +608,36 @@ export function OverviewBlock({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Small desktop above-the-fold thumbnail shown in the Overview row.
+ * Clicking it opens the lightbox at the highest-quality WebP version we
+ * have for the page (Microlink AtF capture when available; PSI base64 as
+ * fallback, which is the same image source the thumbnail uses).
+ */
+function OverviewSnapshot({ data }: { data: AnalyzeResponse }) {
+  const open = useLightboxOpen();
+  const src = data.desktopScreenshot;
+  if (!src) return null;
+  return (
+    <div className="w-[200px] flex-shrink-0">
+      <button
+        type="button"
+        onClick={() => open?.({ src, mode: "atf", alt: "Desktop above-the-fold" })}
+        className="block w-full overflow-hidden rounded-card border border-beige-line bg-card p-0 transition hover:border-accent"
+        style={{ cursor: "zoom-in" }}
+        aria-label="Open desktop above-the-fold screenshot"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt="Desktop above-the-fold preview"
+          className="block w-full h-auto"
+        />
+      </button>
     </div>
   );
 }
@@ -1747,11 +1838,17 @@ function ScreenshotCard({
   label,
   src,
   mode,
+  lightboxMode = "atf",
 }: {
   label: string;
   src: string;
   mode: "desktop" | "mobile";
+  /** Which lightbox layout to use when this card is clicked. Defaults to
+   *  "atf" (single-viewport image, centered to fit). The Full Page
+   *  Screenshot section passes "fullpage" so the overlay scrolls. */
+  lightboxMode?: LightboxMode;
 }) {
+  const open = useLightboxOpen();
   return (
     <div
       className={
@@ -1765,20 +1862,72 @@ function ScreenshotCard({
       >
         <span>{label}</span>
       </div>
-      {/* Image displays at its natural aspect ratio inside the card.
-          width:100% scales to card width, height:auto keeps the proportion.
-          No cropping — the card grows to match the screenshot. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={label}
-        className="block"
-        style={{
-          width: "100%",
-          height: "auto",
-          display: "block",
-        }}
-      />
+      {/* Wrapped in a button so the whole image becomes a click target
+          for opening the lightbox. The button strips its default chrome
+          via p-0/border-0 so visually it still looks like the raw image
+          card. cursor:zoom-in signals interactivity. */}
+      <button
+        type="button"
+        onClick={() => open?.({ src, mode: lightboxMode, alt: label })}
+        className="block w-full p-0 border-0 bg-transparent text-left"
+        style={{ cursor: "zoom-in" }}
+        aria-label={`Open ${label.toLowerCase()} screenshot`}
+      >
+        {/* Image displays at its natural aspect ratio inside the card.
+            width:100% scales to card width, height:auto keeps the proportion. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={label}
+          className="block"
+          style={{
+            width: "100%",
+            height: "auto",
+            display: "block",
+          }}
+        />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Bottom-of-report section showing the full scrolled-page captures from
+ * Microlink (one for desktop, one for mobile). Reuses ScreenshotCard but
+ * passes lightboxMode="fullpage" so clicking opens the scrollable
+ * lightbox layout instead of the centered single-viewport one.
+ *
+ * If only one of the two devices captured successfully we still render
+ * the section with just that card.
+ */
+function FullPageScreenshotsBlock({ data }: { data: AnalyzeResponse }) {
+  const hasDesktop = !!data.desktopFullPageScreenshot;
+  const hasMobile = !!data.mobileFullPageScreenshot;
+  if (!hasDesktop && !hasMobile) {
+    return (
+      <p className="text-sm font-medium text-ink-soft">
+        We couldn&apos;t capture full-page screenshots for this run.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col items-start gap-6 md:flex-row md:items-start md:justify-center">
+      {hasDesktop && (
+        <ScreenshotCard
+          label="DESKTOP (FULL PAGE)"
+          src={data.desktopFullPageScreenshot as string}
+          mode="desktop"
+          lightboxMode="fullpage"
+        />
+      )}
+      {hasMobile && (
+        <ScreenshotCard
+          label="MOBILE (FULL PAGE)"
+          src={data.mobileFullPageScreenshot as string}
+          mode="mobile"
+          lightboxMode="fullpage"
+        />
+      )}
     </div>
   );
 }

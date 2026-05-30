@@ -74,14 +74,28 @@ export async function POST(req: NextRequest) {
     // Microlink gives us crisp 2× DPR full-page captures for the displayed
     // images. Microlink can rate-limit on the free tier — in that case we
     // fall back to the PSI screenshots so the report still renders.
-    const [desktopRes, mobileRes, page, microDesktopRes, microMobileRes] =
-      await Promise.allSettled([
-        runPageSpeed(url, "desktop"),
-        runPageSpeed(url, "mobile"),
-        fetchPage(url),
-        fetchMicrolinkScreenshot(url, "desktop"),
-        fetchMicrolinkScreenshot(url, "mobile"),
-      ]);
+    const [
+      desktopRes,
+      mobileRes,
+      page,
+      microDesktopRes,
+      microMobileRes,
+      microDesktopFullRes,
+      microMobileFullRes,
+    ] = await Promise.allSettled([
+      runPageSpeed(url, "desktop"),
+      runPageSpeed(url, "mobile"),
+      fetchPage(url),
+      // Above-the-fold crops (shown in Overview + AtF Screenshots section).
+      fetchMicrolinkScreenshot(url, "desktop", "atf"),
+      fetchMicrolinkScreenshot(url, "mobile", "atf"),
+      // Full-page captures (shown in the new Full Page Screenshot
+      // section). Microlink stitches the whole scroll into one image.
+      // Takes longer than AtF; runs in parallel so wall-clock isn't
+      // dominated unless PSI returns very fast.
+      fetchMicrolinkScreenshot(url, "desktop", "fullpage"),
+      fetchMicrolinkScreenshot(url, "mobile", "fullpage"),
+    ]);
 
     // PSI is allowed to fail; we degrade gracefully. Log failures to the
     // server so we can see WHY in Vercel logs (e.g. timeout, 4xx, 5xx)
@@ -103,6 +117,12 @@ export async function POST(req: NextRequest) {
       microDesktopRes.status === "fulfilled" ? microDesktopRes.value : null;
     const microMobile =
       microMobileRes.status === "fulfilled" ? microMobileRes.value : null;
+    // Microlink full-page captures (optional; the new Full Page
+    // Screenshot section hides itself when these are null).
+    const microDesktopFull =
+      microDesktopFullRes.status === "fulfilled" ? microDesktopFullRes.value : null;
+    const microMobileFull =
+      microMobileFullRes.status === "fulfilled" ? microMobileFullRes.value : null;
 
     if (page.status !== "fulfilled") {
       return NextResponse.json(
@@ -291,6 +311,12 @@ export async function POST(req: NextRequest) {
         ?? mobile?.finalScreenshot
         ?? mobile?.fullPageScreenshot
         ?? undefined,
+      // Microlink WebP full-page captures, displayed in the new Full
+      // Page Screenshot section at the bottom of the report. Optional:
+      // when Microlink failed for either device the UI hides that
+      // section gracefully.
+      desktopFullPageScreenshot: microDesktopFull?.url ?? undefined,
+      mobileFullPageScreenshot: microMobileFull?.url ?? undefined,
       pageSpeedInsights: psiInsights,
     };
 

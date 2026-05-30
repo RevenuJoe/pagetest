@@ -34,20 +34,34 @@ interface MicrolinkResponse {
 
 const MICROLINK_ENDPOINT = "https://api.microlink.io/";
 
+/** Which kind of capture to request from Microlink. */
+export type ScreenshotMode = "atf" | "fullpage";
+
 /**
  * Capture a single screenshot via Microlink for one device strategy.
  *
- * - `desktop` → 1440×900 viewport, deviceScaleFactor 2, ABOVE-THE-FOLD only.
- * - `mobile`  → 390×844 viewport, deviceScaleFactor 2, ABOVE-THE-FOLD only.
+ * - `desktop` viewport: 1440×900, deviceScaleFactor 2.
+ * - `mobile`  viewport: 390×844 (iPhone 14-ish), deviceScaleFactor 2.
  *
- * We deliberately do NOT pass fullPage so Microlink only captures the
- * initial visible viewport. Joe wants the report to show what a visitor
- * sees the moment the page loads, not a 5000px stitched scroll capture.
+ * Modes:
+ * - `atf`      — above-the-fold only (initial visible viewport). Used in
+ *                the Overview thumbnail and the AtF Screenshots section.
+ * - `fullpage` — the entire scrolled page (Microlink stitches the capture
+ *                top-to-bottom). Used in the Full Page Screenshot section.
+ *                Takes longer than AtF (typically 15-30s on heavy pages).
+ *
+ * `type=webp` produces a smaller file at the same visual quality as JPEG
+ * and is what the UI uses for both the displayed image and the lightbox
+ * "open big" version.
  *
  * `waitUntil=load` captures as soon as the initial HTML/CSS/images are
- * ready, which is the right trade-off for an above-the-fold view. Hard
- * timeout of 45s per call — Joe values Microlink's high-quality images
- * enough to wait for them rather than fall back to lower-res PSI.
+ * ready. We deliberately avoid `networkidle0` because marketing sites
+ * with analytics polling, web sockets, or chat widgets can NEVER reach
+ * idle, which makes Microlink hang on them for the full timeout.
+ *
+ * Hard timeout of 45s per call — Joe values Microlink's high-quality
+ * images enough to wait for them rather than fall back to lower-res
+ * PSI screenshots.
  *
  * Returns null on ANY failure (rate-limit, timeout, parse error) so the
  * caller can fall back gracefully.
@@ -55,17 +69,20 @@ const MICROLINK_ENDPOINT = "https://api.microlink.io/";
 export async function fetchMicrolinkScreenshot(
   url: string,
   strategy: "desktop" | "mobile",
+  mode: ScreenshotMode = "atf",
 ): Promise<MicrolinkScreenshot | null> {
   try {
     const params = new URLSearchParams({
       url,
       screenshot: "true",
       meta: "false",
-      type: "jpeg",
-      // EXPLICITLY false. Microlink's public API was observed returning
-      // full-page captures when this isn't set, despite the documented
-      // default. We want above-the-fold only.
-      fullPage: "false",
+      type: "webp",
+      // Above-the-fold = false (capture just the visible viewport on
+      // page load). Full page = true (stitch the whole scroll).
+      // Microlink's public API was observed returning full-page
+      // captures even when fullPage was omitted, so we always set it
+      // explicitly to the value we want.
+      fullPage: mode === "fullpage" ? "true" : "false",
       // Microlink caches by URL aggressively (default TTL 12h+) and the
       // cache key does NOT include screenshot params like fullPage. So a
       // URL that was previously captured with fullPage=true keeps

@@ -125,6 +125,16 @@ export interface AnalyzeResponse {
   desktopScreenshot?: string;
   /** High-resolution above-the-fold screenshot from the mobile Lighthouse run, as data URL. */
   mobileScreenshot?: string;
+  /** Microlink full-page WebP capture for desktop (whole scrolled page,
+   *  stitched). Used by the Full Page Screenshot section + lightbox.
+   *  Optional: only present when Microlink succeeded for the desktop
+   *  full-page call. */
+  desktopFullPageScreenshot?: string;
+  /** Microlink full-page WebP capture for mobile (whole scrolled page,
+   *  stitched). Used by the Full Page Screenshot section + lightbox.
+   *  Optional: only present when Microlink succeeded for the mobile
+   *  full-page call. */
+  mobileFullPageScreenshot?: string;
 }
 
 export interface AnalyzeError {
