@@ -107,6 +107,13 @@ export interface AnalyzeResponse {
   pageTitle?: string;
   /** ISO timestamp when the analysis completed. */
   analyzedAt: string;
+  /** Total wall-clock runtime of the analyse request in milliseconds:
+   *  Phase 0 fetches (PSI, HTML, Microlink) + the Claude pipeline +
+   *  any post-processing. Surfaced in the Overview as "Runtime" so the
+   *  user can see how long each report actually took. Optional for
+   *  backwards-compatibility with reports saved before this field was
+   *  added. */
+  runtimeMs?: number;
   /** Overall score = average of the six checks, rounded to int. */
   overall: number;
   checks: Record<CheckKey, CheckResult>;

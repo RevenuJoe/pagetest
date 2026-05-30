@@ -327,6 +327,11 @@ export async function POST(req: NextRequest) {
       // meaningful like "Odoo vs Doss — Doss" instead of just "Doss.com".
       pageTitle: page.value.title?.trim() || undefined,
       analyzedAt: new Date().toISOString(),
+      // Total wall-clock runtime of the request. Same number that the
+      // debug timings panel calls totalRouteMs, but exposed on every
+      // response (not just ?debug=1) so the Overview can display a
+      // "Runtime" line alongside "Analysed".
+      runtimeMs: Date.now() - tRouteStart,
       overall,
       checks,
       keyTakeaways,

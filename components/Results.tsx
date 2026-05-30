@@ -466,6 +466,21 @@ async function downloadFiles(
   return anySucceeded;
 }
 
+/** Format a runtime in milliseconds for the Overview's "Runtime" row.
+ *  Under a minute: one-decimal seconds (e.g. "47.3s"). One minute or
+ *  more: minutes + whole seconds (e.g. "2m 13s"). Skips the seconds
+ *  part when it would round to 0 ("3m"). */
+function formatRuntime(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  const totalSeconds = ms / 1000;
+  if (totalSeconds < 60) {
+    return `${totalSeconds.toFixed(1)}s`;
+  }
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.round(totalSeconds - minutes * 60);
+  return seconds === 0 ? `${minutes}m` : `${minutes}m ${seconds}s`;
+}
+
 /** Build a filesystem-safe filename stem from the report. Used to name
  *  the WebP downloads (e.g. `revenuagency-io-atf-desktop.webp`). Falls
  *  back to "screenshot" when the displayName produces only stripped
@@ -714,6 +729,14 @@ export function OverviewBlock({
               value={new Date(data.analyzedAt).toLocaleString()}
             />
           </div>
+          {typeof data.runtimeMs === "number" && (
+            <div className="mt-6">
+              <MetaRow
+                label="Runtime"
+                value={formatRuntime(data.runtimeMs)}
+              />
+            </div>
+          )}
         </div>
         <div className="min-w-0 w-full">
           <div
