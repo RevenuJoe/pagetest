@@ -32,7 +32,21 @@ interface MicrolinkResponse {
   };
 }
 
-const MICROLINK_ENDPOINT = "https://api.microlink.io/";
+/**
+ * Microlink has two endpoints:
+ *
+ * - `https://api.microlink.io/` — anonymous / free tier. Shared IP rate
+ *   limit (~50/day per IP). Sending `x-api-key` here is invalid and the
+ *   request is rejected with HTTP 400 at validation time.
+ * - `https://pro.microlink.io/` — paid tier. Requires `x-api-key` header.
+ *   This is what the Microlink docs use in every authenticated example.
+ *
+ * We pick the right endpoint at call time based on whether
+ * MICROLINK_API_KEY is set, so the code keeps working in development
+ * without the env var and uses the paid quota in production.
+ */
+const MICROLINK_ANON_ENDPOINT = "https://api.microlink.io/";
+const MICROLINK_PRO_ENDPOINT = "https://pro.microlink.io/";
 
 /** Which kind of capture to request from Microlink. */
 export type ScreenshotMode = "atf" | "fullpage";
@@ -50,9 +64,12 @@ export type ScreenshotMode = "atf" | "fullpage";
  *                top-to-bottom). Used in the Full Page Screenshot section.
  *                Takes longer than AtF (typically 15-30s on heavy pages).
  *
- * `type=webp` produces a smaller file at the same visual quality as JPEG
- * and is what the UI uses for both the displayed image and the lightbox
- * "open big" version.
+ * `type=jpeg` is what we request from Microlink. Their API only accepts
+ * `'jpeg' | 'png'` per the docs — `webp` is NOT a valid value and gets
+ * rejected with HTTP 400 at validation time. The image is still served
+ * as WebP to modern browsers because Microlink's CDN does automatic
+ * format negotiation based on the request's `Accept` / `User-Agent`
+ * headers, so the size + quality benefit is preserved.
  *
  * `waitUntil=load` captures as soon as the initial HTML/CSS/images are
  * ready. We deliberately avoid `networkidle0` because marketing sites
@@ -76,7 +93,10 @@ export async function fetchMicrolinkScreenshot(
       url,
       screenshot: "true",
       meta: "false",
-      type: "webp",
+      // Microlink only accepts 'jpeg' | 'png' for the capture format.
+      // We request jpeg; the CDN re-encodes to WebP via Accept-header
+      // negotiation when the browser asks for it.
+      type: "jpeg",
       // Above-the-fold = false (capture just the visible viewport on
       // page load). Full page = true (stitch the whole scroll).
       // Microlink's public API was observed returning full-page
@@ -112,18 +132,23 @@ export async function fetchMicrolinkScreenshot(
       params.set("viewport.isMobile", "true");
     }
 
-    // Optional Microlink API key. When set, the request goes against the
-    // project's paid quota instead of the anonymous IP-based bucket
+    // Optional Microlink API key. When set, the request goes against
+    // the project's paid quota instead of the anonymous IP-based bucket
     // (which is small and shared with everyone else on the same exit
     // IP — easy to exhaust, especially behind a VPN). Microlink reads
-    // the key from the `x-api-key` header per their docs.
+    // the key from the `x-api-key` header AND routes paid traffic
+    // through a different hostname (pro.microlink.io) — sending the
+    // header to api.microlink.io is rejected with HTTP 400.
     const headers: Record<string, string> = {
       "user-agent": "pagetest-revenuagency.io",
     };
     const microlinkKey = process.env.MICROLINK_API_KEY;
     if (microlinkKey) headers["x-api-key"] = microlinkKey;
+    const endpoint = microlinkKey
+      ? MICROLINK_PRO_ENDPOINT
+      : MICROLINK_ANON_ENDPOINT;
 
-    const res = await fetch(`${MICROLINK_ENDPOINT}?${params.toString()}`, {
+    const res = await fetch(`${endpoint}?${params.toString()}`, {
       // 45s ceiling. Joe specifically values Microlink's high-quality
       // screenshots and would rather wait than fall back to PSI's lower
       // resolution images. Still fits inside the route's maxDuration
