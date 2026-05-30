@@ -519,9 +519,10 @@ function buildSpeedCheck(
       ],
     };
   }
+  // PERFORMANCE BOOST LOGIC — Speed.
   // Start with the average Lighthouse performance score across desktop
-  // and mobile — that's the holistic Lighthouse view. Then apply two
-  // separate Speed Index boosts so the score reflects real-world
+  // and mobile — that's the holistic Lighthouse view. Then apply the
+  // Speed performance-boost rules so the score reflects real-world
   // snappiness even when Lighthouse penalises the page on niche audits.
   //
   // Main boost — based on the AVERAGE of the two Speed Indexes:
@@ -533,7 +534,9 @@ function buildSpeedCheck(
   // Per-device bonus — fires SEPARATELY and stacks on the main boost:
   //   If desktop OR mobile Speed Index < 2.0s  → +5
   //
-  // Total boost capped only by the final 100-ceiling on the score.
+  // Each boost surfaces as a "(+N-point bonus)" callout in the Speed
+  // notes so the reader can see exactly where the score's strength
+  // is coming from. Total boost capped by the final 100-ceiling.
   const rawScore = desktop && mobile
     ? Math.round((desktop.performanceScore + mobile.performanceScore) / 2)
     : (desktop?.performanceScore ?? mobile?.performanceScore ?? 0);
@@ -555,13 +558,13 @@ function buildSpeedCheck(
   if (averageSI != null) {
     if (averageSI < 2000) {
       mainBoost = 30;
-      mainBoostNote = `Average Speed Index is under 2 seconds (${(averageSI / 1000).toFixed(2)}s across Desktop and Mobile), which is exceptional and gives this score a +${mainBoost} boost over the Lighthouse average.`;
+      mainBoostNote = `Exceptional load speed (+${mainBoost}-point bonus): average Speed Index is under 2 seconds (${(averageSI / 1000).toFixed(2)}s across Desktop and Mobile).`;
     } else if (averageSI < 3000) {
       mainBoost = 20;
-      mainBoostNote = `Average Speed Index is under 3 seconds (${(averageSI / 1000).toFixed(2)}s across Desktop and Mobile), which is really strong and gives this score a +${mainBoost} boost over the Lighthouse average.`;
+      mainBoostNote = `Really strong load speed (+${mainBoost}-point bonus): average Speed Index is under 3 seconds (${(averageSI / 1000).toFixed(2)}s across Desktop and Mobile).`;
     } else if (averageSI < 4000) {
       mainBoost = 10;
-      mainBoostNote = `Average Speed Index is under 4 seconds (${(averageSI / 1000).toFixed(2)}s across Desktop and Mobile), which is solid and gives this score a +${mainBoost} boost over the Lighthouse average.`;
+      mainBoostNote = `Solid load speed (+${mainBoost}-point bonus): average Speed Index is under 4 seconds (${(averageSI / 1000).toFixed(2)}s across Desktop and Mobile).`;
     }
   }
   // Per-device bonus: at least one device is genuinely snappy (<2s).
@@ -575,7 +578,8 @@ function buildSpeedCheck(
     const fastDevices: string[] = [];
     if (desktopUnder2s) fastDevices.push("Desktop");
     if (mobileUnder2s) fastDevices.push("Mobile");
-    deviceBonusNote = `${fastDevices.join(" and ")} ${fastDevices.length === 1 ? "loads" : "both load"} in under 2 seconds individually, adding another +${deviceBonus} on top of the main boost.`;
+    const verb = fastDevices.length === 1 ? "loads" : "both load";
+    deviceBonusNote = `Snappy individual device speed (+${deviceBonus}-point bonus): ${fastDevices.join(" and ")} ${verb} in under 2 seconds.`;
   }
   const speedIndexBoost = mainBoost + deviceBonus;
   const score = Math.min(100, rawScore + speedIndexBoost);

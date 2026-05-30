@@ -143,27 +143,55 @@ A specific, benefit-led promise (what the visitor GETS), not a generic feature l
 
 If the page misses Problem / Social proof / FAQ / Product / Stats, those misses ARE the most important notes to surface.
 
-SCORING GUIDANCE — Content is judged on these 7 criteria:
-    1. NO em dashes / AI-flavoured prose.
-    2. Clear, specific value proposition in the first 100 words.
-    3. The PROBLEM is named (the pain the product solves).
-    4. SOCIAL PROOF is present (customer logos, case studies, ratings).
-    5. FAQ section present (answering objections).
-    6. PRODUCT explanation is clear (what it actually does).
-    7. COMPARISON framing OR concrete stats (numbers, named customers).
+SCORING GUIDANCE — Content is judged on PAGE-ELEMENT CHECKLISTS (which sections the page actually contains) plus stacking bonuses on top of the base score.
 
-Score bands:
-    • Hits 6-7 of 7 cleanly → 88-95 (really good content — call this out)
-    • Hits 5 of 7 → 78-86
-    • Hits 4 of 7 → 65-75 (a couple of sections to improve — Joe's "60 or 70")
-    • Hits 3 of 7 → 52-63
-    • Hits 1-2 of 7 → 35-50
-    • Hits 0 → below 35
+PRIORITY ELEMENTS (7) — the must-have section types for a strong landing page:
+    1. ABOVE-THE-FOLD section — a proper hero with headline, supporting copy, visual, and an entry point (form / CTA).
+    2. PRODUCT & FEATURE OVERVIEW — clear explanation of what the product is and how it solves the problem.
+    3. STATS / PROOF POINTS — concrete numbers anywhere on the page (e.g. "Saves 3 hours per week", "Used by 4,200 teams", "97% of users prefer this").
+    4. SOCIAL PROOF AND LOGOS — named customer logos, customer quotes, ratings / review badges, "Trusted by N" lines.
+    5. FAQ SECTION — answering common objections, typically near the bottom.
+    6. BOTTOM CONVERSION FORM / LEAD-GEN CAPTURE — a second conversion opportunity after the visitor scrolls (one-field email at the end, or a fuller lead-gen form near the footer).
+    7. PROBLEM SECTION — explicitly names the pain or problems the visitor feels (not just features).
 
-In your notes, ALWAYS:
-- Call out which of the 7 criteria are HIT successfully (positive observations naming specific things on the page).
-- Name explicitly which of the 7 are MISSING from the scoring criteria (recommendations).
-- A reader of the Content notes should immediately know which of the 7 they have and which they don't.
+SECONDARY ELEMENTS (6) — these add depth and conversion strength but aren't strictly required:
+    1. HOW IT WORKS — step-by-step or process flow showing the user journey.
+    2. CASE STUDIES — named customers with real outcomes / quotes / specific results.
+    3. COMPARISON SECTION — you vs competitor, or you vs the old way / manual workflow / spreadsheet.
+    4. INTEGRATIONS SECTION — what the product works with (logos or list of tools / platforms).
+    5. PERSONA CALLOUT — detail on the audience the product is for (e.g. "For Schedulers / For Providers / For Leaders" tabs).
+    6. FOOTER — sitemap, secondary links, trust elements (privacy policy, security, etc.).
+
+BASE SCORE from priority items-hit:
+    • Hits 7/7 priority → 88-93 (already in excellent territory, bonus pushes to 100)
+    • Hits 5-6/7 → 75-83 (strong content — bonus can push to 90s)
+    • Hits 3-4/7 → 60-72 (couple of sections to improve)
+    • Hits 1-2/7 → 42-58
+    • Hits 0/7 → below 42
+
+PERFORMANCE BOOST LOGIC — Content priority and secondary bonuses.
+Additive on top of the base score, total capped at 100:
+    • ALL 7 priority elements present → +20 (replaces the +10 below — mutually exclusive)
+    • 5 or 6 of 7 priority elements present → +10
+    • MORE THAN 5 of 6 secondary elements present (i.e. all 6 of 6) → +10  (stacks with the priority bonus)
+
+So the max combined bonus is +30 (all 7 priority + all 6 secondary), and the max possible content score is 100 (capped).
+
+DISCLOSURE — every Content report must include in the notes:
+- Which PRIORITY elements are PRESENT (positive observations quoting specific evidence from the page).
+- Which PRIORITY elements are MISSING (recommendations naming the missing section).
+- Which SECONDARY elements are present and missing (briefly).
+- The bonus calculation explicitly, using the format '<short positive description> (+<N>-point bonus): <evidence>' when a bonus fires. Examples:
+    'All 7 priority elements present (+20-point bonus): the page has a strong hero, product overview, stats block, social-proof logo strip, FAQ, bottom email form, and an explicit "the old way is painful" problem section.'
+    'Strong page-element coverage (+10-point bonus): 6 of 7 priority elements present (missing only a dedicated Problem section). Adding one would unlock the +20-point bonus instead.'
+    'Full secondary-element coverage (+10-point bonus): How It Works, Case Studies, Comparison, Integrations, Persona, and Footer all present.'
+- IF A BONUS WAS MISSED BY A HAIR: still write a note explaining what would unlock it. Example: '5 of 6 secondary elements present — adding a Comparison section ("you vs the old manual workflow") would unlock a +10-point secondary bonus.'
+
+WRITING QUALITY CHECKS — flag these in the notes if present (qualitative observations; they don't change the base / bonus math):
+- Em dashes (—) in the body text are AI-flavoured tells. Flag if found.
+- Filler phrases ("In today's fast-paced world…"), vague superlatives ("seamless", "robust", "next-generation", "AI-powered" without explanation), unnecessary hedging — flag any AI-sounding patterns.
+- Value proposition in the first 100 words: should be specific, benefit-led, plain language. Flag if it reads as a generic feature list or vague claim.
+- Concrete proof in the copy: numbers, dates, named customers, specifics over adjectives.
 
 ANTI-HALLUCINATION ANCHORS — read these BEFORE writing any Content note that touches FAQ length, headings, CTAs, social proof, or forms. The same GROUND TRUTH facts other dimensions use apply here too, so Content must not contradict them:
 
@@ -322,15 +350,16 @@ Score bands:
 
 HARD CEILING for non-interactive hero CTAs: if the page's hero / above-the-fold has ONLY buttons (no form, no dropdown, no tick boxes, no multi-step quiz, no calculator — just a "Get a Demo" or "Start Free Trial" button on its own), CAP the CRO score at 83 regardless of how many other criteria are met. An interactive hero widget (dropdown / tick boxes / multi-step quiz / form) is a near-prerequisite for top-tier CRO; pages that lead with just buttons are leaving conversion on the table even when the rest of the page is solid. Conversely, a hero with an interactive widget (tick boxes or dropdown for question-led entry) is a STRONG positive signal — score generously in that case.
 
-TOP + BOTTOM CONVERSION COMBO BONUS — +10 to the base CRO score (capped at 100) when the page has BOTH of these:
+PERFORMANCE BOOST LOGIC — CRO top + bottom conversion combo.
++10 to the base CRO score (capped at 100) when the page has BOTH of these:
     (a) A conversion widget visible ABOVE THE FOLD — a dropdown question, a one-field email input, a multiple tick-box widget, a multi-step quiz, or a calculator (anything more interactive than a standalone button); AND
     (b) A bottom lead-gen form anywhere near the footer — a one-field email form, a multi-field form (name + company + email etc.), or any capture form that gives a second conversion opportunity after the visitor has scrolled.
 
 Both must be present visually (confirm in the full-page screenshot or in the per-<form> GROUND TRUTH list) for the bonus to fire.
 
 DISCLOSURE — always call this out in your notes either way:
-- IF THE BONUS APPLIES: write a positive note quoting the specific widgets you saw (e.g. "Hero has a multi-step dropdown form AND the bottom of the page has a one-field email capture — +10 CRO bonus applied").
-- IF THE BONUS DOES NOT APPLY: write a recommendation note saying what's missing and that adding it would unlock +10 (e.g. "Hero has a dropdown widget but there's no bottom lead-gen form — adding one (a one-field email or a full lead-gen form near the footer) would unlock another +10 on this score" OR "There's a bottom contact form but no hero conversion widget — adding a question-led hero would unlock another +10").
+- IF THE BONUS APPLIES: write a positive note in the format '<short positive description> (+10-point bonus): <specific evidence>'. Example: 'Two conversion opportunities top and bottom (+10-point bonus): the hero has a multi-step dropdown form ("How many providers are you scheduling?") AND the bottom of the page has a one-field email capture above the footer.'
+- IF THE BONUS DOES NOT APPLY: write a recommendation note saying what's missing and that adding it would unlock +10. Example: 'Hero has a dropdown widget but there is no bottom lead-gen form — adding one (a one-field email or a full lead-gen form near the footer) would unlock a +10-point bonus on this score.' Or: 'There is a bottom contact form but no hero conversion widget — adding a question-led hero would unlock a +10-point bonus.'
 
 This bonus stacks on top of the base score from the items-hit bands AND alongside the hard ceiling: a page that hits 6 of 7 criteria, has a dropdown hero AND a bottom form gets ~88 base + 10 bonus = 98. A page with a button-only hero is still capped at 83 even if it has a bottom form — the ceiling beats the bonus.
 
@@ -397,7 +426,8 @@ Reward what's there. Do NOT shave points imagining a sharper headline / nicer vi
 
 Always call out in the notes which of the 6 are present (positives) and which are missing (recommendations). A reader should be able to read the AtF notes and immediately know which of the 6 they have and which they don't.
 
-ABOVE-THE-FOLD BONUS POINTS — after picking your base score from the bands above, apply these bonuses for specific positive signals visible in the AtF screenshot. Add the points to your base, cap the total at 100. ALWAYS list every applied bonus in your notes as a separate observation so the reader sees why the score is what it is.
+PERFORMANCE BOOST LOGIC — Above-the-fold.
+After picking your base score from the bands above, apply these bonuses for specific positive signals visible in the AtF screenshot. Add the points to your base, cap the total at 100. EVERY applied bonus MUST appear in the notes as a separate positive observation using the format "<short positive description> (+<N>-point bonus): <specific evidence>".
 
     +10 bonus — Hero form is a DROPDOWN-led conversion widget (a <select> dropdown question like "How many providers are you scheduling?", "What's your team size?", etc. visible in the hero).
     +10 bonus — Hero form uses TICK BOXES / radio-button-style interactive choices (visible in the AtF screenshot — checkboxes the visitor can tap to select an answer).
@@ -408,7 +438,11 @@ ABOVE-THE-FOLD BONUS POINTS — after picking your base score from the bands abo
 
 Rules for the bonuses:
 - The hero-form bonuses (+10 dropdown, +10 tick boxes, +5 one-field email) are MUTUALLY EXCLUSIVE — pick the SINGLE highest-value pattern the hero matches. A multi-step form that starts with a dropdown counts as +10 (dropdown), not +10 + +5.
-- Each bonus that fires MUST appear in the notes as a separate positive observation, e.g. "+10 hero dropdown form ('How many providers are you scheduling?')" or "+5 social proof visible above the fold (Prisma Health, Beebe Healthcare logos)". Quote the specific evidence.
+- Required note format: '<short positive description> (+<N>-point bonus): <specific evidence>'. Examples:
+    'Strong hero dropdown form (+10-point bonus): the hero asks "How many providers are you scheduling?" before requesting an email.'
+    'Social proof visible above the fold (+5-point bonus): Prisma Health, Beebe Healthcare, and UK HealthCare logos run along the bottom of the hero.'
+    'Bullets used in the hero (+5-point bonus): "Automated schedule creation", "Unlimited custom rules", and "24/7 white glove support".'
+    'Strong hero visual (+5-point bonus): a polished mockup of the scheduling calendar shown beside the form.'
 - The base score + bonuses can take a page from a 75 to a 95 — that's correct. A page hitting all 6 core criteria PLUS having a dropdown form + social proof + bullets + visual is exceptional and the score should reflect that.
 - Score is still capped at 100. If the base + bonuses exceed 100, cap.`;
 
