@@ -191,7 +191,8 @@ WRITING QUALITY CHECKS — flag these in the notes if present (qualitative obser
 - Em dashes (—) in the body text are AI-flavoured tells. Flag if found.
 - Filler phrases ("In today's fast-paced world…"), vague superlatives ("seamless", "robust", "next-generation", "AI-powered" without explanation), unnecessary hedging — flag any AI-sounding patterns.
 - Value proposition in the first 100 words: should be specific, benefit-led, plain language. Flag if it reads as a generic feature list or vague claim.
-- Concrete proof in the copy: numbers, dates, named customers, specifics over adjectives.
+
+SCOPE LOCK — Content notes must NOT comment on paragraph length, section heading length, or FAQ answer length. Those topics belong EXCLUSIVELY to the Digestibility dimension. If you spot a long paragraph or a wordy heading, leave it for Digestibility to surface. Same for FAQ answers running over 75 words. Concrete-proof / specifics-over-adjectives observations are covered by the Stats priority element above — don't duplicate them in writing quality.
 
 ANTI-HALLUCINATION ANCHORS — read these BEFORE writing any Content note that touches FAQ length, headings, CTAs, social proof, or forms. The same GROUND TRUTH facts other dimensions use apply here too, so Content must not contradict them:
 
@@ -296,7 +297,7 @@ Look for:
     Recommend: "Test a dropdown or multiple tick-box conversion widget against the existing one-field form in the hero." Frame it as evolving the hero from a static one-field capture into an interactive qualifying step. If recommending tick boxes, hold to the "4 or fewer" implementation cap. Suggest a sensible question for the tick boxes (revenue band, team size, role, industry — whichever fits the page's audience).
 
   Pattern 3 — Hero has a BIG form (4 or more fields VISIBLE IMMEDIATELY in the above-the-fold screenshot, before any scroll):
-    Recommend: "Test a simpler conversion widget against the big hero form." Specifically suggest testing a ONE-FIELD form (e.g. just email), a DROPDOWN, or a MULTIPLE TICK-BOX option (4 or fewer) as the variant. Big top-of-page forms with 4+ visible fields scare visitors off; the test is whether a simpler hero widget converts higher.
+    Recommend: "Test a one-field hero form against the big hero form." Specifically suggest a one-field email capture (or a single-question dropdown / tick-box widget) as the variant. Big top-of-page forms with 4+ visible fields scare visitors off; the test is whether a one-field hero converts higher and pushes the bigger lead-gen capture to the bottom of the page.
 
   Required wording rules across all three patterns:
     • Always say "tick boxes". Do NOT say "radio buttons", "radio-button group", "chips", or "pills".
@@ -348,7 +349,14 @@ Score bands:
     • Hits 1-2 of 7 → 40-59
     • Hits 0 → below 40
 
-HARD CEILING for non-interactive hero CTAs: if the page's hero / above-the-fold has ONLY buttons (no form, no dropdown, no tick boxes, no multi-step quiz, no calculator — just a "Get a Demo" or "Start Free Trial" button on its own), CAP the CRO score at 83 regardless of how many other criteria are met. An interactive hero widget (dropdown / tick boxes / multi-step quiz / form) is a near-prerequisite for top-tier CRO; pages that lead with just buttons are leaving conversion on the table even when the rest of the page is solid. Conversely, a hero with an interactive widget (tick boxes or dropdown for question-led entry) is a STRONG positive signal — score generously in that case.
+HERO BUTTON-VS-FORM RULE: button-based CTAs above the fold are FINE when they drive a DIRECT PRODUCT SIGN-UP — i.e. the CTA itself takes the visitor straight into the product or an account-creation flow ("Start Free Trial", "Sign Up", "Get Started Free", "Create Account", "Try It Free"). Those self-serve PLG CTAs work well as standalone buttons in the hero.
+
+BUT a button-only hero is NOT okay when the primary CTA is a "Book a Demo" / "Book a Call" / "Talk to Sales" / "Get a Quote" type — those CTAs ask the visitor to commit time before they get anything in return. In that case the page should use an embedded form (one-field email, dropdown question, multi-step quiz) instead of a standalone button, because the form qualifies the lead before the meeting and converts higher than a cold "Book a demo" click.
+
+Scoring:
+- Hero is a direct product sign-up button ("Start Free Trial", "Sign Up", "Get Started") → no penalty; score normally based on the other CRO criteria.
+- Hero is a book-time button ONLY (no embedded form, no dropdown, no quiz, no calculator — just "Book a Demo" / "Talk to Sales" / "Get a Quote" buttons) → CAP the CRO score at 83. Recommend testing an embedded form (one-field email or qualifying dropdown) against the standalone button.
+- Hero has an interactive widget (form / dropdown / tick boxes / multi-step quiz / calculator) → score generously; this is a STRONG positive signal.
 
 PERFORMANCE BOOST LOGIC — CRO top + bottom conversion combo.
 +10 to the base CRO score (capped at 100) when the page has BOTH of these:
@@ -379,28 +387,35 @@ Look for:
 - ONE clear, dominant headline. One big H1, not multiple competing oversized headlines.
 - Some supporting content under the headline, but kept tight: one short paragraph or 2-3 bullet points. Long paragraphs above the fold lose points.
 - A strong, professional-looking visual: product screenshot, hero illustration, demo video, or a polished graphic. A blank or weak visual loses points significantly.
-- NAVIGATION (above-the-fold dim is the ONLY dimension allowed to comment on the nav). MANDATORY counting step before any nav commentary: count the text links visibly in the hero nav from the ABOVE-THE-FOLD SCREENSHOT. The HTML "navLinks" data in GROUND TRUTH is a STARTING POINT only — CSS-hidden links and sub-menu items routinely show up there but aren't actually rendered in the hero. The SCREENSHOT is the authority for what the visitor sees.
-  How to count correctly:
+- NAVIGATION (above-the-fold dim is the ONLY dimension allowed to comment on the nav). The "hero nav" / "nav" means the navigation BAR running across the top of the above-the-fold viewport — the row with the logo on the left, text links in the middle, and conversion button(s) on the right. Nothing else. NO HTML nav data is provided to this dimension on purpose. The ABOVE-THE-FOLD SCREENSHOT is the SOLE authority for nav commentary — fill in the navigation worksheet in GROUND TRUTH by counting from the screenshot before forming any verdict.
+
+  Best-practice criteria for a good nav:
+    • LOGO present on the left. Capture this as a yes/no fact in the worksheet but DO NOT make it the focus of your commentary — virtually every landing page has a logo and it's not the interesting signal. Only mention the logo if it's genuinely missing (rare) or if there's something unusual about it.
+    • BUTTONS — one button is good. Two buttons with DIFFERENT intent is better (e.g. "Book a Call" + "View Pricing", or "Get a Demo" + "Start Free Trial"). Two buttons that say the same thing don't count as two.
+    • TEXT LINKS — 3 or fewer is the ideal count. 4 or more is too many — recommend trimming to 3 of the most useful (Pricing / Resources / About / Customers / etc.). Nav over-stuffing is a real conversion drag.
+
+  Commentary focus rule: your nav notes should focus on the NUMBER OF BUTTONS and the NUMBER OF TEXT LINKS sitting between the logo and the buttons. That's where the actionable judgement lives. Skip logo commentary unless it's missing.
+
+  How to count (no exceptions):
     • Look at the AtF screenshot. Identify the nav row at the top.
-    • Count the TEXT LINKS — words / phrases that look like nav items (Pricing, Products, Resources, About, Customers, etc.).
-    • Do NOT count the logo as a text link.
-    • Do NOT count obvious conversion BUTTONS as text links (a "Get a Demo" or "Start Free Trial" button with a coloured background is counted SEPARATELY from the links).
-    • Sign-in / Log-in / Create-Account links are NEUTRAL — list them but don't count them toward "is this nav too full".
-  Ideal nav pattern:
-    • Logo on the left (a link back to the home page — present on every well-designed landing page).
-    • 3 text links MAXIMUM, separate from the buttons. More than 3 text links is too many.
-    • 1 to 2 obvious BUTTONS on the right ("Get a Demo", "Book a Demo", "Get Started for Free", "Start Free Trial", "Sign Up"). The buttons should look visibly like buttons in the screenshot — coloured background, clearly clickable.
-  Scoring guidance:
-    • Logo missing → flag it; the nav reads as anonymous.
-    • Zero or 1 text link → flag as too sparse; visitors don't have orientation cues.
-    • Exactly 2-3 text links + 1-2 buttons + logo → ideal, call it a positive.
-    • 4+ text links (not counting the buttons) → too many — recommend trimming to 3 of the most useful (Pricing / Resources / About / Customers / etc.). Nav over-stuffing is a real conversion drag.
-    • No prominent button in the nav → recommend adding one of the conversion CTAs above.
+    • Count BUTTONS: visibly button-styled elements with a coloured background that look clickable.
+    • Count TEXT LINKS: plain text items like "Pricing", "Products", "Resources", "About", "Customers".
+    • The LOGO does NOT count as a text link or a button.
+    • Sign-in / Log-in / Create-Account links are NEUTRAL — list them if they exist but don't count them toward "is this nav too full".
+    • Do NOT count items that exist in the HTML but aren't visibly rendered in the nav bar (dropdown sub-menus, mobile-menu duplicates).
+
+  Worked example of correct counting:
+    Screenshot shows: "REVENU" wordmark on the left, then "The Revenu Method" / "Pricing" / "Our Libraries" in the middle, then a coloured "Book a Call" button on the right.
+    Correct count: logo YES + 3 text links (The Revenu Method, Pricing, Our Libraries) + 1 button (Book a Call). This hits the best-practice criteria — call it a positive.
+    Improvement suggestion if you wanted to push it: add a second button with a different intent ("View Pricing" or "Start Free Trial") to give visitors two conversion paths in the nav.
+
   Rules for the recommendation copy (MANDATORY):
-    • State the actual count at the start of any nav observation. Format: "The hero nav shows <N> text links plus <buttons>". Examples: "The hero nav shows 5 text links plus a 'Get a Demo' button" or "The hero nav has 2 text links (Pricing, Resources) plus a 'Book a Demo' button — a clean configuration".
-    • Do NOT call a nav "good" / "clean" / "lean" / "balanced" without stating the count. The count IS the verdict — readers should see the number, not just an adjective.
+    • State the BUTTON and TEXT-LINK counts at the start of any nav observation. Format: "The hero nav has <N> text links and <M> button(s)". Examples: "The hero nav has 3 text links (Pricing, Resources, About) and 1 'Book a Call' button — clean and on-spec." or "The hero nav has 5 text links and 1 button — too many text links, recommend trimming to 3."
+    • Do NOT lead with or dwell on the logo. The logo is a yes/no fact captured in the worksheet — it's not the interesting part of the nav. Only mention the logo if it's missing (rare) or unusual.
+    • Do NOT call a nav "good" / "clean" / "lean" / "balanced" without stating the counts. The counts ARE the verdict.
     • If the screenshot shows 4 or more text links, the nav is too full. You MUST recommend trimming to 3. Do NOT praise a 4+ link nav.
-    • If the nav genuinely hits the ideal (≤3 text links + 1-2 buttons + logo), call it a positive AND state the count.
+    • If the nav has only 1 button, you MAY (not must) suggest testing a second button with a different intent.
+    • If the nav genuinely hits the best-practice criteria (≤3 text links + at least 1 button, with the logo present), call it a positive AND state the counts.
     • If the screenshot is ambiguous (nav links partially hidden behind a hamburger), say so and recommend testing the full nav.
 - At least one conversion CTA visible above the fold (e.g. "Book a demo", "Get started for free", "Start free trial", "Get a quote"). This can be a button inside the hero form, a standalone button in the top-right, or both. SIGN-IN / LOG-IN / CREATE ACCOUNT are NOT considered a positive CTA — they're for existing users. Do not praise them and do not recommend adding them.
 - A clear conversion widget in the hero itself: an email form, a multi-step question form, a calculator, or a prominent primary CTA. A form-based widget scores HIGHER than just a button. Do NOT make claims about how the CTA button is "integrated" or "separate" from the form unless the screenshot clearly shows a problematic disconnect — a button stacked below a dropdown is a perfectly normal layout, not a negative. IMPORTANT: if the hero form is a multi-step / question-led form, the "Next" / "Continue" / "Submit" button INSIDE that form IS the CTA button. Do NOT claim "no standalone CTA button is visible" when the form already has a Next/Continue/Submit button — that button is the CTA. Multi-step forms intentionally have the CTA inside the form; a separate standalone button is not required.
@@ -525,8 +540,8 @@ Return ONLY valid JSON in this exact shape, no markdown fences, no preamble:
   "keyTakeaways": [ { "category": "<key>", "text": "<string>" }, ... ]
 }`;
 
-export const STYLE = `WRITING STYLE RULES (apply to every string you return):
-- NEVER use em dashes (—) or en dashes (–) anywhere in headlines, notes, or takeaways. Em dashes read as AI-generated. Use commas, periods, parentheses, or a colon instead.
+export const STYLE = `WRITING STYLE RULES (apply to every string you return — HEADLINE, NOTES, TAKEAWAY TEXT, every field):
+- ABSOLUTELY NO em dashes (—) or en dashes (–) ANYWHERE in your output. Not in headlines, not in notes, not in takeaways, not even mid-sentence. Em dashes read as AI-generated and the report has a zero-tolerance policy on them. If you would naturally use an em dash, use a COMMA instead. If a comma doesn't fit, use a period to split into two sentences, or use parentheses, or a colon. Check your output before returning it — if you see a single em dash anywhere, rewrite that line.
 - Prefer plain, direct sentences. No corporate filler.
 - Use British English (analyse, optimise, colour) to match Revenu Agency house style.`;
 

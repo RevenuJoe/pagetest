@@ -1138,6 +1138,29 @@ const CHART_METRIC_CONFIGS: PsiChartMetricConfig[] = [
     getColor: (v) => (v == null ? "#c4c0b6" : speedIndexBandColor(v)),
   },
   {
+    // First Contentful Paint — time to first piece of content appearing.
+    // Good ≤ 1.8s, poor > 3s (Lighthouse).
+    key: "fcp",
+    title: "First Paint",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
+        <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
+      </svg>
+    ),
+    yMax: 6,
+    yTickFormat: (v) => (v === 0 ? "0" : `${v % 1 === 0 ? v : v.toFixed(1)}s`),
+    getValue: (b) => (b?.fcpMs == null ? null : b.fcpMs / 1000),
+    formatValueLabel: (v) => (v == null ? "—" : `${v.toFixed(2)}s`),
+    getColor: (v) =>
+      v == null
+        ? "#c4c0b6"
+        : v <= 1.8
+        ? scoreColor(95)
+        : v > 3
+        ? scoreColor(30)
+        : scoreColor(60),
+  },
+  {
     // Largest Contentful Paint — time to paint the biggest visible
     // element. Good ≤ 2.5s, poor > 4s (Core Web Vital).
     key: "lcp",
@@ -1159,29 +1182,6 @@ const CHART_METRIC_CONFIGS: PsiChartMetricConfig[] = [
         : v <= 2.5
         ? scoreColor(95)
         : v > 4
-        ? scoreColor(30)
-        : scoreColor(60),
-  },
-  {
-    // First Contentful Paint — time to first piece of content appearing.
-    // Good ≤ 1.8s, poor > 3s (Lighthouse).
-    key: "fcp",
-    title: "First Paint",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden>
-        <path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z" />
-      </svg>
-    ),
-    yMax: 6,
-    yTickFormat: (v) => (v === 0 ? "0" : `${v % 1 === 0 ? v : v.toFixed(1)}s`),
-    getValue: (b) => (b?.fcpMs == null ? null : b.fcpMs / 1000),
-    formatValueLabel: (v) => (v == null ? "—" : `${v.toFixed(2)}s`),
-    getColor: (v) =>
-      v == null
-        ? "#c4c0b6"
-        : v <= 1.8
-        ? scoreColor(95)
-        : v > 3
         ? scoreColor(30)
         : scoreColor(60),
   },

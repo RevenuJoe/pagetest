@@ -29,6 +29,13 @@ import {
   filterTakeaways,
   runContradictionSweep,
 } from "./noteFilters";
+import {
+  computeMasterGroundTruth,
+  formatGroundTruthFull,
+  attachVisualGroundTruth,
+  type MasterGroundTruth,
+} from "./groundTruth";
+import { runVisualGroundTruthPass } from "./visualGroundTruth";
 
 const MODEL = "claude-sonnet-4-5";
 
@@ -123,6 +130,11 @@ export interface ClaudeInput {
     overallSavingsMs?: number;
     overallSavingsBytes?: number;
   }>;
+  /** Precomputed master ground-truth object (HTML + PSI + vision pre-pass
+   *  merged). When present, helpers prefer this over recomputing from
+   *  `structure` on every call. Populated by `analyzeWithClaude` after
+   *  the vision pre-pass runs. */
+  master?: MasterGroundTruth;
 }
 
 export type ClaudeChecks = Pick<
@@ -175,15 +187,44 @@ export async function analyzeWithClaude(
     url: input.url,
   };
 
+  // Phase 0: VISION PRE-PASS. One small Claude call against the
+  // screenshots that produces deterministic visual facts (nav
+  // worksheet, hero pattern, AtF social proof, mid-page CTA layout,
+  // bottom form visible, hero headline visible). These go into the
+  // GROUND TRUTH block as authoritative flags so the five dim calls
+  // never have to interpret pixels themselves. Non-fatal: on any
+  // failure we get null and the dim prompts fall back to their
+  // "decide visually" rules.
+  const visualGT = await runVisualGroundTruthPass(
+    client,
+    input.desktopScreenshotB64,
+    input.desktopFullPageB64,
+    input.mobileScreenshotB64,
+  );
+  const masterGT: MasterGroundTruth = (() => {
+    const base = computeMasterGroundTruth({
+      url: input.url,
+      title: input.title,
+      metaDescription: input.metaDescription,
+      structure: input.structure,
+    });
+    return visualGT ? attachVisualGroundTruth(base, visualGT) : base;
+  })();
+  // Attach the master GT object onto the input so callDimension /
+  // callTakeaways / runCriticPass can pull the vision-augmented
+  // formatter output instead of recomputing the master object every
+  // call. Each helper uses input.master via buildPromptText below.
+  const inputWithMaster: ClaudeInput = { ...input, master: masterGT };
+
   // Phase 1: fan out the 5 DIMENSION calls in parallel. Each call sees
   // the page evidence and returns its own { score, headline, notes }.
   const [contentRaw, digestibilityRaw, croRaw, aboveTheFoldRaw, mobileRaw] =
     await Promise.all([
-      callDimension(client, input, "content"),
-      callDimension(client, input, "digestibility"),
-      callDimension(client, input, "cro"),
-      callDimension(client, input, "aboveTheFold"),
-      callDimension(client, input, "mobile"),
+      callDimension(client, inputWithMaster, "content"),
+      callDimension(client, inputWithMaster, "digestibility"),
+      callDimension(client, inputWithMaster, "cro"),
+      callDimension(client, inputWithMaster, "aboveTheFold"),
+      callDimension(client, inputWithMaster, "mobile"),
     ]);
 
   // Phase 1b: deterministic filtering. Run every dimension's notes
@@ -214,12 +255,12 @@ export async function analyzeWithClaude(
   const dimensionResultsAfterFilter = { content, digestibility, cro, aboveTheFold, mobile };
   const dimensionsCriticPromise = runCriticPass(
     client,
-    input,
+    inputWithMaster,
     dimensionResultsAfterFilter,
     [],
     "dimensions",
   );
-  const takeawaysPromise = callTakeaways(client, input, dimensionResultsAfterFilter);
+  const takeawaysPromise = callTakeaways(client, inputWithMaster, dimensionResultsAfterFilter);
 
   // As soon as Takeaways comes back, filter it and kick off the
   // takeaways-critic. The dims-critic may still be running — both
@@ -522,14 +563,14 @@ async function runCriticPass(
           newHeadline = "";
           console.warn(`[critic] DROP headline dim="${dim}" reason="${v.reason ?? ""}" text="${cand.text}"`);
         } else if (v?.decision === "REWRITE" && v.text) {
-          newHeadline = v.text;
+          newHeadline = scrubEmDashes(v.text);
           console.warn(`[critic] REWRITE headline dim="${dim}" reason="${v.reason ?? ""}" before="${cand.text}" after="${v.text}"`);
         }
       } else if (cand.kind === "note") {
         if (v?.decision === "DROP") {
           console.warn(`[critic] DROP note dim="${dim}" reason="${v.reason ?? ""}" text="${cand.text}"`);
         } else if (v?.decision === "REWRITE" && v.text) {
-          newNotes.push(v.text);
+          newNotes.push(scrubEmDashes(v.text));
           console.warn(`[critic] REWRITE note dim="${dim}" reason="${v.reason ?? ""}" before="${cand.text}" after="${v.text}"`);
         } else {
           newNotes.push(cand.text);
@@ -557,7 +598,7 @@ async function runCriticPass(
       return;
     }
     if (v?.decision === "REWRITE" && v.text) {
-      newTakeaways.push({ ...tk, text: v.text });
+      newTakeaways.push({ ...tk, text: scrubEmDashes(v.text) });
       console.warn(`[critic] REWRITE takeaway reason="${v.reason ?? ""}" before="${cand.text}" after="${v.text}"`);
       return;
     }
@@ -597,7 +638,7 @@ function buildCriticPrompt(): string {
     "  - HERO-FORM-CHANGE TEST-FRAMING rule: any takeaway, note, or headline that recommends CHANGING the hero form (dropdown -> tick boxes, one-field -> dropdown / tick boxes, big-form -> simpler widget) MUST be framed as an A/B test. If the candidate leads with 'Convert the…', 'Replace the…', 'Change the…', 'Switch the…', or any other definitive opener about a hero form change, REWRITE it to lead with 'Test converting…', 'A/B test…', 'Run an A/B test of…' instead. The variant might not win — the recommendation is to RUN A TEST, not to ship a fix. Worked failure mode: 'Convert the hero's dropdown form to four visible tick boxes' must become 'Test converting the hero's dropdown form to four visible tick boxes against the existing version' or 'A/B test 4-or-fewer tick boxes against the existing hero dropdown'. Same rule applies to recommendations that swap one form type for another (e.g. 'Replace the one-field email form with a multi-step quiz' → 'Test a multi-step quiz against the current one-field email form').",
     "  - ABOVE-THE-FOLD SCOPE rule: when auditing an aboveTheFold dimension candidate (headline or note), DROP it if it describes, praises, or critiques anything that lives BELOW the fold or further down the page. AtF only judges what's visible in the AtF viewport in the screenshots. Phrases like 'below the fold', 'further down the page', 'the product screenshot below the fold', 'the page also includes…', 'after the hero…', 'scrolling down reveals…' are out of scope for this dimension. If the candidate's substantive claim is about something inside the AtF viewport but uses one of those phrasings, REWRITE to remove the below-the-fold framing. If the entire note is about something below the fold, DROP it.",
     "  - BOTTOM-FORM PRESENCE rule: DROP or REWRITE any candidate (note, headline, or takeaway) that claims the page has 'no bottom form', 'no bottom lead-gen form', 'no bottom conversion form', or that 'a bottom form is missing' WHEN the per-<form> GROUND TRUTH list shows ANY form at 'late' or 'middle' position OR the full-page screenshot shows a form (even a one-field email input) above the footer. A one-field email form at the bottom IS a bottom lead-gen form for CRO scoring — it qualifies the page for the TOP + BOTTOM CONVERSION COMBO bonus. The claim contradicts the data; drop it. If the candidate's substantive point is something else (e.g. 'the bottom form could be stronger') but it uses the false 'no bottom form' framing, rewrite to remove the false claim while keeping the supportable observation.",
-    "  - NAV COUNT rule (Above-the-fold dim only): any AtF candidate that comments on the nav MUST state the actual count of visible text links from the AtF screenshot. If the candidate calls the nav 'good' / 'clean' / 'lean' / 'balanced' / 'minimal' WITHOUT stating the link count, REWRITE to include the count or DROP if the count contradicts the praise. The ideal is 3 text links maximum (excluding logo and conversion buttons). If the candidate praises a nav that has 4 or more text links in the screenshot, that's WRONG — the rule is 4+ text links is too many. Rewrite or drop. Counts: logo doesn't count as a text link; obvious conversion buttons ('Get a Demo', 'Start Free Trial', 'Book a Demo' with coloured backgrounds) are counted separately from the text links.",
+    "  - NAV COUNT rule (Above-the-fold dim only): any AtF candidate that comments on the nav MUST state the actual count of visible TEXT LINKS and BUTTONS from the AtF screenshot. The logo is not a text link, not a button — capture it as a yes/no fact only and do NOT lead with or dwell on it in the commentary. If the candidate calls the nav 'good' / 'clean' / 'lean' / 'balanced' / 'minimal' WITHOUT stating the text-link and button counts, REWRITE to include the counts or DROP if the counts contradict the praise. The ideal is 3 text links maximum (excluding logo and conversion buttons). If the candidate praises a nav that has 4 or more text links in the screenshot, that's WRONG — the rule is 4+ text links is too many. Rewrite or drop. Counts: logo doesn't count as a text link; obvious conversion buttons ('Get a Demo', 'Start Free Trial', 'Book a Demo' with coloured backgrounds) are counted separately from the text links.",
     "",
     "Return ONLY valid JSON, no markdown fences, no preamble, in this exact shape:",
     "",
@@ -856,323 +897,77 @@ function buildUserBlocks(
   return blocks;
 }
 
+/**
+ * Build the GROUND TRUTH + structural summary + body text string sent
+ * to Claude dim / takeaways / critic calls.
+ *
+ * Task #86 refactor: the heavy lifting (CTA classification, long
+ * heading detection, short dropdown filtering, per-form formatting,
+ * the giant return string) moved into `lib/groundTruth.ts`. This
+ * function is now a thin wrapper that builds the master ground-truth
+ * object and asks the formatter for the full string. Output is
+ * byte-identical to the pre-refactor version.
+ *
+ * Slicing the GT per dimension is Task #88 — the master object is
+ * already structured to support that without further changes here.
+ */
 function buildPromptText(input: ClaudeInput, bodyTextCharLimit = 60_000): string {
-  const s = input.structure;
-  // Pretty-print the parsed form field inventory. Limit to 25 lines so the
-  // prompt stays compact; the count line tells the model the full total.
-  const fieldLines = s.formFields.slice(0, 25).map((f) => {
-    const parts: string[] = [`<${f.tag}>`];
-    if (f.type) parts.push(`type="${f.type}"`);
-    if (f.name) parts.push(`name="${f.name}"`);
-    if (f.id) parts.push(`id="${f.id}"`);
-    if (f.placeholder) parts.push(`placeholder="${f.placeholder}"`);
-    if (f.tag === "select" && typeof f.optionCount === "number") {
-      parts.push(`options=${f.optionCount}`);
-      if (f.optionLabels && f.optionLabels.length > 0) {
-        parts.push(`[${f.optionLabels.map((l) => `"${l}"`).join(", ")}]`);
-      }
-    }
-    return `  - ${parts.join(" ")}`;
-  });
-  const formFieldsBlock =
-    s.formFields.length === 0
-      ? "  (no form fields parsed from the HTML)"
-      : fieldLines.join("\n") +
-        (s.formFields.length > 25
-          ? `\n  ...and ${s.formFields.length - 25} more`
-          : "");
-
-  // Hero-form dropdowns: ANY <select> on the page is a candidate for
-  // replacing with visible TICK BOXES in the hero form. The
-  // recommendation is independent of how many options the source
-  // dropdown has — the IMPLEMENTATION (the tick-box set the marketer
-  // ships) is what's capped at 4. So even an 8-option dropdown can
-  // become "tick boxes showing the 4 most relevant choices". 2 is the
-  // minimum because a 1-option dropdown isn't really a choice.
-  const shortDropdowns = s.formFields.filter(
-    (f) =>
-      f.tag === "select" &&
-      typeof f.optionCount === "number" &&
-      f.optionCount !== null &&
-      f.optionCount >= 2,
-  );
-  const shortDropdownsBlock = shortDropdowns
-    .slice(0, 6)
-    .map((f) => {
-      const id = f.name ?? f.id ?? "(unnamed)";
-      const labels =
-        f.optionLabels && f.optionLabels.length > 0
-          ? ` — options: ${f.optionLabels.map((l) => `"${l}"`).join(", ")}`
-          : "";
-      return `  - <select> ${id} — ${f.optionCount} options${labels}`;
-    })
-    .join("\n");
-
-  // Per-<form> breakdown so Claude knows exactly which fields belong to
-  // which form. Position labels (early / middle / late) come from the
-  // form's byte offset in the HTML, giving Claude a "hero vs bottom"
-  // hint without having to guess from the screenshot.
-  const formsBlock = s.forms
-    .map((f) => {
-      const positionLabel =
-        f.position === "early"
-          ? "early in the page (likely hero / above-the-fold)"
-          : f.position === "late"
-          ? "late in the page (likely bottom / footer area)"
-          : "middle of the page";
-      const fieldSummary =
-        f.fields.length === 0
-          ? "(no fields detected inside this <form>)"
-          : f.fields
-              .slice(0, 12)
-              .map((field) => {
-                const parts: string[] = [`<${field.tag}>`];
-                if (field.type) parts.push(`type="${field.type}"`);
-                if (field.name) parts.push(`name="${field.name}"`);
-                if (field.placeholder) parts.push(`placeholder="${field.placeholder}"`);
-                if (
-                  field.tag === "select" &&
-                  typeof field.optionCount === "number"
-                ) {
-                  parts.push(`options=${field.optionCount}`);
-                }
-                return `      • ${parts.join(" ")}`;
-              })
-              .join("\n");
-      const cta = f.submitLabel ? ` (submit: "${f.submitLabel}")` : "";
-      return `  - Form #${f.index + 1} — ${positionLabel}, ${f.fields.length} field${f.fields.length === 1 ? "" : "s"}${cta}:\n${fieldSummary}`;
-    })
-    .join("\n");
-
-  // Section-heading length check (digestibility). Best practice is
-  // section headlines (H1/H2/H3) of 10 words or fewer — anything
-  // longer scans poorly. We list every offending heading with its
-  // word count so Claude can quote concrete examples instead of
-  // wave-handing "some headlines run long".
-  const HEADING_WORD_CAP = 10;
-  const headingsWithCounts = s.headings.map((text) => ({
-    text,
-    wordCount: text.trim().split(/\s+/).filter(Boolean).length,
-  }));
-  const longHeadings = headingsWithCounts.filter(
-    (h) => h.wordCount > HEADING_WORD_CAP,
-  );
-  const longHeadingsBlock = longHeadings
-    .slice(0, 12)
-    .map((h) => `    • ${h.wordCount} words: "${h.text}"`)
-    .join("\n");
-
-  // CTA classification (CRO). The page's CTAs are split into two
-  // buckets that fulfil different user intents:
-  //   - "book-time" — high-commitment, schedule-something CTAs like
-  //     "Book a Demo", "Schedule a Call", "Talk to Sales".
-  //   - "immediate" — low-commitment, do-it-now CTAs like
-  //     "Start free trial", "Sign up", "View Pricing", "Get a Quote".
-  // The ideal landing page pairs ONE of each side by side so visitors
-  // can pick whichever matches their intent. Solo primary CTAs lose
-  // the visitors who would have clicked the other variant. Surfaced
-  // in GROUND TRUTH so Claude can recommend testing a secondary CTA
-  // when a single CTA type dominates.
-  const BOOK_TIME_RE =
-    /\b(book|schedule|set\s*up|reserve|request|talk\s*to|chat\s*with|meet\s*with|speak\s*to|contact)\b[^.]{0,25}\b(demo|call|sales|meeting|consultation|expert|specialist|chat|us|team)\b/i;
-  const BOOK_TIME_EXACT_RE =
-    /^(get\s+a\s+demo|book\s+a\s+demo|book\s+demo|schedule\s+demo|request\s+a\s+demo|see\s+a\s+demo|talk\s+to\s+sales|contact\s+sales|book\s+a\s+meeting)$/i;
-  const IMMEDIATE_RE =
-    /\b(start|try|begin|launch|free\s*trial|sign\s*up|create\s*(an?\s*)?account|get\s*started|view\s*pricing|see\s*pricing|check\s*pricing|get\s*pricing|get\s*a\s*quote|get\s*your\s*quote|get\s*quote|build\s*your\s*own|join\s*free|join\s*now|download)\b/i;
-  const classifyCta = (label: string): "book-time" | "immediate" | "neither" => {
-    const trimmed = label.trim();
-    if (!trimmed) return "neither";
-    if (BOOK_TIME_EXACT_RE.test(trimmed) || BOOK_TIME_RE.test(trimmed)) return "book-time";
-    if (IMMEDIATE_RE.test(trimmed)) return "immediate";
-    return "neither";
-  };
-  const ctaBuckets = { bookTime: [] as string[], immediate: [] as string[], other: [] as string[] };
-  for (const t of s.ctaTexts) {
-    const b = classifyCta(t);
-    if (b === "book-time") ctaBuckets.bookTime.push(t);
-    else if (b === "immediate") ctaBuckets.immediate.push(t);
-    else ctaBuckets.other.push(t);
-  }
-  // Dedupe (a "Get a Demo" button often appears 5-8 times on a page).
-  const dedupe = (arr: string[]) =>
-    Array.from(new Set(arr.map((s) => s.trim()))).slice(0, 12);
-  const bookTimeUnique = dedupe(ctaBuckets.bookTime);
-  const immediateUnique = dedupe(ctaBuckets.immediate);
-  const otherUnique = dedupe(ctaBuckets.other);
-
-  return [
-    `URL: ${input.url}`,
-    `Title: ${input.title ?? "(none)"}`,
-    `Meta description: ${input.metaDescription ?? "(none)"}`,
-    "",
-    "Structural summary:",
-    `- H1: ${s.h1Count}, H2: ${s.h2Count}, H3: ${s.h3Count}`,
-    `- Paragraphs: ${s.paragraphCount}`,
-    `- Images: ${s.imgCount} (missing alt: ${s.imgMissingAlt})`,
-    `- Links: ${s.linkCount}`,
-    `- Buttons: ${s.buttonCount}`,
-    `- Forms: ${s.formCount}, form fields: ${s.inputCount}`,
-    `- <nav>: ${s.hasNav}, <footer>: ${s.hasFooter}`,
-    `- Word count: ${s.wordCount}`,
-    "",
-    "GROUND TRUTH — facts parsed directly from the page HTML. Treat these as authoritative. Do NOT contradict them. Do NOT claim the page has elements that aren't listed here, and do NOT recommend adding elements that ARE listed here.",
-    "",
-    `- Form contains a phone-number field: ${s.hasPhoneField ? "YES" : "NO"}`,
-    `- Form contains an email field: ${s.hasEmailField ? "YES" : "NO"}`,
-    `- Total fillable form fields on the page: ${s.formFields.length}`,
-    `- Total <form> elements on the page: ${s.formCount}`,
-    "- Form fields on the page (tag + attributes, flat list across all forms):",
-    formFieldsBlock,
-    "",
-    `- <form> elements detected on the page, in document order: ${s.forms.length}`,
-    s.forms.length > 0 ? formsBlock : "  (no <form> tags found — fields may be wrapped in <div> with JS handlers; defer to the screenshot to identify forms)",
-    "- IMPORTANT — anti-hallucination rule for forms:",
-    "    When describing what fields a SPECIFIC form has (hero form, bottom form, footer form, etc.), the fields you name MUST appear in the per-<form> breakdown above for that form's position. Do NOT invent fields like 'first name', 'last name', 'company name', 'phone' if those fields aren't listed for the form you're describing. If the bottom form has 1 email input, say 'a one-field email form', not 'a full lead-gen form with first name, last name, company, and email'. If the page has zero <form> tags but you can clearly see a form in the screenshot, describe it from the screenshot but flag that the HTML couldn't confirm it.",
-    "- IMPORTANT — bottom-form check (MANDATORY before any 'no bottom form' / 'bottom form is missing' / 'add a bottom lead-gen form' recommendation):",
-    "    Before writing ANY claim that the page has no bottom form, you MUST check BOTH:",
-    "      (1) The per-<form> breakdown above. Look for forms at 'late' position (likely bottom / footer area) AND 'middle' position. A 'late' form is a bottom form even if it only has one field (one-field email forms count!). A 'middle' form near the end of the candidate list also counts.",
-    "      (2) The FULL-PAGE SCREENSHOT. Scroll your visual attention to the bottom of the page above the footer. If you can see any form input there — even a single email field next to a 'Get a Demo' / 'Start Free' button — that IS a bottom form.",
-    "    If EITHER check confirms a bottom form exists, do NOT say it's missing. Describe what's there instead (e.g. 'the page has a one-field email form above the footer'). Only claim 'no bottom form' when BOTH the per-<form> list is empty of late/middle forms AND the screenshot shows no form near the footer.",
-    "    A one-field email form at the bottom IS a bottom lead-gen form for CRO scoring purposes — it qualifies the page for the TOP + BOTTOM CONVERSION COMBO bonus. Don't dismiss it because it's small.",
-    "",
-    `- Hero-form dropdown candidates for tick-box conversion (any <select> with 2+ options): ${shortDropdowns.length}`,
-    shortDropdowns.length > 0 ? shortDropdownsBlock : "  (none)",
-    "- NOTE: any recommendation about converting a hero-form dropdown into visible TICK BOXES belongs in the CRO dimension only, NOT in Above-the-fold. The CRO criteria document explains when this applies.",
-    "  Always use the phrase 'tick boxes' for this conversion. Do NOT say 'radio buttons', 'radio-button group', 'chips', or 'pills'.",
-    "  Always phrase the recommendation as 'display 4 or fewer tick boxes' — this is the IMPLEMENTATION cap, independent of how many options the source dropdown has. If the dropdown has 3 options, recommend 3 tick boxes. If it has 8 options, recommend 4 tick boxes showing the most useful choices (or restructuring the question to reduce the option set to 4). Never recommend more than 4 tick boxes in the hero form, no matter how many options the source dropdown has.",
-    "  ALWAYS frame the recommendation as an A/B TEST, never as a definitive change. Use openings like 'Test converting…', 'A/B test the…', 'Run an A/B test of…' — do NOT lead with 'Convert the…', 'Replace the…', 'Change the…'. The variant might not win; the recommendation is to RUN A TEST and measure the conversion delta. This applies whether the recommendation lives in a dimension note, a headline, or a key recommendation.",
-    "",
-    "- Navigation: nav commentary is OFF-LIMITS in every dimension EXCEPT Above-the-fold. Content / Digestibility / CRO / Mobile must NOT count nav links, describe whether the nav is lean / bulky, list nav labels, or recommend adding / removing nav items.",
-    "- Navigation data (for the Above-the-fold dim only — IGNORE in other dimensions):",
-    `    HTML-extracted nav link count (inside <nav>): ${s.navLinks.length}${s.navLinks.length > 0 ? ` — labels: ${s.navLinks.slice(0, 10).map((l) => `"${l}"`).join(", ")}` : ""}`,
-    `    HTML-extracted header CTA / link count (inside <header>): ${s.headerCtaTexts.length}${s.headerCtaTexts.length > 0 ? ` — labels: ${s.headerCtaTexts.slice(0, 10).map((l) => `"${l}"`).join(", ")}` : ""}`,
-    "    IMPORTANT — counting the nav in the AtF dim: the HTML counts above are a STARTING POINT, not the authority. CSS-hidden links and sub-menu items can show up in the HTML but not in the rendered hero. The ABOVE-THE-FOLD SCREENSHOT is the only authority for what the visitor actually sees. You MUST count the text links that are visibly in the hero nav (excluding the logo and any obvious conversion BUTTONS like 'Get a Demo' / 'Start Free Trial' which are counted separately). State the count explicitly in your AtF nav note (e.g. 'The hero nav shows 5 text links plus a Get a Demo button').",
-    "- See CRITERIA_ABOVE_THE_FOLD for the full nav checklist (ideal: logo + 3 text links max + 1-2 conversion buttons).",
-    "",
-    `- Total <img> elements on the page: ${s.imgCount}`,
-    `- Images missing alt text: ${s.imgMissingAlt}`,
-    `- Image formats (deduped by URL across <img>, srcset, and CSS url()):`,
-    s.imageFormats.png > 0 ? `    PNG: ${s.imageFormats.png}` : "",
-    s.imageFormats.jpeg > 0 ? `    JPEG: ${s.imageFormats.jpeg}` : "",
-    s.imageFormats.gif > 0 ? `    GIF: ${s.imageFormats.gif}` : "",
-    s.imageFormats.webp > 0 ? `    WebP: ${s.imageFormats.webp}` : "",
-    s.imageFormats.avif > 0 ? `    AVIF: ${s.imageFormats.avif}` : "",
-    s.imageFormats.svg > 0 ? `    SVG: ${s.imageFormats.svg}` : "",
-    `    Legacy raster total (PNG+JPEG+GIF): ${s.imageFormats.legacyRaster}`,
-    `    Modern raster total (WebP+AVIF): ${s.imageFormats.modernRaster}`,
-    s.imageAlts.length > 0
-      ? `- Image alt text (verbatim, up to 20 shown): ${s.imageAlts.slice(0, 20).map((a) => `"${a}"`).join(", ")}`
-      : "- Image alt text: (none captured)",
-    "",
-    `- Social proof throughout the page (full-site HTML scan): ${s.socialProofPresent ? "YES" : "NO"}`,
-    "  This is deterministic: we found trust markers (Trusted by / G2 / customer counts / case studies / testimonials / named brands) or 3+ brand-like image alts somewhere on the page. If this is YES, do NOT under any circumstances recommend adding social proof anywhere on the page — it is already on the page.",
-    "",
-    "- Above-the-fold social proof (judge from the screenshots): YOU determine this from the attached AtF screenshots. If you see ANY logos, trust line, ratings, badges, named-customer brands, or 'Trusted by N' copy visible inside the AtF viewport — including a logo strip cropped at the bottom edge of the hero — the answer is YES and social proof IS above the fold. Only answer NO when the AtF viewport is genuinely free of trust markers. Do NOT use any HTML-position heuristic for this — the screenshot is the only authority.",
-    "  WHEN ABOVE-THE-FOLD SOCIAL PROOF = YES: do NOT say social proof is missing / appears below the fold / should be moved into the hero. Score the page positively for it.",
-    "  WHEN ABOVE-THE-FOLD SOCIAL PROOF = NO but throughout-the-page = YES: you may suggest surfacing the existing social proof higher, but phrase it carefully and never claim the page has no social proof.",
-    "",
-    `- Above-the-fold contains interactive controls (checkbox / radio / quiz / multi-step): ${s.hasInteractiveAboveFold ? "YES" : "NO"}`,
-    "- IMPORTANT: If 'interactive controls' is YES, the page is intentionally leading with an interactive flow (quiz, qualifier, multi-step form) where the CTA is the next step in the interaction. Treat this as a GOOD above-the-fold pattern. Do NOT say the hero is static, boring, lacks interactivity, or is missing a primary CTA — the interactive control IS the primary CTA. Score the above-the-fold dimension on the quality of the interaction, not on the absence of a traditional headline + button layout.",
-    "",
-    `- Page appears to be client-rendered with no server HTML (SPA shell): ${s.isClientRenderedShell ? "YES" : "NO"}`,
-    "- IMPORTANT: If the SPA shell flag is YES, the HTML returned by our server-side fetch was a thin JavaScript-only shell. All ground-truth flags derived from the raw HTML (social proof presence, interactive controls, image alts, body-text excerpts, form fields) may UNDERREPORT what's actually on the rendered page. The SCREENSHOTS are rendered by a real browser and DO show the live page — trust the screenshots over the HTML-derived flags on this page. Specifically: if the screenshot clearly shows logos / testimonials / quizzes / forms that the ground-truth flags say are absent, the screenshot is correct and the flags are wrong.",
-    "",
-    `- Number of CTA-like buttons/links found: ${s.ctaTexts.length}`,
-    s.ctaTexts.length > 0
-      ? `- CTA labels (verbatim, up to 20 shown): ${s.ctaTexts.slice(0, 20).map((t) => `"${t}"`).join(", ")}`
-      : "- CTA labels: (none)",
-    "",
-    "- CTA intent classification (the page is split into two buckets that serve different user intents):",
-    `    Book-time CTAs (high-commitment, e.g. 'Get a Demo' / 'Book a Demo' / 'Talk to Sales'): ${bookTimeUnique.length} unique label${bookTimeUnique.length === 1 ? "" : "s"}`,
-    bookTimeUnique.length > 0
-      ? `      labels: ${bookTimeUnique.map((t) => `"${t}"`).join(", ")}`
-      : "      (none — no book-a-time CTAs detected)",
-    `    Immediate-action CTAs (low-commitment do-it-now, e.g. 'Start free trial' / 'View pricing' / 'Get a quote' / 'Sign up'): ${immediateUnique.length} unique label${immediateUnique.length === 1 ? "" : "s"}`,
-    immediateUnique.length > 0
-      ? `      labels: ${immediateUnique.map((t) => `"${t}"`).join(", ")}`
-      : "      (none — no immediate-action CTAs detected)",
-    `    Other CTAs (don't fit either bucket cleanly): ${otherUnique.length} unique label${otherUnique.length === 1 ? "" : "s"}`,
-    otherUnique.length > 0
-      ? `      labels (up to 12 shown): ${otherUnique.map((t) => `"${t}"`).join(", ")}`
-      : "      (none)",
-    "- IMPORTANT — SECONDARY-CTA PAIRING RULE (CRO, mid-page focus):",
-    "    Ideal landing pages pair ONE book-time CTA with ONE immediate-action CTA side by side so the visitor can pick whichever matches their intent. Two CTAs work HARDER than one — they don't compete, they capture different segments.",
-    "    SCOPE: This recommendation is specifically about MID-PAGE CTAs — the buttons sitting after content sections (feature blocks, stats blocks, FAQ section, role-tabs, etc.) BETWEEN the hero and the footer. Do NOT apply it to:",
-    "      • the navigation / header CTA (usually a single 'Get a Demo' top-right — that's the expected pattern, don't recommend a second one there);",
-    "      • the hero / above-the-fold CTA (often paired with a form or qualifying widget — different criterion applies, see the hero-form patterns above);",
-    "      • CTAs inside a form (Submit / Next / Continue buttons aren't standalone CTAs).",
-    "    HOW TO JUDGE THIS — rely MAINLY on the FULL-PAGE SCREENSHOT, not the HTML CTA list above. The HTML count tells you how many CTAs exist and what labels they use, but it CANNOT tell you whether they're rendered SOLO (one button alone at the end of a section) or PAIRED (two buttons side by side). Only the screenshot shows visual layout, so the screenshot is the authority for this rule. Use the HTML CTA labels above as a HINT for what intents the page currently covers, then look at the full-page screenshot to identify which mid-page CTAs are solo and which are already paired.",
-    "    If most of the mid-page CTAs appear solo in the screenshot, AND the page's CTA set leans heavily on one intent bucket (only book-time CTAs, or only immediate-action), recommend TESTING a SECONDARY CTA alongside the mid-page primary. Good secondary CTAs to suggest:",
-    "      • If the page already has 'Get a Demo' / 'Book a Demo' style CTAs → suggest pairing with an immediate-action CTA: 'Start free trial', 'View pricing', 'Get a quote', or 'Sign up'.",
-    "      • If the page only has immediate-action CTAs → suggest pairing with a book-time CTA: 'Book a demo' or 'Talk to sales'.",
-    "    Phrase the recommendation as a TEST (not a definitive change). Make it PROMINENT when many of the MID-PAGE CTAs are solo — this is one of the highest-impact tweaks a marketing page can make.",
-    "",
-    `- Total headings (H1/H2/H3) on the page: ${s.headings.length}`,
-    `- Total <h1> elements on the page: ${s.h1Texts.length}`,
-    s.h1Texts.length > 0
-      ? `- All <h1> elements in HTML SOURCE order (NOT necessarily visual order — see rule below):\n${s.h1Texts.map((t, i) => `    ${i + 1}. "${t}"`).join("\n")}`
-      : "- All <h1> elements: (none)",
-    "- IMPORTANT — HERO HEADLINE RULE:",
-    "    The H1 list above is in HTML SOURCE order, NOT visual page order. On pages where CSS reorders sections (very common on modern landing-page builders, Webflow, Framer, etc.), the FIRST <h1> in the source can actually render at the BOTTOM of the page, and a later <h1> can be the visual hero. The hero headline is whichever heading you can see at the TOP of the above-the-fold screenshot.",
-    "    When you quote the hero headline in a note, the quoted text MUST exactly match what is visible at the top of the AtF screenshot. Do NOT use the first <h1> from the list above as a shortcut — verify visually first. If the screenshot is ambiguous, do NOT quote a specific hero headline at all; describe the hero without quoting.",
-    "    Worked failure mode you must avoid: a page has 10 <h1>s. The FIRST in source order is the bottom-of-page CTA section's heading. The visual hero is the 4th <h1> in source order, which is what the AtF screenshot shows at the top. Quoting the 1st <h1> as the hero headline is WRONG. Always read the hero headline from the screenshot.",
-    "",
-    `- Section headings (H1/H2/H3) longer than ${HEADING_WORD_CAP} words, parsed from HTML: ${longHeadings.length} out of ${s.headings.length} total`,
-    longHeadings.length > 0
-      ? longHeadingsBlock
-      : "    (none — every heading parsed from the HTML is within the 10-word best practice)",
-    "- IMPORTANT — SECTION-HEADING LENGTH RULE (digestibility):",
-    "    Best practice is section headings of 10 WORDS OR FEWER. Anything longer scans badly — readers can't grasp the section's point at a glance.",
-    "    The count above is parsed from HTML <h1>/<h2>/<h3> tags. THE FULL-PAGE SCREENSHOT IS THE AUTHORITY. Many pages style <div> elements to look like section headings (or label real headings with the wrong level), so HTML tag count can be misleading. Cross-reference: look at the full-page screenshot and confirm each long heading from the list actually renders as a visible section heading. Conversely, if the screenshot shows visible section headings that AREN'T in this list (because they're styled <div>s), count those too and add them to your assessment.",
-    "    When reporting in the digestibility notes, say HOW MANY section headings exceed 10 words and quote 1-2 of the longest as examples (e.g. '4 section headings run longer than 10 words; the worst at 17 words is \"...\"'). Do NOT vaguely say 'some headlines are long' — give the count.",
-    "",
-    `- Paragraphs (<p> elements outside FAQ blocks): ${s.paragraphWordCounts.length} total, ${s.longParagraphs.length} exceed 50 words`,
-    s.longParagraphs.length > 0
-      ? s.longParagraphs
-          .slice(0, 8)
-          .map((p) => `    • ${p.wordCount} words: "${p.snippet}…"`)
-          .join("\n")
-      : "    (none — every paragraph is within the 50-word digestibility best practice)",
-    "- IMPORTANT — PARAGRAPH-LENGTH RULE (digestibility):",
-    "    All paragraphs OUTSIDE OF THE FAQ SECTION should average 50 words or fewer. FAQ answers have their own 75-word cap (see the FAQ block below) and are judged SEPARATELY — do NOT add FAQ answers to the paragraph count. When reporting in the digestibility notes, you MUST use the exact phrase 'paragraphs outside of the FAQ section' so the reader knows the FAQ is excluded. Quote the exact count from the GROUND TRUTH line above (e.g. '4 of 12 paragraphs outside of the FAQ section exceed 50 words') and quote 1-2 of the longest as examples with their word counts. Do NOT vague-wave with 'some paragraphs run long' — give the count.",
-    "    The full-page screenshot is helpful for verifying which long-paragraph blocks visually feel like walls of text on the page. If the screenshot shows a section that LOOKS like a wall of text but doesn't appear in the long-paragraph list (e.g. it's a styled <div> not a <p>), count it too.",
-    "",
-    `- FAQ-style Q/A pairs detected on the page (via <details>/<summary> or faq-class patterns): ${s.faqAnswers.length}`,
-    s.faqAnswers.length > 0
-      ? s.faqAnswers
-          .slice(0, 12)
-          .map((f) => {
-            const tooLong = f.answerWordCount > 75 ? "  ← OVER 75 words" : "";
-            return `    • Q: "${f.question}" — answer is ${f.answerWordCount} words${tooLong}`;
-          })
-          .join("\n")
-      : "    (none — page either has no FAQ section, the FAQ is rendered client-side, or it uses a markup pattern we don't detect)",
-    "- IMPORTANT — FAQ-ANSWER LENGTH RULE (digestibility):",
-    "    Best practice is 75 words or fewer per FAQ answer. Any answer marked '← OVER 75 words' above is too long and HURTS digestibility — readers can't skim past it. When a page's FAQs include answers above 75 words, the digestibility verdict should reflect that. Do NOT write generic praise like 'the FAQ uses tight Q&A pairs with short answers' if ANY answer in the list above is over 75 words — that contradicts the data. If you call out the FAQ length, quote the actual word count from this list (e.g. 'the combinatorial-optimisation answer runs 128 words') so the recommendation is concrete.",
-    "    When NO FAQ pairs were detected (count: 0) it does NOT prove the page has no FAQ — it may be client-rendered. In that case fall back to the body text and the screenshots before commenting on FAQ length.",
-    "",
-    bodyTextCharLimit >= 60_000
-      ? "Body text of the FULL page (top to bottom, may be lightly truncated):"
-      : `Body text of the page (first ~${Math.round(bodyTextCharLimit / 1000)},000 chars — the visible above-the-fold + nearby content):`,
-    "---",
-    input.bodyText.slice(0, bodyTextCharLimit),
-    "---",
-    "",
-    "Use the body text AND the attached screenshots together to verify everything. Bottom-of-page forms, FAQ sections, social-proof logo strips, footer CTAs all count.",
-  ].join("\n");
+  // Prefer the precomputed master object if `analyzeWithClaude` has
+  // already populated it (which it always does in the live pipeline,
+  // so the visual-GT facts get rendered into the prompt). Fall back
+  // to computing fresh on the spot for tests and direct callers that
+  // bypass the orchestration entry point.
+  const master =
+    input.master ??
+    computeMasterGroundTruth({
+      url: input.url,
+      title: input.title,
+      metaDescription: input.metaDescription,
+      structure: input.structure,
+    });
+  return formatGroundTruthFull(master, input.bodyText, bodyTextCharLimit);
 }
+
 
 function parseDimension(raw: string): CheckResult {
   const parsed = parseJsonObject(raw);
   return {
     score: clampScore(parsed.score),
-    headline: typeof parsed.headline === "string" ? parsed.headline : "(no summary)",
+    headline: scrubEmDashes(
+      typeof parsed.headline === "string" ? parsed.headline : "(no summary)",
+    ),
     notes: Array.isArray(parsed.notes)
       ? parsed.notes
           .filter((x: unknown): x is string => typeof x === "string")
+          .map((s) => scrubEmDashes(s))
           .slice(0, 3)
       : [],
   };
+}
+
+/**
+ * Strip em dashes (—) and en dashes (–) from any string Claude returns.
+ * Zero-tolerance policy on em-dashes in the report — they read as
+ * AI-generated. We tell Claude not to use them, but as a deterministic
+ * safety net every string that comes out of a Claude call passes
+ * through this scrub before it reaches the user.
+ *
+ * Replacement strategy:
+ *   - "X — Y"  becomes  "X, Y"      (em dash with spaces -> comma + space)
+ *   - "X—Y"   becomes  "X, Y"      (em dash without spaces -> comma + space)
+ *   - "X – Y"  becomes  "X, Y"      (en dash with spaces -> comma)
+ *   - "X–Y"   becomes  "X-Y"       (en dash without spaces, e.g. number ranges, -> hyphen)
+ * Adjacent whitespace is collapsed so we don't end up with double spaces.
+ */
+function scrubEmDashes(s: string): string {
+  if (!s) return s;
+  return s
+    .replace(/\s*—\s*/g, ", ")
+    .replace(/\s+–\s+/g, ", ")
+    .replace(/–/g, "-")
+    .replace(/\s+,/g, ",")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function parseTakeaways(raw: string): KeyTakeaway[] {
@@ -1184,7 +979,7 @@ function parseTakeaways(raw: string): KeyTakeaway[] {
       if (it && typeof it === "object") {
         const obj = it as Record<string, unknown>;
         const cat = typeof obj.category === "string" ? obj.category : "";
-        const text = typeof obj.text === "string" ? obj.text.trim() : "";
+        const text = typeof obj.text === "string" ? scrubEmDashes(obj.text) : "";
         if (!text) return null;
         const category = VALID_CATEGORIES.includes(cat as CheckKey)
           ? (cat as CheckKey)
@@ -1192,7 +987,7 @@ function parseTakeaways(raw: string): KeyTakeaway[] {
         return { category, text };
       }
       if (typeof it === "string" && it.trim().length > 0) {
-        return { category: "content" as CheckKey, text: it.trim() };
+        return { category: "content" as CheckKey, text: scrubEmDashes(it) };
       }
       return null;
     })
