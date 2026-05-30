@@ -7,6 +7,20 @@ interface Props {
   result: CheckResult;
 }
 
+/**
+ * Truncate a bullet-point note to a hard word cap. Each Breakdown bullet
+ * stays under 40 words so the cards remain skimmable; anything longer
+ * gets cut at the boundary with an ellipsis. Programmatic safety net on
+ * top of the 40-word instruction in DIMENSION_OUTPUT_RULE.
+ */
+const MAX_NOTE_WORDS = 40;
+function capNote(text: string): string {
+  if (!text) return text;
+  const words = text.trim().split(/\s+/);
+  if (words.length <= MAX_NOTE_WORDS) return text;
+  return words.slice(0, MAX_NOTE_WORDS).join(" ").replace(/[,;:.]+$/, "") + "…";
+}
+
 export default function ScoreCard({ title, icon, result }: Props) {
   const color = scoreColor(result.score);
   return (
@@ -46,7 +60,7 @@ export default function ScoreCard({ title, icon, result }: Props) {
           {result.notes.map((n, i) => (
             <li key={i} className="flex gap-2.5">
               <span className="mt-[9px] inline-block h-1 w-1 flex-shrink-0 rounded-full bg-accent-lite" />
-              <span>{n}</span>
+              <span>{capNote(n)}</span>
             </li>
           ))}
         </ul>
