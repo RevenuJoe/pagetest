@@ -768,7 +768,15 @@ function FeaturesMarqueeSection() {
   // Two copies of the items so the track can scroll -50% seamlessly.
   const track = [...items, ...items];
   return (
-    <section className="relative mb-6">
+    // Mobile-only top spacer (`mt-[20vh]`) pushes the marquee, the
+    // fox, and the footer down ~20% of viewport so the home page
+    // doesn't crowd everything at the bottom on small screens. The
+    // fox is absolutely positioned at `bottom: 94px` relative to
+    // the outer page wrapper, so growing the marquee margin grows
+    // the wrapper's total height and pulls the fox down with it.
+    // The footer follows the marquee in normal flow so it moves
+    // too. `md:mt-0` keeps the existing desktop / tablet layout.
+    <section className="relative mb-6 mt-[20vh] md:mt-0">
       {/* Full-VIEWPORT-bleed marquee container. `marginLeft / marginRight:
           calc(50% - 50vw)` stretches the element from screen-left to
           screen-right regardless of how narrow its parent's max-width is
