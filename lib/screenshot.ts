@@ -124,11 +124,27 @@ export async function fetchMicrolinkScreenshot(
       params.set("viewport[height]", "900");
       params.set("viewport[deviceScaleFactor]", "2");
     } else {
-      // iPhone 14-ish viewport. isMobile triggers mobile UA + touch events.
+      // iPhone 14-ish viewport. Bracket-form nested params, same as
+      // the screenshot[*] block above.
       params.set("viewport[width]", "390");
       params.set("viewport[height]", "844");
       params.set("viewport[deviceScaleFactor]", "2");
       params.set("viewport[isMobile]", "true");
+      params.set("viewport[hasTouch]", "true");
+      // CRITICAL: viewport[isMobile]=true tells the headless browser to
+      // report mobile to the page (window.matchMedia, navigator.platform),
+      // which is enough for CSS-only responsive sites. But many sites
+      // route mobile vs desktop HTML at the edge based on the
+      // User-Agent header — Cloudflare device detection, Next.js
+      // middleware, server-side rendering frameworks etc. Without an
+      // explicit iPhone UA, those sites send back the desktop HTML
+      // and the resulting "mobile" capture visually shows the desktop
+      // layout shrunk to a 390px-wide viewport. Setting userAgent
+      // here forces the right HTML on the way in.
+      params.set(
+        "userAgent",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      );
     }
 
     // Full-page capture: only set the key when we actually want it.
