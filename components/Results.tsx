@@ -171,9 +171,13 @@ export default function Results({
         </Section>
       ),
     },
-    // Above-the-Fold Screenshots → Full Page Screenshot at the very
-    // bottom. Full Page only renders when Microlink actually returned
-    // a stitched capture for at least one device.
+    // Above-the-Fold Screenshots is the last user-visible section.
+    // The Full Page Screenshot section was removed from the UI — the
+    // fullpage Microlink captures still run in /api/analyze and the
+    // URLs are still attached to the response (data.desktopFullPageScreenshot /
+    // data.mobileFullPageScreenshot), but they're only used as visual
+    // context for the dimension prompts (notably the bottom-form CRO
+    // check). They're no longer rendered as their own section.
     {
       key: "screenshots",
       node: (
@@ -201,37 +205,6 @@ export default function Results({
         </Section>
       ),
     },
-    ...(data.desktopFullPageScreenshot || data.mobileFullPageScreenshot
-      ? [
-          {
-            key: "full-screenshots",
-            node: (
-              <Section
-                title="Full Page Screenshot"
-                icon={<IconEye />}
-                defaultOpen={false}
-                headerAction={
-                  <DownloadButton
-                    label="Download full page screenshots"
-                    files={[
-                      {
-                        url: data.desktopFullPageScreenshot,
-                        filename: `${screenshotFilenameStem(data)}-fullpage-desktop.webp`,
-                      },
-                      {
-                        url: data.mobileFullPageScreenshot,
-                        filename: `${screenshotFilenameStem(data)}-fullpage-mobile.webp`,
-                      },
-                    ]}
-                  />
-                }
-              >
-                <FullPageScreenshotsBlock data={data} />
-              </Section>
-            ),
-          },
-        ]
-      : []),
   ];
 
   // Stage trace inspector — only renders when /api/analyze was called
