@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { IconReport } from "@/components/Icons";
 import { useSavedReports } from "@/lib/storeHooks";
 
@@ -9,24 +9,37 @@ export default function Header({ active = false }: { active?: boolean }) {
   const saved = useSavedReports();
   const count = saved.length;
   const router = useRouter();
+  const pathname = usePathname();
   return (
     <header className="px-6 py-5 sm:px-14">
       <div className="mx-auto flex max-w-[1180px] items-center justify-between gap-6">
         <Link
           href="/"
-          // Explicit click handler: navigate to the home root (drop any
-          // ?url= query params on /report or /reports) AND scroll to top
-          // so the user always lands on the hero, even if they were
-          // scrolled deep into a report. The Link itself is the source
-          // of truth for the href so right-click + open-in-new-tab still
-          // works; the onClick just enforces clean behaviour on a
-          // primary click.
+          // Logo click takes you home. Two behaviours:
+          //
+          //   - Already on "/"  : the home page may be showing a freshly
+          //     generated report (the form is filled, results rendered
+          //     below). A soft router.push("/") is a no-op since we're
+          //     already at /, so the report stays put. Force a full
+          //     reload via window.location.assign so client state
+          //     (form input + analysisStore results) resets and the
+          //     user actually lands back on a fresh empty home page.
+          //
+          //   - Anywhere else  : soft client-side navigation, scroll
+          //     to top after the route transition kicks in.
+          //
+          // The Link's href stays "/" so right-click + open-in-new-tab
+          // still works correctly.
           onClick={(e) => {
             // Allow modifier-click / middle-click to do their normal thing.
             if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
               return;
             }
             e.preventDefault();
+            if (pathname === "/") {
+              window.location.assign("/");
+              return;
+            }
             router.push("/");
             // Scroll to top after the navigation kicks in. Using
             // requestAnimationFrame so it happens after Next's route
