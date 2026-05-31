@@ -89,53 +89,60 @@ export async function fetchMicrolinkScreenshot(
   mode: ScreenshotMode = "atf",
 ): Promise<MicrolinkScreenshot | null> {
   try {
+    // NOTE on parameter style: empirically, sending screenshot sub-params
+    // as `screenshot.fullPage=true` (dot notation, as the Microlink
+    // public docs show) is silently ignored on the `pro.microlink.io`
+    // endpoint — every call comes back at the viewport's native
+    // dimensions whether or not fullPage is requested. The official
+    // @microlink/mql JS client serialises nested objects with bracket
+    // notation (`screenshot[fullPage]=true`), so we use that form for
+    // every nested key. Plain top-level params (url, meta, force,
+    // waitUntil) stay flat.
     const params = new URLSearchParams({
       url,
-      screenshot: "true",
       meta: "false",
-      // Microlink only accepts 'jpeg' | 'png' for the capture format.
-      // We request jpeg; the CDN re-encodes to WebP via Accept-header
-      // negotiation when the browser asks for it.
-      type: "jpeg",
-      // Microlink caches by URL aggressively (default TTL 12h+) and the
-      // cache key does NOT include screenshot params like fullPage. So a
-      // URL that was previously captured with fullPage=true keeps
-      // returning the old 15000px image. force=true bypasses the cache
-      // and gives us a fresh capture every run — which is what a page
-      // TESTER wants anyway (current state of the live page).
+      // Microlink caches by URL aggressively (default TTL 12h+) so we
+      // bypass the cache for every run. `force=true` is a documented
+      // top-level param; works on free + paid tiers.
       force: "true",
       // `load` fires when the DOM load event triggers. We deliberately
-      // do NOT use `networkidle0` (zero connections for 500ms) because
-      // marketing sites with analytics polling, web sockets, or chat
-      // widgets can NEVER reach idle, which makes Microlink hang on
-      // them for the full 25s timeout. `load` captures the
-      // above-the-fold view as soon as the initial HTML/CSS/images are
-      // ready, which is what we want.
+      // avoid `networkidle0` because marketing sites with analytics
+      // polling, web sockets, or chat widgets can NEVER reach idle,
+      // which makes Microlink hang for the full timeout.
       waitUntil: "load",
+      // Bracket-notation nested params (qs/PHP style). These DO get
+      // honoured by Microlink's parser on both endpoints.
+      "screenshot[type]": "jpeg",
     });
 
+    // `screenshot=true` is the top-level enable flag for the screenshot
+    // capability. Required so Microlink generates a screenshot at all.
+    params.set("screenshot", "true");
+
     if (strategy === "desktop") {
-      params.set("viewport.width", "1440");
-      params.set("viewport.height", "900");
-      params.set("viewport.deviceScaleFactor", "2");
+      params.set("viewport[width]", "1440");
+      params.set("viewport[height]", "900");
+      params.set("viewport[deviceScaleFactor]", "2");
     } else {
       // iPhone 14-ish viewport. isMobile triggers mobile UA + touch events.
-      params.set("viewport.width", "390");
-      params.set("viewport.height", "844");
-      params.set("viewport.deviceScaleFactor", "2");
-      params.set("viewport.isMobile", "true");
+      params.set("viewport[width]", "390");
+      params.set("viewport[height]", "844");
+      params.set("viewport[deviceScaleFactor]", "2");
+      params.set("viewport[isMobile]", "true");
     }
 
     // Full-page capture: only set the key when we actually want it.
-    // Microlink's nested-object query parser (qs-style) treats *presence*
-    // of `screenshot.fullPage` as truthy regardless of the value, so
-    // sending `screenshot.fullPage=false` on AtF calls was triggering a
-    // full-page capture, then Microlink's URL+param cache was deduping
-    // the four parallel calls into one quick AtF response. Omitting the
-    // key entirely on AtF calls gets a proper AtF crop.
+    // The bracket form is the one the JS SDK uses and the one Microlink
+    // actually honours in our testing.
     if (mode === "fullpage") {
-      params.set("screenshot.fullPage", "true");
+      params.set("screenshot[fullPage]", "true");
     }
+
+    // Per-mode + per-strategy cacheKey defeats any internal request
+    // deduping. Even with force=true, an upstream layer might collapse
+    // two near-identical concurrent requests; explicit cacheKey
+    // prevents that.
+    params.set("cacheKey", `${strategy}-${mode}-${Date.now()}`);
 
     // Optional Microlink API key. When set, the request goes against
     // the project's paid quota instead of the anonymous IP-based bucket
