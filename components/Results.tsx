@@ -171,15 +171,9 @@ export default function Results({
         </Section>
       ),
     },
-    // Above-the-Fold sits at the bottom of the report. The Full Page
-    // Screenshot section that used to live underneath was removed
-    // from the UI because Microlink wasn't reliably honouring our
-    // fullpage param and the section kept rendering AtF crops anyway.
-    // The full-page capture itself still runs in /api/analyze and the
-    // resulting URL is still attached to the response (data.desktopFullPageScreenshot /
-    // data.mobileFullPageScreenshot) — the dimension prompts use it as
-    // visual context (e.g. the bottom-form CRO check looks at the
-    // stitched scroll). We just don't surface it as its own section.
+    // Above-the-Fold Screenshots → Full Page Screenshot at the very
+    // bottom. Full Page only renders when Microlink actually returned
+    // a stitched capture for at least one device.
     {
       key: "screenshots",
       node: (
@@ -207,6 +201,37 @@ export default function Results({
         </Section>
       ),
     },
+    ...(data.desktopFullPageScreenshot || data.mobileFullPageScreenshot
+      ? [
+          {
+            key: "full-screenshots",
+            node: (
+              <Section
+                title="Full Page Screenshot"
+                icon={<IconEye />}
+                defaultOpen={false}
+                headerAction={
+                  <DownloadButton
+                    label="Download full page screenshots"
+                    files={[
+                      {
+                        url: data.desktopFullPageScreenshot,
+                        filename: `${screenshotFilenameStem(data)}-fullpage-desktop.webp`,
+                      },
+                      {
+                        url: data.mobileFullPageScreenshot,
+                        filename: `${screenshotFilenameStem(data)}-fullpage-mobile.webp`,
+                      },
+                    ]}
+                  />
+                }
+              >
+                <FullPageScreenshotsBlock data={data} />
+              </Section>
+            ),
+          },
+        ]
+      : []),
   ];
 
   // Stage trace inspector — only renders when /api/analyze was called

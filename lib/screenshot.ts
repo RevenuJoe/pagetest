@@ -90,22 +90,24 @@ export async function fetchMicrolinkScreenshot(
 ): Promise<MicrolinkScreenshot | null> {
   try {
     // NOTE on parameter style: dot notation (viewport.width=1440,
-    // screenshot.fullPage=true, screenshot.type=jpeg) is what the
-    // Microlink public docs show, and is the only form their parser
-    // actually honours on pro.microlink.io. Bracket notation
+    // screenshot.fullPage=true, screenshot.type=jpeg) is the form
+    // Microlink's public docs use and the only form their qs-style
+    // parser actually honours on pro.microlink.io. Bracket notation
     // (viewport[width], screenshot[type]) was tested and silently
-    // falls back to defaults — desktop AND mobile both render at the
-    // 1280×800 default, mobile no longer differs from desktop, and
-    // screenshot.type=jpeg gets dropped so the CDN returns PNG.
-    // Stick to dots for every nested param.
+    // falls back to defaults.
+    //
+    // BUT: a critical subtlety the docs imply but don't spell out — a
+    // SCALAR `screenshot=true` blocks the parser from binding any
+    // NESTED `screenshot.X` sub-keys. Every fullPage example in the
+    // docs sends `screenshot.fullPage=true` alone, NEVER alongside a
+    // bare `screenshot=true`. So we set the `screenshot` capability
+    // toggle differently per mode:
+    //   - atf:      bare `screenshot=true` (no sub-params needed)
+    //   - fullpage: nested `screenshot.fullPage=true` + `screenshot.type=jpeg`,
+    //               and we DO NOT also send a bare `screenshot=true`.
     const params = new URLSearchParams({
       url,
       meta: "false",
-      screenshot: "true",
-      // Microlink only accepts 'jpeg' | 'png'. We request jpeg; the
-      // CDN re-encodes to WebP via Accept-header negotiation when the
-      // browser asks for it.
-      type: "jpeg",
       // Microlink caches by URL aggressively (default TTL 12h+) so we
       // bypass the cache for every run.
       force: "true",
@@ -115,6 +117,20 @@ export async function fetchMicrolinkScreenshot(
       // which makes Microlink hang for the full timeout.
       waitUntil: "load",
     });
+
+    if (mode === "fullpage") {
+      // Nested form ONLY. `screenshot.fullPage=true` implicitly
+      // enables the screenshot capability; the bare flag would
+      // override it as a scalar and the sub-key would be discarded.
+      params.set("screenshot.fullPage", "true");
+      params.set("screenshot.type", "jpeg");
+    } else {
+      // Scalar form for plain AtF — no `screenshot.X` sub-params in
+      // play, so bare `screenshot=true` + bare `type=jpeg` is fine and
+      // matches the docs Overview example.
+      params.set("screenshot", "true");
+      params.set("type", "jpeg");
+    }
 
     if (strategy === "desktop") {
       // Custom desktop viewport at 2× DPR for crisp Retina output.

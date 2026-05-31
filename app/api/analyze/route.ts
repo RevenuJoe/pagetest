@@ -90,6 +90,8 @@ export async function POST(req: NextRequest) {
     fetchPageMs: 0,
     microDesktopMs: 0,
     microMobileMs: 0,
+    microDesktopFullMs: 0,
+    microMobileFullMs: 0,
   };
   const timed = <T>(label: keyof typeof phase0Timings, p: Promise<T>): Promise<T> => {
     const t = Date.now();
@@ -110,17 +112,25 @@ export async function POST(req: NextRequest) {
       page,
       microDesktopRes,
       microMobileRes,
+      microDesktopFullRes,
+      microMobileFullRes,
     ] = await Promise.allSettled([
       timed("psiDesktopMs", runPageSpeed(url, "desktop")),
       timed("psiMobileMs", runPageSpeed(url, "mobile")),
       timed("fetchPageMs", fetchPage(url)),
-      // Above-the-fold crops. The fullpage capture was dropped because
-      // Microlink Pro silently ignores screenshot.fullPage in every
-      // tested param form — calls came back as AtF crops anyway, so
-      // they were burning quota with no benefit. The UI section that
-      // displayed full-page images was removed too.
+      // Above-the-fold crops (shown in Overview thumbnail + AtF
+      // Screenshots section).
       timed("microDesktopMs", fetchMicrolinkScreenshot(url, "desktop", "atf")),
       timed("microMobileMs", fetchMicrolinkScreenshot(url, "mobile", "atf")),
+      // Full-page stitched captures (shown in the Full Page Screenshot
+      // section at the bottom of the report). Microlink scrolls the
+      // page and stitches the whole scroll height into one tall image.
+      // Per the docs these use `screenshot.fullPage=true` nested
+      // alongside `screenshot.type=jpeg` and deliberately omit the
+      // bare `screenshot=true` flag — see the long comment in
+      // lib/screenshot.ts for why mixing scalar + nested breaks it.
+      timed("microDesktopFullMs", fetchMicrolinkScreenshot(url, "desktop", "fullpage")),
+      timed("microMobileFullMs", fetchMicrolinkScreenshot(url, "mobile", "fullpage")),
     ]);
     const phase0WallClockMs = Date.now() - tRouteStart;
 
@@ -144,6 +154,10 @@ export async function POST(req: NextRequest) {
       microDesktopRes.status === "fulfilled" ? microDesktopRes.value : null;
     const microMobile =
       microMobileRes.status === "fulfilled" ? microMobileRes.value : null;
+    const microDesktopFull =
+      microDesktopFullRes.status === "fulfilled" ? microDesktopFullRes.value : null;
+    const microMobileFull =
+      microMobileFullRes.status === "fulfilled" ? microMobileFullRes.value : null;
 
     if (page.status !== "fulfilled") {
       return NextResponse.json(
@@ -338,6 +352,11 @@ export async function POST(req: NextRequest) {
         ?? mobile?.finalScreenshot
         ?? mobile?.fullPageScreenshot
         ?? undefined,
+      // Microlink full-page stitched WebP captures. Optional: the UI
+      // section hides itself when both are null (Microlink failure or
+      // the param mode change still doesn't take).
+      desktopFullPageScreenshot: microDesktopFull?.url ?? undefined,
+      mobileFullPageScreenshot: microMobileFull?.url ?? undefined,
       pageSpeedInsights: psiInsights,
       ...(debug && ai.criticVerdicts
         ? { criticVerdicts: ai.criticVerdicts }
