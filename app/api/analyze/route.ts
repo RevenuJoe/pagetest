@@ -83,17 +83,13 @@ export async function POST(req: NextRequest) {
   // see total wall-clock from the user's perspective.
   const tRouteStart = Date.now();
   // Per-fetch stopwatches so we can attribute Phase 0 latency to each
-  // source (PSI desktop, PSI mobile, HTML fetch, the four Microlink
-  // captures). They all run in parallel so the slowest one dominates
-  // the phase wall-clock.
+  // source. All run in parallel so the slowest dominates wall-clock.
   const phase0Timings = {
     psiDesktopMs: 0,
     psiMobileMs: 0,
     fetchPageMs: 0,
     microDesktopMs: 0,
     microMobileMs: 0,
-    microDesktopFullMs: 0,
-    microMobileFullMs: 0,
   };
   const timed = <T>(label: keyof typeof phase0Timings, p: Promise<T>): Promise<T> => {
     const t = Date.now();
@@ -114,21 +110,17 @@ export async function POST(req: NextRequest) {
       page,
       microDesktopRes,
       microMobileRes,
-      microDesktopFullRes,
-      microMobileFullRes,
     ] = await Promise.allSettled([
       timed("psiDesktopMs", runPageSpeed(url, "desktop")),
       timed("psiMobileMs", runPageSpeed(url, "mobile")),
       timed("fetchPageMs", fetchPage(url)),
-      // Above-the-fold crops (shown in Overview + AtF Screenshots section).
+      // Above-the-fold crops. The fullpage capture was dropped because
+      // Microlink Pro silently ignores screenshot.fullPage in every
+      // tested param form — calls came back as AtF crops anyway, so
+      // they were burning quota with no benefit. The UI section that
+      // displayed full-page images was removed too.
       timed("microDesktopMs", fetchMicrolinkScreenshot(url, "desktop", "atf")),
       timed("microMobileMs", fetchMicrolinkScreenshot(url, "mobile", "atf")),
-      // Full-page captures (shown in the new Full Page Screenshot
-      // section). Microlink stitches the whole scroll into one image.
-      // Takes longer than AtF; runs in parallel so wall-clock isn't
-      // dominated unless PSI returns very fast.
-      timed("microDesktopFullMs", fetchMicrolinkScreenshot(url, "desktop", "fullpage")),
-      timed("microMobileFullMs", fetchMicrolinkScreenshot(url, "mobile", "fullpage")),
     ]);
     const phase0WallClockMs = Date.now() - tRouteStart;
 
@@ -152,12 +144,6 @@ export async function POST(req: NextRequest) {
       microDesktopRes.status === "fulfilled" ? microDesktopRes.value : null;
     const microMobile =
       microMobileRes.status === "fulfilled" ? microMobileRes.value : null;
-    // Microlink full-page captures (optional; the new Full Page
-    // Screenshot section hides itself when these are null).
-    const microDesktopFull =
-      microDesktopFullRes.status === "fulfilled" ? microDesktopFullRes.value : null;
-    const microMobileFull =
-      microMobileFullRes.status === "fulfilled" ? microMobileFullRes.value : null;
 
     if (page.status !== "fulfilled") {
       return NextResponse.json(
@@ -352,12 +338,6 @@ export async function POST(req: NextRequest) {
         ?? mobile?.finalScreenshot
         ?? mobile?.fullPageScreenshot
         ?? undefined,
-      // Microlink WebP full-page captures, displayed in the new Full
-      // Page Screenshot section at the bottom of the report. Optional:
-      // when Microlink failed for either device the UI hides that
-      // section gracefully.
-      desktopFullPageScreenshot: microDesktopFull?.url ?? undefined,
-      mobileFullPageScreenshot: microMobileFull?.url ?? undefined,
       pageSpeedInsights: psiInsights,
       ...(debug && ai.criticVerdicts
         ? { criticVerdicts: ai.criticVerdicts }

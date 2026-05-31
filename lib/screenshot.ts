@@ -89,76 +89,64 @@ export async function fetchMicrolinkScreenshot(
   mode: ScreenshotMode = "atf",
 ): Promise<MicrolinkScreenshot | null> {
   try {
-    // NOTE on parameter style: empirically, sending screenshot sub-params
-    // as `screenshot.fullPage=true` (dot notation, as the Microlink
-    // public docs show) is silently ignored on the `pro.microlink.io`
-    // endpoint — every call comes back at the viewport's native
-    // dimensions whether or not fullPage is requested. The official
-    // @microlink/mql JS client serialises nested objects with bracket
-    // notation (`screenshot[fullPage]=true`), so we use that form for
-    // every nested key. Plain top-level params (url, meta, force,
-    // waitUntil) stay flat.
+    // NOTE on parameter style: dot notation (viewport.width=1440,
+    // screenshot.fullPage=true, screenshot.type=jpeg) is what the
+    // Microlink public docs show, and is the only form their parser
+    // actually honours on pro.microlink.io. Bracket notation
+    // (viewport[width], screenshot[type]) was tested and silently
+    // falls back to defaults — desktop AND mobile both render at the
+    // 1280×800 default, mobile no longer differs from desktop, and
+    // screenshot.type=jpeg gets dropped so the CDN returns PNG.
+    // Stick to dots for every nested param.
     const params = new URLSearchParams({
       url,
       meta: "false",
+      screenshot: "true",
+      // Microlink only accepts 'jpeg' | 'png'. We request jpeg; the
+      // CDN re-encodes to WebP via Accept-header negotiation when the
+      // browser asks for it.
+      type: "jpeg",
       // Microlink caches by URL aggressively (default TTL 12h+) so we
-      // bypass the cache for every run. `force=true` is a documented
-      // top-level param; works on free + paid tiers.
+      // bypass the cache for every run.
       force: "true",
       // `load` fires when the DOM load event triggers. We deliberately
       // avoid `networkidle0` because marketing sites with analytics
       // polling, web sockets, or chat widgets can NEVER reach idle,
       // which makes Microlink hang for the full timeout.
       waitUntil: "load",
-      // Bracket-notation nested params (qs/PHP style). These DO get
-      // honoured by Microlink's parser on both endpoints.
-      "screenshot[type]": "jpeg",
     });
 
-    // `screenshot=true` is the top-level enable flag for the screenshot
-    // capability. Required so Microlink generates a screenshot at all.
-    params.set("screenshot", "true");
-
     if (strategy === "desktop") {
-      params.set("viewport[width]", "1440");
-      params.set("viewport[height]", "900");
-      params.set("viewport[deviceScaleFactor]", "2");
+      // Custom desktop viewport at 2× DPR for crisp Retina output.
+      params.set("viewport.width", "1440");
+      params.set("viewport.height", "900");
+      params.set("viewport.deviceScaleFactor", "2");
     } else {
-      // iPhone 14-ish viewport. Bracket-form nested params, same as
-      // the screenshot[*] block above.
-      params.set("viewport[width]", "390");
-      params.set("viewport[height]", "844");
-      params.set("viewport[deviceScaleFactor]", "2");
-      params.set("viewport[isMobile]", "true");
-      params.set("viewport[hasTouch]", "true");
-      // CRITICAL: viewport[isMobile]=true tells the headless browser to
-      // report mobile to the page (window.matchMedia, navigator.platform),
-      // which is enough for CSS-only responsive sites. But many sites
-      // route mobile vs desktop HTML at the edge based on the
-      // User-Agent header — Cloudflare device detection, Next.js
-      // middleware, server-side rendering frameworks etc. Without an
-      // explicit iPhone UA, those sites send back the desktop HTML
-      // and the resulting "mobile" capture visually shows the desktop
-      // layout shrunk to a 390px-wide viewport. Setting userAgent
-      // here forces the right HTML on the way in.
-      params.set(
-        "userAgent",
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-      );
+      // For mobile we use Microlink's `device` parameter — a documented
+      // preset that maps to Puppeteer's device descriptors. The preset
+      // sets the viewport, deviceScaleFactor, isMobile, hasTouch flags
+      // AND a real iPhone Safari User-Agent in one go. This is the
+      // reliable way to get a true mobile render: previously we set
+      // viewport.isMobile=true alone, which only fires CSS media
+      // queries — sites that switch HTML at the edge based on the
+      // User-Agent (Cloudflare device detection, Next.js middleware,
+      // SSR frameworks) kept sending desktop HTML, so the capture
+      // showed the desktop layout shrunk into a phone-sized viewport.
+      // "iPhone 14 Pro Max" is one of Puppeteer's modern presets
+      // (390×844 @ 3×) — the closest match to a current iPhone that's
+      // in the standard descriptor list.
+      params.set("device", "iPhone 14 Pro Max");
     }
 
-    // Full-page capture: only set the key when we actually want it.
-    // The bracket form is the one the JS SDK uses and the one Microlink
-    // actually honours in our testing.
+    // Full-page capture: empirically the screenshot.fullPage param is
+    // ignored by Microlink Pro regardless of dot or bracket form, so
+    // /api/analyze no longer calls this function with mode="fullpage"
+    // (the UI section was hidden and the call always returned an AtF
+    // crop anyway). The block is left here in case a future Microlink
+    // change makes it honoured again.
     if (mode === "fullpage") {
-      params.set("screenshot[fullPage]", "true");
+      params.set("screenshot.fullPage", "true");
     }
-
-    // Per-mode + per-strategy cacheKey defeats any internal request
-    // deduping. Even with force=true, an upstream layer might collapse
-    // two near-identical concurrent requests; explicit cacheKey
-    // prevents that.
-    params.set("cacheKey", `${strategy}-${mode}-${Date.now()}`);
 
     // Optional Microlink API key. When set, the request goes against
     // the project's paid quota instead of the anonymous IP-based bucket
