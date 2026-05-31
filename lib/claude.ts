@@ -761,8 +761,13 @@ async function runCriticPass(
   const candidates: CandidateItem[] = [];
   let nextId = 1;
   if (scope === "dimensions" || scope === "all") {
-    for (const dim of CLAUDE_DIMS) {
+    // Iterate over the dims actually present in the input record,
+    // not the fixed CLAUDE_DIMS list. This lets callers pass a
+    // single-dim slice (used by the per-dim parallel critic) without
+    // crashing on `undefined.headline`.
+    for (const dim of Object.keys(dimensionResults) as ClaudeDimension[]) {
       const r = dimensionResults[dim];
+      if (!r) continue;
       if (r.headline && r.headline.trim().length > 0) {
         candidates.push({ id: nextId++, kind: "headline", dim, text: r.headline });
       }
@@ -859,10 +864,13 @@ async function runCriticPass(
   const verdictById = new Map<number, CriticVerdict>();
   for (const v of verdicts) verdictById.set(v.id, v);
 
-  // Rebuild dimensions.
+  // Rebuild dimensions. Iterate over the dims actually present in
+  // the input record (callers may pass a single-dim slice when using
+  // the per-dim parallel critic split).
   const newDimensions = { ...dimensionResults };
-  for (const dim of CLAUDE_DIMS) {
+  for (const dim of Object.keys(newDimensions) as ClaudeDimension[]) {
     const r = newDimensions[dim];
+    if (!r) continue;
     const newNotes: string[] = [];
     let newHeadline = r.headline;
     for (const cand of candidates) {
