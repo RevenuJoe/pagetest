@@ -412,15 +412,61 @@ export async function analyzeWithClaude(
   const dimensionResultsAfterFilter = { content, digestibility, cro, aboveTheFold, mobile };
   const tDimsCriticStart = Date.now();
   let dimsCriticMs = 0;
-  const dimensionsCriticPromise = runCriticPass(
-    client,
-    inputWithMaster,
-    dimensionResultsAfterFilter,
-    [],
-    "dimensions",
-  ).then((r) => {
+  // PER-DIM PARALLEL CRITIC. We used to send ALL dim candidates
+  // (~25-40 items across 5 dims) to a single dims-critic call with
+  // extended thinking. On larger reports that single call sat
+  // reasoning for 60-80 seconds, dominating the entire request
+  // wall-clock. Splitting into 5 parallel calls (one per dim) keeps
+  // the same extended-thinking accuracy budget per item but brings
+  // wall-clock down to roughly the slowest single dim ~15-25s. We
+  // lose the rare cross-dimension consistency catches the batched
+  // critic could spot, but the deterministic contradiction sweep in
+  // Phase 6 handles the obvious cross-dim "recommend adding X / X
+  // already present" pattern.
+  //
+  // Each per-dim call runs through the same runCriticPass code path
+  // with scope="dimensions", so each still gets extended thinking
+  // and the same critic prompt. We just hand it a one-dim slice of
+  // the candidate set. The function's existing try/catch returns the
+  // un-audited input if a per-dim call fails, so one slow dim can't
+  // take the whole report down — at worst that dim ships un-audited.
+  const dimensionsCriticPromise = Promise.all(
+    CLAUDE_DIMS.map((dim) =>
+      runCriticPass(
+        client,
+        inputWithMaster,
+        { [dim]: dimensionResultsAfterFilter[dim] } as Record<
+          ClaudeDimension,
+          CheckResult
+        >,
+        [],
+        "dimensions",
+      ),
+    ),
+  ).then((perDimResults) => {
     dimsCriticMs = Date.now() - tDimsCriticStart;
-    return r;
+    // Merge the 5 per-dim results into the shape the rest of the
+    // pipeline expects (one combined record + concatenated verdict
+    // log). Start from the post-filter state so any dim whose
+    // critic call failed silently falls back to its un-audited
+    // version (each per-dim runCriticPass already returns the
+    // input record on error, but we belt-and-brace here).
+    const merged: {
+      dimensions: Record<ClaudeDimension, CheckResult>;
+      takeaways: KeyTakeaway[];
+      verdicts: CriticVerdictDebugEntry[];
+    } = {
+      dimensions: { ...dimensionResultsAfterFilter },
+      takeaways: [],
+      verdicts: [],
+    };
+    for (let i = 0; i < CLAUDE_DIMS.length; i++) {
+      const dim = CLAUDE_DIMS[i];
+      const r = perDimResults[i];
+      if (r.dimensions[dim]) merged.dimensions[dim] = r.dimensions[dim];
+      merged.verdicts.push(...r.verdicts);
+    }
+    return merged;
   });
   const tTakeawaysStart = Date.now();
   const takeawaysPromise = callTakeaways(
