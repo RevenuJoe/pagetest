@@ -23,7 +23,8 @@
 
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 export type LightboxMode = "atf" | "fullpage";
 
@@ -42,23 +43,36 @@ export default function Lightbox({
   mode,
   onClose,
 }: LightboxProps) {
+  // Track whether we're mounted in the browser yet — server-side
+  // rendering doesn't have a `document` to portal into.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Escape-to-close + body-scroll-lock while the overlay is mounted open.
+  // Lock BOTH html and body overflow because some browsers will still
+  // scroll the page when only one is pinned, especially if the document
+  // root has its own overflow style.
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
+    const prevBody = document.body.style.overflow;
+    const prevHtml = document.documentElement.style.overflow;
     document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
 
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => {
-      document.body.style.overflow = prev;
+      document.body.style.overflow = prevBody;
+      document.documentElement.style.overflow = prevHtml;
       window.removeEventListener("keydown", onKey);
     };
   }, [open, onClose]);
 
-  if (!open || !src) return null;
+  if (!open || !src || !mounted) return null;
 
   // Both modes share the same visual chrome — same backdrop, same close
   // button, same image styling (rounded corners + drop shadow on the
@@ -75,7 +89,14 @@ export default function Lightbox({
   //             — same UX as the AtF lightbox but with a tall image.
   const isFullPage = mode === "fullpage";
 
-  return (
+  // Portal-mount the overlay on document.body so it sits OUTSIDE any
+  // report-content stacking context. Without the portal, the lightbox
+  // is positioned relative to its nearest ancestor that has a
+  // transform / filter / will-change / contain rule — which makes it
+  // possible for a page-level footer or sticky element to draw on top
+  // of it, and which can also clip the overlay short on long pages.
+  // Mounting on document.body sidesteps every one of those traps.
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
@@ -83,7 +104,11 @@ export default function Lightbox({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 1000,
+        // Very high stacking value. Anything else on the page (the
+        // page footer, sticky headers, third-party widgets) sits well
+        // below this. Combined with the portal mount on document.body
+        // we're outside every report-content stacking context.
+        zIndex: 2147483647,
         background: "rgba(0, 0, 0, 0.78)",
         // For atf: flex-center the image. For fullpage: let the backdrop
         // scroll vertically so a tall image can be panned with the native
@@ -162,6 +187,7 @@ export default function Lightbox({
           cursor: "default",
         }}
       />
-    </div>
+    </div>,
+    document.body,
   );
 }
