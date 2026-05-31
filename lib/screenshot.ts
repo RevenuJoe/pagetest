@@ -97,16 +97,6 @@ export async function fetchMicrolinkScreenshot(
       // We request jpeg; the CDN re-encodes to WebP via Accept-header
       // negotiation when the browser asks for it.
       type: "jpeg",
-      // Above-the-fold = false (capture just the visible viewport on
-      // page load). Full page = true (stitch the whole scroll).
-      // PARAMETER NAME: per Microlink docs the correct key is
-      // `screenshot.fullPage` (it lives under the `screenshot` object,
-      // same way `screenshot.type` does). Sending bare `fullPage=true`
-      // is silently ignored and Microlink returns an AtF crop for
-      // every call — which is exactly what happened when this was
-      // first shipped. URLSearchParams encodes the dot fine; that's
-      // also how `viewport.width` etc are documented.
-      "screenshot.fullPage": mode === "fullpage" ? "true" : "false",
       // Microlink caches by URL aggressively (default TTL 12h+) and the
       // cache key does NOT include screenshot params like fullPage. So a
       // URL that was previously captured with fullPage=true keeps
@@ -134,6 +124,17 @@ export async function fetchMicrolinkScreenshot(
       params.set("viewport.height", "844");
       params.set("viewport.deviceScaleFactor", "2");
       params.set("viewport.isMobile", "true");
+    }
+
+    // Full-page capture: only set the key when we actually want it.
+    // Microlink's nested-object query parser (qs-style) treats *presence*
+    // of `screenshot.fullPage` as truthy regardless of the value, so
+    // sending `screenshot.fullPage=false` on AtF calls was triggering a
+    // full-page capture, then Microlink's URL+param cache was deduping
+    // the four parallel calls into one quick AtF response. Omitting the
+    // key entirely on AtF calls gets a proper AtF crop.
+    if (mode === "fullpage") {
+      params.set("screenshot.fullPage", "true");
     }
 
     // Optional Microlink API key. When set, the request goes against
@@ -185,10 +186,19 @@ export async function fetchMicrolinkScreenshot(
     const body = (await res.json()) as MicrolinkResponse;
     if (body.status !== "success" || !body.data?.screenshot?.url) {
       console.warn(
-        `Microlink ${strategy} response missing screenshot URL for ${url}: ${body.message ?? body.status}`,
+        `Microlink ${strategy}/${mode} response missing screenshot URL for ${url}: ${body.message ?? body.status}`,
       );
       return null;
     }
+
+    // Log the returned image URL + pixel dimensions on success so we
+    // can verify in Vercel logs that fullpage captures are actually
+    // taller than AtF crops. A real fullpage capture is typically
+    // 3000-15000px tall; AtF crops match the viewport (~900 desktop
+    // / 844 mobile at 2× DPR).
+    console.log(
+      `Microlink ${strategy}/${mode} OK ${body.data.screenshot.width}x${body.data.screenshot.height} → ${body.data.screenshot.url}`,
+    );
 
     return {
       url: body.data.screenshot.url,

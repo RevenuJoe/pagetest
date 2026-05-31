@@ -376,13 +376,15 @@ function CopyButton({ getText }: { getText: () => string }) {
  * Header action for a screenshot Section. Same visual treatment as
  * CopyButton (small grey icon, hover darkens, briefly swaps to a check
  * after action). Clicking it downloads the high-quality WebP files
- * (desktop + mobile when both are present) directly from Microlink's
- * CDN to the user's computer.
+ * (desktop + mobile) to the user's computer.
  *
- * The Microlink CDN responds with Content-Disposition that opens
- * inline by default, so we explicitly fetch the asset as a Blob and
- * trigger a download via an anchor + object URL so the browser
- * actually saves the file with the filename we choose.
+ * Implementation note: rather than fetch Microlink's CDN URL directly
+ * from the browser (which fails silently when CORS headers are missing
+ * and won't honour the `download` attribute on cross-origin anchors),
+ * we route through `/api/download` — a same-origin server proxy that
+ * fetches the bytes server-side and streams them back with the right
+ * Content-Disposition: attachment header. PSI base64 fallbacks are
+ * still downloaded directly via a Blob URL since they're inline.
  */
 function DownloadButton({
   files,
@@ -409,12 +411,9 @@ function DownloadButton({
         // Stop the click from toggling the surrounding <details>.
         e.preventDefault();
         e.stopPropagation();
-        void downloadFiles(usable).then((ok) => {
-          if (ok) {
-            setDone(true);
-            window.setTimeout(() => setDone(false), 1400);
-          }
-        });
+        downloadFiles(usable);
+        setDone(true);
+        window.setTimeout(() => setDone(false), 1400);
       }}
       className="flex h-7 w-7 items-center justify-center rounded-md text-ink-soft transition hover:bg-bg hover:text-ink"
     >
@@ -423,47 +422,34 @@ function DownloadButton({
   );
 }
 
-/** Fetch each URL as a Blob and trigger a browser download with the
- *  chosen filename. Returns true if at least one file downloaded; logs
- *  but doesn't throw on individual failures. Sequential to avoid
- *  popup-blocker behaviour that fires on bursts of synthetic clicks. */
-async function downloadFiles(
-  files: Array<{ url: string; filename: string }>,
-): Promise<boolean> {
-  let anySucceeded = false;
+/** Trigger a browser download for each file. Cross-origin URLs go via
+ *  our /api/download proxy so the browser saves the bytes instead of
+ *  opening them inline; data URLs (PSI fallbacks) get downloaded
+ *  directly with a temporary anchor + the download attribute. */
+function downloadFiles(files: Array<{ url: string; filename: string }>): void {
   for (const f of files) {
-    try {
-      // Data URLs (PSI fallback) can be turned into a download
-      // directly without a fetch round-trip.
-      let objectUrl: string;
-      let revoke = false;
-      if (f.url.startsWith("data:")) {
-        objectUrl = f.url;
-      } else {
-        const res = await fetch(f.url, { mode: "cors" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const blob = await res.blob();
-        objectUrl = URL.createObjectURL(blob);
-        revoke = true;
-      }
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = f.filename;
-      a.style.display = "none";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      if (revoke) {
-        // Give the browser a moment to start the download before
-        // revoking the blob URL.
-        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1500);
-      }
-      anySucceeded = true;
-    } catch (err) {
-      console.warn(`Failed to download ${f.filename}:`, err);
+    let href: string;
+    if (f.url.startsWith("data:")) {
+      // PSI base64 fallback — same-origin (data URL), the download
+      // attribute works as-is.
+      href = f.url;
+    } else {
+      // Cross-origin Microlink URL — go through our same-origin proxy
+      // so the response carries Content-Disposition: attachment.
+      const proxy = new URL("/api/download", window.location.origin);
+      proxy.searchParams.set("url", f.url);
+      proxy.searchParams.set("filename", f.filename);
+      href = proxy.toString();
     }
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = f.filename;
+    a.rel = "noopener";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
-  return anySucceeded;
 }
 
 /** Format a runtime in milliseconds for the Overview's "Runtime" row.
