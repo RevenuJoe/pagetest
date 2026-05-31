@@ -768,15 +768,17 @@ function FeaturesMarqueeSection() {
   // Two copies of the items so the track can scroll -50% seamlessly.
   const track = [...items, ...items];
   return (
-    // Mobile-only top spacer (`mt-[20vh]`) pushes the marquee, the
-    // fox, and the footer down ~20% of viewport so the home page
-    // doesn't crowd everything at the bottom on small screens. The
-    // fox is absolutely positioned at `bottom: 94px` relative to
-    // the outer page wrapper, so growing the marquee margin grows
-    // the wrapper's total height and pulls the fox down with it.
-    // The footer follows the marquee in normal flow so it moves
-    // too. `md:mt-0` keeps the existing desktop / tablet layout.
-    <section className="relative mb-6 mt-[20vh] md:mt-0">
+    // Mobile-only top spacer pushes the marquee, the fox, and the
+    // footer down ~12% of viewport so they sit lower on the page
+    // without crowding the bottom. (Was 20vh — pulled the group up
+    // by 40% to tighten the gap between the "no email required /
+    // 100% free" badges under the form and the fox below.) The fox
+    // is absolutely positioned at `bottom: 94px` relative to the
+    // outer page wrapper, so growing the marquee margin grows the
+    // wrapper's total height and pulls the fox down with it. The
+    // footer follows the marquee in normal flow so it moves too.
+    // `md:mt-0` keeps the existing desktop / tablet layout intact.
+    <section className="relative mb-6 mt-[12vh] md:mt-0">
       {/* Full-VIEWPORT-bleed marquee container. `marginLeft / marginRight:
           calc(50% - 50vw)` stretches the element from screen-left to
           screen-right regardless of how narrow its parent's max-width is
@@ -856,10 +858,10 @@ function FoxIllustration() {
       alt=""
       aria-hidden
       // Height is set via Tailwind classes so the mobile bump is truly
-      // mobile-only. Mobile (< 768px): fixed 220px (another 10% on top
-      // of 200px so the head reaches further up the page). Tablet and
-      // desktop: unchanged (clamp tops out at 380px on desktop).
-      className="pointer-events-none absolute z-0 h-[220px] select-none md:h-[clamp(140px,37vw,380px)]"
+      // mobile-only. Mobile (< 768px): fixed 242px (another 10% on top
+      // of 220px so the fox is more prominent under the form). Tablet
+      // and desktop: unchanged (clamp tops out at 380px on desktop).
+      className="pointer-events-none absolute z-0 h-[242px] select-none md:h-[clamp(140px,37vw,380px)]"
       style={{
         // The fox.webp is already cropped to its visible content (no
         // transparent padding), so the image's bottom edge IS the
